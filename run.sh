@@ -15,7 +15,8 @@ export LOG_JSON=1
 # =========================
 # BACKEND LLM (LM Studio)
 # =========================
-export UPSTREAM_BASE_URL="http://127.0.0.1:1234"
+export UPSTREAM_BASE_URL="http://arkai.local:1234"
+#export MAIN_MODEL="qwen2.5-7b-instruct-uncensored"
 export MAIN_MODEL="qwen2.5-3b-instruct"
 export SUMMARY_MODEL="qwen2.5-1.5b-instruct"
 

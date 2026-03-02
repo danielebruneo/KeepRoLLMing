@@ -62,6 +62,24 @@ def log(level: str, msg: str, **fields: Any) -> None:
     rec = {"ts": _ts(), "level": level.upper(), "msg": msg, **fields}
     print(json.dumps(rec, ensure_ascii=False), flush=True)
 
+
+# Max chars for logging large payloads (input conversation, summary requests, etc.)
+LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000"))
+
+
+def snip_json(obj: Any, max_chars: int = LOG_PAYLOAD_MAX_CHARS) -> str:
+    """Best-effort JSON rendering for logs (never raises)."""
+    try:
+        s = json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        try:
+            s = str(obj)
+        except Exception:
+            s = "<unserializable>"
+    if max_chars and len(s) > max_chars:
+        return s[:max_chars] + "…"
+    return s
+
 # ----------------------------
 # Token counting (best-effort)
 # ----------------------------
@@ -127,7 +145,6 @@ def _extract_ctx_len_from_model_obj(obj: Dict[str, Any]) -> Optional[int]:
         if isinstance(v, int) and v > 0:
             return v, k
 
-
 async def get_ctx_len_for_model(upstream_model: str) -> int:
     now = time.time()
     cached = _ctx_cache.get(upstream_model)
@@ -141,7 +158,6 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
         r.raise_for_status()
         data = r.json()
         models = data.get("data") if isinstance(data, dict) else None
-        
         if not isinstance(models, list):
             raise ValueError("Unexpected /api/v0/models format")
 
@@ -150,7 +166,7 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
             if isinstance(m, dict) and m.get("id") == upstream_model:
                 chosen = m
                 break
-        print(chosen)
+
         ctx_len, ctx_len_source = _extract_ctx_len_from_model_obj(chosen)
 
         if ctx_len is None:
@@ -163,9 +179,10 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
 
         if ctx_len is None:
             ctx_len = DEFAULT_CTX_LEN
+            ctx_len_source = "default"
 
         _ctx_cache[upstream_model] = (ctx_len, now)
-        log("INFO", "ctx_len", upstream_model=upstream_model, ctx_len=ctx_len, source="/api/v0/models" if not ctx_len_source is None else "default", field=ctx_len_source)
+        log("INFO", "ctx_len", upstream_model=upstream_model, ctx_len=ctx_len, source="/v1/models" if ctx_len != DEFAULT_CTX_LEN else "default")
         return ctx_len
     except Exception as e:
         log("WARN", "ctx_len_fallback", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
@@ -243,12 +260,22 @@ async def summarize_middle(middle: List[Dict[str, Any]], req_id: str) -> str:
     body = {
         "model": SUMMARY_MODEL,
         "messages": [{"role": "system", "content": sys}, {"role": "user", "content": user}],
-        "temperature": 0.2,
+        "temperature": 0.4,
         "max_tokens": SUMMARY_MAX_TOKENS,
         "stream": False,
     }
 
-    url = f"{UPSTREAM_BASE_URL}/chat/completions"
+    log(
+        "INFO",
+        "summary_req",
+        req_id=req_id,
+        summary_model=SUMMARY_MODEL,
+        middle_count=len(middle),
+        transcript_chars=len(transcript),
+        body_json=snip_json(body),
+    )
+
+    url = f"{UPSTREAM_BASE_URL}/v1/chat/completions"
     t0 = time.time()
     client = await http_client()
     r = await client.post(url, json=body)
@@ -262,7 +289,16 @@ async def summarize_middle(middle: List[Dict[str, Any]], req_id: str) -> str:
         summary = ""
 
     summary = (summary or "").strip() or "(Riassunto non disponibile.)"
-    log("INFO", "summary_done", req_id=req_id, elapsed_ms=round(elapsed_ms, 2), usage=data.get("usage"))
+    log(
+        "INFO",
+        "summary_reply",
+        req_id=req_id,
+        elapsed_ms=round(elapsed_ms, 2),
+        usage=data.get("usage"),
+        summary_chars=len(summary),
+        summary_snip=snip_json(summary, max_chars=min(LOG_PAYLOAD_MAX_CHARS, 4000)),
+        raw_json=snip_json(data),
+    )
     return summary
 
 def build_repacked_messages(original: List[Dict[str, Any]], summary_text: str) -> List[Dict[str, Any]]:
@@ -283,13 +319,16 @@ def build_repacked_messages(original: List[Dict[str, Any]], summary_text: str) -
     if sys_msg and isinstance(sys_msg.get("content"), str) and sys_msg["content"].strip():
         sys_text += sys_msg["content"].strip() + "\n\n"
 
-    sys_text += "### CONTEXT SUMMARY (auto)\n" + summary_text.strip()
+    sum_text = summary_text.strip()
 
     repacked: List[Dict[str, Any]] = [{"role": "system", "content": sys_text.strip()}]
     repacked.extend(head)
-    repacked.append({"role": "system", "content": "### CONTEXT CONTINUES (latest turns below)"})
+    repacked.append({"role": "system", "content": "riassunto messaggi intermedi:\n{}".format(sum_text)})
+    #repacked.append({"role": "system", "content": "### CONTEXT CONTINUES (latest turns below)"})
     repacked.extend(tail)
+    print(repacked)
     return repacked
+
 
 # ----------------------------
 # FastAPI app
@@ -308,6 +347,14 @@ async def _shutdown() -> None:
 async def chat_completions(req: Request) -> Response:
     req_id = os.urandom(6).hex()
     payload = await req.json()
+
+    # Full inbound payload (can be large). Useful to confirm what LibreChat is sending.
+    log(
+        "INFO",
+        "payload_in_full",
+        req_id=req_id,
+        body_json=snip_json(payload),
+    )
 
     client_model = payload.get("model", MAIN_MODEL)
     upstream_model = map_model(client_model)
@@ -371,14 +418,25 @@ async def chat_completions(req: Request) -> Response:
             )
         except Exception as e:
             log("ERROR", "summary_failed_fallback_passthrough", req_id=req_id, err=str(e))
+            raise e
             repacked_messages = messages
             did_summarize = False
 
     upstream_payload = dict(payload)
     upstream_payload["model"] = upstream_model
     upstream_payload["messages"] = repacked_messages
-    print(upstream_payload)
-    url = f"{UPSTREAM_BASE_URL}/chat/completions"
+
+    # Repacked request we will actually send upstream (LM Studio)
+    log(
+        "INFO",
+        "upstream_req_repacked",
+        req_id=req_id,
+        did_summarize=did_summarize,
+        upstream_url=f"{UPSTREAM_BASE_URL}/v1/chat/completions",
+        body_json=snip_json(upstream_payload),
+    )
+
+    url = f"{UPSTREAM_BASE_URL}/v1/chat/completions"
     client = await http_client()
 
     if stream:
