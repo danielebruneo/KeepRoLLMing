@@ -191,7 +191,16 @@ async def http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None:
         _http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
-    return _http_client
+
+    class WrappedClient(httpx.AsyncClient):
+        async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+            req = httpx.Request(method, url, **kwargs)
+            await log_request(req)
+            r = await super().request(method, url, **kwargs)
+            await log_response(r)
+            return r
+
+    return WrappedClient()
 
 _ctx_cache: Dict[str, Tuple[int, float]] = {}
 _CTX_TTL_SEC = 60.0
