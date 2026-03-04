@@ -124,6 +124,25 @@ def log(level: str, msg: str, **fields: Any) -> None:
     #print(json.dumps(rec, ensure_ascii=False, indent=4), flush=True)
     print_json(data=rec)
 
+async def log_request(req: httpx.Request) -> None:
+    log(
+        "INFO",
+        "request_sent",
+        url=req.url,
+        method=req.method,
+        headers=dict(req.headers),
+        body=snip_json(req.json() if req.content_type == "application/json" else req.text)
+    )
+
+async def log_response(r: httpx.Response) -> None:
+    log(
+        "INFO",
+        "response_received",
+        status=r.status_code,
+        headers=dict(r.headers),
+        body=snip_json(r.json() if r.content_type == "application/json" else r.text)
+    )
+
 def snip_json(obj: Any, max_chars: int = LOG_PAYLOAD_MAX_CHARS) -> str:
     return obj
     """Best-effort JSON rendering for logs (never raises)."""
@@ -604,6 +623,7 @@ async def chat_completions(req: Request) -> Response:
             did_summarize=did_summarize,
             passthrough=is_passthrough,
         )
+        raise e
         return JSONResponse({"error": {"message": "Proxy exception", "details": str(e)}}, status_code=500)
 
 if __name__ == "__main__":
