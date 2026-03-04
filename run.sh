@@ -41,6 +41,8 @@ export SAFETY_MARGIN_TOK=128
 # =========================
 # RUN SERVER
 # =========================
+trap 'echo "ByeBye"' INT
+
 uvicorn keeprollming_orchestrator:app \
   --host 0.0.0.0 \
   --port 8000 \
