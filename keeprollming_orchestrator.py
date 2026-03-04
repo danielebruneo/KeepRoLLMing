@@ -191,34 +191,7 @@ async def http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None:
         _http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
-
-    async def wrapped_request(method: str, url: str, **kwargs) -> httpx.Response:
-        req = httpx.Request(method, url, **kwargs)
-        await log_request(req)
-        r = await _http_client.request(method, url, **kwargs)
-        await log_response(r)
-        return r
-
-    return httpx.AsyncClient()
-
-async def log_request(req: httpx.Request) -> None:
-    log(
-        "INFO",
-        "request_sent",
-        url=req.url,
-        method=req.method,
-        headers=dict(req.headers),
-        body=snip_json(req.json() if req.content_type == "application/json" else req.text)
-    )
-
-async def log_response(r: httpx.Response) -> None:
-    log(
-        "INFO",
-        "response_received",
-        status=r.status_code,
-        headers=dict(r.headers),
-        body=snip_json(r.json() if r.content_type == "application/json" else r.text)
-    )
+    return _http_client
 
 _ctx_cache: Dict[str, Tuple[int, float]] = {}
 _CTX_TTL_SEC = 60.0
