@@ -3,20 +3,43 @@
 Goals (v0 - strip the superfluo):
 - Only exposes: POST /v1/chat/completions
 - Proxy to an upstream OpenAI-compatible backend (e.g. LM Studio)
-- Retrieves (best-effort) effective context length from upstream model metadata (/v1/models)
+- Retrieves (best-effort) effective context length from upstream model metadata (/api/v0/models)
 - If the incoming conversation is too long for the model context:
     Keep: system prompt (if present) + first 2 msgs (head) + last 2 msgs (tail)
     Summarize: everything in the middle via a smaller model (non-streaming)
     Repack and send to upstream main model
 - Prioritize clarity + simple logging (JSON lines)
 
+New (profiles + passthrough):
+- Profiles (client model aliases):
+    * local/quick -> QUICK_MAIN_MODEL + QUICK_SUMMARY_MODEL
+    * local/main  -> BASE_MAIN_MODEL  + BASE_SUMMARY_MODEL
+    * local/deep  -> DEEP_MAIN_MODEL  + DEEP_SUMMARY_MODEL
+  (Also supports: quick, main, deep as short aliases.)
+- Passthrough:
+    * If client model is "pass/MODELNAME" => passthrough to upstream MODELNAME (no summarization).
+      Example: "pass/qwen2.5-14b-instruct" or "pass/openai/gpt-4.1" (if your upstream supports it)
+
 Run:
-  python keeprollming_orchestrator.py
+  python keeprollming_orchestrator_profiles.py
 
 Env:
   UPSTREAM_BASE_URL   default: http://127.0.0.1:1234/v1
+
+  # Backwards compatible defaults (used when client sends an explicit model name, not an alias)
   MAIN_MODEL          default: qwen2.5-3b-instruct
   SUMMARY_MODEL       default: qwen2.5-1.5b-instruct
+
+  # Profiles
+  QUICK_MAIN_MODEL    default: qwen2.5-3b-instruct
+  QUICK_SUMMARY_MODEL default: qwen2.5-1.5b-instruct
+
+  BASE_MAIN_MODEL     default: qwen2.5-7b-instruct
+  BASE_SUMMARY_MODEL  default: qwen2.5-3b-instruct
+
+  DEEP_MAIN_MODEL     default: qwen2.5-27b-instruct
+  DEEP_SUMMARY_MODEL  default: qwen2.5-7b-instruct
+
   DEFAULT_CTX_LEN     default: 4096
   SUMMARY_MAX_TOKENS  default: 256
   SAFETY_MARGIN_TOK   default: 128
@@ -27,28 +50,66 @@ from __future__ import annotations
 import os
 import json
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from rich import print_json
+
 # ----------------------------
 # Configuration
 # ----------------------------
 
 UPSTREAM_BASE_URL = os.getenv("UPSTREAM_BASE_URL", "http://127.0.0.1:1234/v1").rstrip("/")
+
+# Backwards compatible defaults (when client passes an explicit model name, not an alias)
 MAIN_MODEL = os.getenv("MAIN_MODEL", "qwen2.5-3b-instruct")
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "qwen2.5-1.5b-instruct")
+
+# Profile defaults (requested)
+QUICK_MAIN_MODEL = os.getenv("QUICK_MAIN_MODEL", MAIN_MODEL)
+QUICK_SUMMARY_MODEL = os.getenv("QUICK_SUMMARY_MODEL", SUMMARY_MODEL)
+
+BASE_MAIN_MODEL = os.getenv("BASE_MAIN_MODEL", "qwen2.5-v1-7b-instruct")
+BASE_SUMMARY_MODEL = os.getenv("BASE_SUMMARY_MODEL", "qwen2.5-3b-instruct")
+
+DEEP_MAIN_MODEL = os.getenv("DEEP_MAIN_MODEL", "qwen2.5-27b-instruct")
+DEEP_SUMMARY_MODEL = os.getenv("DEEP_SUMMARY_MODEL", "qwen2.5-7b-instruct")
 
 DEFAULT_CTX_LEN = int(os.getenv("DEFAULT_CTX_LEN", "4096"))
 SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "256"))
 SAFETY_MARGIN_TOK = int(os.getenv("SAFETY_MARGIN_TOK", "128"))
 
-# LibreChat common alias pattern
-MODEL_ALIASES = {
-    "local/main": MAIN_MODEL,
-    "main": MAIN_MODEL,
+# Max chars for logging large payloads (input conversation, summary requests, etc.)
+LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
+
+PASSTHROUGH_PREFIX = "pass/"
+
+@dataclass(frozen=True)
+class Profile:
+    name: str
+    main_model: str
+    summary_model: str
+
+PROFILES: Dict[str, Profile] = {
+    "quick": Profile("quick", QUICK_MAIN_MODEL, QUICK_SUMMARY_MODEL),
+    "main":  Profile("main",  BASE_MAIN_MODEL,  BASE_SUMMARY_MODEL),
+    "deep":  Profile("deep",  DEEP_MAIN_MODEL,  DEEP_SUMMARY_MODEL),
+}
+
+# Client-facing model aliases (LibreChat or your own)
+MODEL_ALIASES: Dict[str, str] = {
+    "local/quick": "quick",
+    "quick": "quick",
+
+    "local/main": "main",
+    "main": "main",
+
+    "local/deep": "deep",
+    "deep": "deep",
 }
 
 # ----------------------------
@@ -60,14 +121,11 @@ def _ts() -> float:
 
 def log(level: str, msg: str, **fields: Any) -> None:
     rec = {"ts": _ts(), "level": level.upper(), "msg": msg, **fields}
-    print(json.dumps(rec, ensure_ascii=False), flush=True)
-
-
-# Max chars for logging large payloads (input conversation, summary requests, etc.)
-LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000"))
-
+    #print(json.dumps(rec, ensure_ascii=False, indent=4), flush=True)
+    print_json(data=rec)
 
 def snip_json(obj: Any, max_chars: int = LOG_PAYLOAD_MAX_CHARS) -> str:
+    return obj
     """Best-effort JSON rendering for logs (never raises)."""
     try:
         s = json.dumps(obj, ensure_ascii=False)
@@ -138,12 +196,14 @@ async def http_client() -> httpx.AsyncClient:
 _ctx_cache: Dict[str, Tuple[int, float]] = {}
 _CTX_TTL_SEC = 60.0
 
-def _extract_ctx_len_from_model_obj(obj: Dict[str, Any]) -> Optional[int]:
-    candidates: List[int] = []
+def _extract_ctx_len_from_model_obj(obj: Optional[Dict[str, Any]]) -> Optional[Tuple[int, str]]:
+    if not isinstance(obj, dict):
+        return None
     for k in ("loaded_context_length", "context_length", "context_window", "n_ctx", "ctx_len", "max_context_length"):
         v = obj.get(k)
         if isinstance(v, int) and v > 0:
-            return v, k
+            return (v, k)
+    return None
 
 async def get_ctx_len_for_model(upstream_model: str) -> int:
     now = time.time()
@@ -167,30 +227,51 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
                 chosen = m
                 break
 
-        ctx_len, ctx_len_source = _extract_ctx_len_from_model_obj(chosen)
-
-        if ctx_len is None:
-            # best-effort fallback: try first model entry
+        print(chosen)
+        ctx_tuple = _extract_ctx_len_from_model_obj(chosen)
+        if ctx_tuple is None:
+            # best-effort fallback: try first model entry with a ctx field
             for m in models:
-                if isinstance(m, dict):
-                    ctx_len, ctx_len_source = _extract_ctx_len_from_model_obj(m)
-                    if ctx_len:
-                        break
+                ctx_tuple = _extract_ctx_len_from_model_obj(m if isinstance(m, dict) else None)
+                if ctx_tuple:
+                    break
 
-        if ctx_len is None:
+        if ctx_tuple is None:
             ctx_len = DEFAULT_CTX_LEN
-            ctx_len_source = "default"
+            ctx_src = "default"
+        else:
+            ctx_len, ctx_src = ctx_tuple
 
         _ctx_cache[upstream_model] = (ctx_len, now)
-        log("INFO", "ctx_len", upstream_model=upstream_model, ctx_len=ctx_len, source="/v1/models" if ctx_len != DEFAULT_CTX_LEN else "default")
+        log(
+            "INFO",
+            "ctx_len",
+            upstream_model=upstream_model,
+            ctx_len=ctx_len,
+            source=f"/api/v0/models:{ctx_src}" if ctx_len != DEFAULT_CTX_LEN else "default",
+        )
         return ctx_len
     except Exception as e:
         log("WARN", "ctx_len_fallback", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
         _ctx_cache[upstream_model] = (DEFAULT_CTX_LEN, now)
         return DEFAULT_CTX_LEN
 
-def map_model(client_model: str) -> str:
-    return MODEL_ALIASES.get(client_model, client_model)
+def _resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool]:
+    """Return (profile_or_none, upstream_main_model, summary_model, passthrough_enabled)."""
+    if isinstance(client_model, str) and client_model.startswith(PASSTHROUGH_PREFIX):
+        backend = client_model[len(PASSTHROUGH_PREFIX):].strip()
+        # If empty, fallback to MAIN_MODEL but keep passthrough disabled to avoid surprises
+        if not backend:
+            return (None, MAIN_MODEL, SUMMARY_MODEL, False)
+        return (None, backend, SUMMARY_MODEL, True)
+
+    key = MODEL_ALIASES.get(client_model)
+    if key and key in PROFILES:
+        p = PROFILES[key]
+        return (p, p.main_model, p.summary_model, False)
+
+    # No alias: treat it as an explicit upstream model name (backwards-compatible)
+    return (None, client_model or MAIN_MODEL, SUMMARY_MODEL, False)
 
 # ----------------------------
 # Summarization logic
@@ -240,7 +321,7 @@ def render_messages_for_summary(messages: List[Dict[str, Any]], max_chars: int =
             break
     return "\n".join(lines)
 
-async def summarize_middle(middle: List[Dict[str, Any]], req_id: str) -> str:
+async def summarize_middle(middle: List[Dict[str, Any]], req_id: str, summary_model: str) -> str:
     transcript = render_messages_for_summary(middle)
 
     sys = (
@@ -258,7 +339,7 @@ async def summarize_middle(middle: List[Dict[str, Any]], req_id: str) -> str:
     )
 
     body = {
-        "model": SUMMARY_MODEL,
+        "model": summary_model,
         "messages": [{"role": "system", "content": sys}, {"role": "user", "content": user}],
         "temperature": 0.4,
         "max_tokens": SUMMARY_MAX_TOKENS,
@@ -269,7 +350,7 @@ async def summarize_middle(middle: List[Dict[str, Any]], req_id: str) -> str:
         "INFO",
         "summary_req",
         req_id=req_id,
-        summary_model=SUMMARY_MODEL,
+        summary_model=summary_model,
         middle_count=len(middle),
         transcript_chars=len(transcript),
         body_json=snip_json(body),
@@ -324,11 +405,8 @@ def build_repacked_messages(original: List[Dict[str, Any]], summary_text: str) -
     repacked: List[Dict[str, Any]] = [{"role": "system", "content": sys_text.strip()}]
     repacked.extend(head)
     repacked.append({"role": "system", "content": "riassunto messaggi intermedi:\n{}".format(sum_text)})
-    #repacked.append({"role": "system", "content": "### CONTEXT CONTINUES (latest turns below)"})
     repacked.extend(tail)
-    print(repacked)
     return repacked
-
 
 # ----------------------------
 # FastAPI app
@@ -348,16 +426,10 @@ async def chat_completions(req: Request) -> Response:
     req_id = os.urandom(6).hex()
     payload = await req.json()
 
-    # Full inbound payload (can be large). Useful to confirm what LibreChat is sending.
-    log(
-        "INFO",
-        "payload_in_full",
-        req_id=req_id,
-        body_json=snip_json(payload),
-    )
+    log("INFO", "payload_in_full", req_id=req_id, body_json=snip_json(payload))
 
     client_model = payload.get("model", MAIN_MODEL)
-    upstream_model = map_model(client_model)
+    profile, upstream_model, summary_model, is_passthrough = _resolve_profile_and_models(client_model)
 
     messages = payload.get("messages")
     if not isinstance(messages, list):
@@ -370,15 +442,17 @@ async def chat_completions(req: Request) -> Response:
 
     ctx_eff = await get_ctx_len_for_model(upstream_model)
     threshold = max(256, ctx_eff - max_out - SAFETY_MARGIN_TOK)
-
     prompt_tok_est = TOK.count_messages(messages)
 
     log(
         "INFO",
         "http_in",
         req_id=req_id,
-        model=client_model,
+        client_model=client_model,
+        profile=(profile.name if profile else None),
+        passthrough=is_passthrough,
         upstream_model=upstream_model,
+        summary_model=summary_model,
         stream=stream,
         ctx_eff=ctx_eff,
         threshold=threshold,
@@ -390,7 +464,7 @@ async def chat_completions(req: Request) -> Response:
     did_summarize = False
     repacked_messages = messages
 
-    if prompt_tok_est > threshold and len(messages) >= 6:
+    if (not is_passthrough) and prompt_tok_est > threshold and len(messages) >= 6:
         sys_msg, non_system = split_messages(messages)
         middle = non_system[2:-2] if len(non_system) > 4 else []
         log(
@@ -401,10 +475,11 @@ async def chat_completions(req: Request) -> Response:
             threshold=threshold,
             non_system_count=len(non_system),
             middle_count=len(middle),
+            summary_model=summary_model,
         )
 
         try:
-            summary_text = await summarize_middle(middle, req_id=req_id)
+            summary_text = await summarize_middle(middle, req_id=req_id, summary_model=summary_model)
             repacked_messages = build_repacked_messages(messages, summary_text=summary_text)
             did_summarize = True
             repacked_tok_est = TOK.count_messages(repacked_messages)
@@ -417,8 +492,8 @@ async def chat_completions(req: Request) -> Response:
                 repacked_tok_est=repacked_tok_est,
             )
         except Exception as e:
+            # Fail-open: passthrough original messages (no summary)
             log("ERROR", "summary_failed_fallback_passthrough", req_id=req_id, err=str(e))
-            raise e
             repacked_messages = messages
             did_summarize = False
 
@@ -426,12 +501,12 @@ async def chat_completions(req: Request) -> Response:
     upstream_payload["model"] = upstream_model
     upstream_payload["messages"] = repacked_messages
 
-    # Repacked request we will actually send upstream (LM Studio)
     log(
         "INFO",
         "upstream_req_repacked",
         req_id=req_id,
         did_summarize=did_summarize,
+        passthrough=is_passthrough,
         upstream_url=f"{UPSTREAM_BASE_URL}/v1/chat/completions",
         body_json=snip_json(upstream_payload),
     )
@@ -449,15 +524,30 @@ async def chat_completions(req: Request) -> Response:
                             yield chunk
             except httpx.HTTPStatusError as e:
                 err_text = e.response.text
-                log("ERROR", "upstream_http_error_stream", req_id=req_id, status=e.response.status_code, body=err_text[:500], did_summarize=did_summarize)
+                log(
+                    "ERROR",
+                    "upstream_http_error_stream",
+                    req_id=req_id,
+                    status=e.response.status_code,
+                    body=err_text[:500],
+                    did_summarize=did_summarize,
+                    passthrough=is_passthrough,
+                )
                 yield (f"data: {json.dumps({'error': {'message': 'Upstream error', 'details': err_text}})}\n\n").encode("utf-8")
                 yield b"data: [DONE]\n\n"
             except Exception as e:
-                log("ERROR", "upstream_stream_exception", req_id=req_id, err=str(e), did_summarize=did_summarize)
+                log(
+                    "ERROR",
+                    "upstream_stream_exception",
+                    req_id=req_id,
+                    err=str(e),
+                    did_summarize=did_summarize,
+                    passthrough=is_passthrough,
+                )
                 yield (f"data: {json.dumps({'error': {'message': 'Upstream stream exception', 'details': str(e)}})}\n\n").encode("utf-8")
                 yield b"data: [DONE]\n\n"
 
-        log("INFO", "upstream_stream_start", req_id=req_id, did_summarize=did_summarize)
+        log("INFO", "upstream_stream_start", req_id=req_id, did_summarize=did_summarize, passthrough=is_passthrough)
         headers = {
             "content-type": "text/event-stream; charset=utf-8",
             "cache-control": "no-cache",
@@ -470,20 +560,58 @@ async def chat_completions(req: Request) -> Response:
         r = await client.post(url, json=upstream_payload)
         elapsed_ms = (time.time() - t0) * 1000.0
         if r.status_code >= 400:
-            log("ERROR", "upstream_http_error", req_id=req_id, status=r.status_code, body=r.text[:800], did_summarize=did_summarize)
+            log(
+                "ERROR",
+                "upstream_http_error",
+                req_id=req_id,
+                status=r.status_code,
+                body=r.text[:800],
+                did_summarize=did_summarize,
+                passthrough=is_passthrough,
+            )
             return JSONResponse({"error": {"message": "Upstream error", "details": r.text}}, status_code=r.status_code)
 
         data = r.json()
-        log("INFO", "http_out", req_id=req_id, status=200, elapsed_ms=round(elapsed_ms, 2), did_summarize=did_summarize, usage=data.get("usage"))
+        log(
+            "INFO",
+            "http_out",
+            req_id=req_id,
+            status=200,
+            elapsed_ms=round(elapsed_ms, 2),
+            did_summarize=did_summarize,
+            passthrough=is_passthrough,
+            usage=data.get("usage"),
+            data=data
+        )
         return JSONResponse(data, status_code=200)
     except Exception as e:
         elapsed_ms = (time.time() - t0) * 1000.0
-        log("ERROR", "proxy_exception", req_id=req_id, elapsed_ms=round(elapsed_ms, 2), err=str(e), did_summarize=did_summarize)
+        log(
+            "ERROR",
+            "proxy_exception",
+            req_id=req_id,
+            elapsed_ms=round(elapsed_ms, 2),
+            err=str(e),
+            did_summarize=did_summarize,
+            passthrough=is_passthrough,
+        )
         return JSONResponse({"error": {"message": "Proxy exception", "details": str(e)}}, status_code=500)
 
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    log("INFO", "startup", upstream=UPSTREAM_BASE_URL, main_model=MAIN_MODEL, summary_model=SUMMARY_MODEL, default_ctx=DEFAULT_CTX_LEN)
-    uvicorn.run("keeprollming_orchestrator:app", host=host, port=port, reload=False)
+    log(
+        "INFO",
+        "startup",
+        upstream=UPSTREAM_BASE_URL,
+        main_model=MAIN_MODEL,
+        summary_model=SUMMARY_MODEL,
+        profiles={
+            "quick": {"main": QUICK_MAIN_MODEL, "summary": QUICK_SUMMARY_MODEL},
+            "main": {"main": BASE_MAIN_MODEL, "summary": BASE_SUMMARY_MODEL},
+            "deep": {"main": DEEP_MAIN_MODEL, "summary": DEEP_SUMMARY_MODEL},
+        },
+        default_ctx=DEFAULT_CTX_LEN,
+    )
+    uvicorn.run("keeprollming_orchestrator_profiles:app", host=host, port=port, reload=False)

@@ -17,8 +17,17 @@ export LOG_JSON=1
 # =========================
 export UPSTREAM_BASE_URL="http://arkai.local:1234"
 #export MAIN_MODEL="qwen2.5-7b-instruct-uncensored"
-export MAIN_MODEL="qwen2.5-3b-instruct"
-export SUMMARY_MODEL="qwen2.5-1.5b-instruct"
+
+export QUICK_MAIN_MODEL="qwen2.5-3b-instruct"
+export QUICK_SUMMARY_MODEL="qwen2.5-1.5b-instruct"
+
+export BASE_MAIN_MODEL="qwen2.5-vl-7b-instruct"
+export BASE_SUMMARY_MODEL="qwen2.5-3b-instruct"
+
+export DEEP_MAIN_MODEL="qwen/qwen3.5-35b-a3b"
+export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
+
+
 
 # =========================
 # CONTEXT SETTINGS
