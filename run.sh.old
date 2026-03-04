@@ -1,0 +1,24 @@
+export LMSTUDIO_BASE="http://127.0.0.1:1234"
+export LITELLM_BASE="http://127.0.0.1:4000/v1"
+
+export MAIN_MODEL="local/main"
+export SUMMARY_MODEL="local/summary"
+
+export LM_MAIN_ID="qwen2.5-3b-instruct"
+export LM_SUMMARY_ID="qwen2.5-1.5b-instruct"
+
+# logging/metrics
+export LOG_LEVEL="INFO"
+export LOG_JSON="0"
+export DEBUG_ADD_HEADERS="1"
+export DEBUG_ENABLE_ENDPOINTS=1
+# opzionali
+export LOG_LEVEL=INFO
+export LOG_JSON=0
+export DEBUG_ADD_HEADERS=1
+
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+source .venv/bin/activate
+exec uvicorn orchestrator:app --host 0.0.0.0 --port 8000
