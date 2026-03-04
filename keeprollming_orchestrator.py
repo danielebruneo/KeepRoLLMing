@@ -199,7 +199,7 @@ async def http_client() -> httpx.AsyncClient:
         await log_response(r)
         return r
 
-    return httpx.AsyncClient(request=wrapped_request)
+    return httpx.AsyncClient()
 
 async def log_request(req: httpx.Request) -> None:
     log(
