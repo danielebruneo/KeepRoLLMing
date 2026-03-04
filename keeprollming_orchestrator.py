@@ -213,7 +213,7 @@ async def http_client() -> httpx.AsyncClient:
 
     class WrappedClient(httpx.AsyncClient):
         async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
-            req = httpx.Request(method, url, **kwargs)
+            req = httpx.Request(method, url, headers=kwargs.get("headers", {}))
             await log_request(req)
             r = await super().request(method, url, **kwargs)
             await log_response(r)
