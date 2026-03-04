@@ -191,7 +191,15 @@ async def http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None:
         _http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
-    return _http_client
+
+    async def wrapped_request(method: str, url: str, **kwargs) -> httpx.Response:
+        req = httpx.Request(method, url, **kwargs)
+        await log_request(req)
+        r = await _http_client.request(method, url, **kwargs)
+        await log_response(r)
+        return r
+
+    return httpx.AsyncClient(request=wrapped_request)
 
 async def log_request(req: httpx.Request) -> None:
     log(
