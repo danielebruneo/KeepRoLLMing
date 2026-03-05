@@ -1,5 +1,5 @@
 import pytest
-from keeprollming.app import should_summarise, choose_head_tail
+from keeprollming.rolling_summary import should_summarise, choose_head_tail
 from unittest.mock import MagicMock
 
 @pytest.mark.parametrize("messages, ctx_eff, max_out, summary_insert_budget_tok, expected", [
