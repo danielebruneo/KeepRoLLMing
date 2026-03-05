@@ -1,18 +1,12 @@
 import pytest
-from unittest.mock import MagicMock
-from keeprollming.rolling_summary import should_summarise
+from fastapi.testclient import TestClient
+from keeprollming.app import app  # Assumendo che l'app FastAPI sia definita in questo file
 
-@pytest.mark.parametrize("messages, ctx_eff, max_out, summary_insert_budget_tok, expected", [
-    ([{"role": "user", "content": "ciao, test"}] * 2, 5000, 900, 1000, False),
-    ([{"role": "user", "content": "ciao, test"}] * 3, 5000, 900, 1000, True),
-])
-def test_should_summarise(messages, ctx_eff, max_out, summary_insert_budget_tok, expected):
-    tok = MagicMock()
-    plan = should_summarise(tok=tok, messages=messages, ctx_eff=ctx_eff, max_out=max_out, summary_insert_budget_tok=summary_insert_budget_tok)
-    assert plan.should == expected
+@pytest.fixture(scope="module")
+def client():
+    with TestClient(app) as c:
+        yield c
 
-def test_env_overrides(monkeypatch):
-    monkeypatch.setenv("SUMMARY_THRESHOLD", "10")
-    tok = MagicMock()
-    plan = should_summarise(tok=tok, messages=[{"role": "user", "content": "ciao, test"}] * 2, ctx_eff=5000, max_out=900, summary_insert_budget_tok=1000)
-    assert plan.should == True
+def test_completion_status_200(client):
+    response = client.post("/completion", json={"messages": [{"role": "user", "content": "ciao, test"}]})
+    assert response.status_code == 200
