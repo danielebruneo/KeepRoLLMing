@@ -315,30 +315,81 @@ async def log_streaming_response(
     elapsed_ms: float | None = None,
 ) -> None:
     text = captured_bytes.decode("utf-8", errors="replace")
-    try:
-        log(
-            "INFO",
-            "response_received",
-            url=str(r.request.url),
-            method=r.request.method,
-            status=r.status_code,
-            elapsed_ms=elapsed_ms,
-            headers=dict(r.headers),
-            body=json.loads(text),  # volendo _snip(text)
-            note=f"streamed (captured {len(captured_bytes)} bytes)",
-        )
-    except:
-        log(
-            "INFO",
-            "response_received",
-            url=str(r.request.url),
-            method=r.request.method,
-            status=r.status_code,
-            elapsed_ms=elapsed_ms,
-            headers=dict(r.headers),
-            body=_snip(text),  # volendo _snip(text)
-            note=f"streamed (captured {len(captured_bytes)} bytes)",
-        )
+    """Log SSE responses as an array of JSON objects when possible.
+
+    We capture only the first N bytes of the stream for logs, so the last event
+    may be truncated. We therefore:
+    - split by SSE event separators (blank line)
+    - join multi-line `data:` fields per event
+    - drop obviously truncated JSON payloads
+    - fall back to raw strings when JSON parsing fails
+    """
+    
+    events: list[object] = []
+
+    # SSE events are separated by a blank line
+    blocks = text.split("\n\n")
+    for block in blocks:
+        block = block.strip("\n")
+        if not block:
+            continue
+
+        data_lines = []
+        for line in block.splitlines():
+            line = line.rstrip("\r")  # tolerate CRLF
+            if line.startswith("data:"):
+                data_lines.append(line[5:].lstrip())  # strip "data:" and optional space
+
+        if not data_lines:
+            continue
+
+        payload = "\n".join(data_lines).strip()
+        if not payload or payload == "[DONE]":
+            continue
+
+        # Try JSON parse
+        try:
+            events.append(json.loads(payload))
+            continue
+        except Exception:
+            pass
+
+        # Salvage: attempt to extract a JSON object/array substring.
+        first_obj = payload.find("{")
+        last_obj = payload.rfind("}")
+        first_arr = payload.find("[")
+        last_arr = payload.rfind("]")
+
+        candidates = []
+        if first_obj != -1 and last_obj != -1 and last_obj > first_obj:
+            candidates.append(payload[first_obj:last_obj + 1])
+        if first_arr != -1 and last_arr != -1 and last_arr > first_arr:
+            candidates.append(payload[first_arr:last_arr + 1])
+
+        for cand in candidates:
+            try:
+                events.append(json.loads(cand))
+                break
+            except Exception:
+                continue
+        else:
+            # If it looks like truncated JSON (starts with { or [ but doesn't close), drop it.
+            if payload.startswith("{") or payload.startswith("["):
+                continue
+            events.append({"_raw": payload})
+
+    log(
+        "INFO",
+        "response_received",
+        url=str(r.request.url),
+        method=r.request.method,
+        status=r.status_code,
+        elapsed_ms=elapsed_ms,
+        headers=dict(r.headers),
+        body=snip_json(events),
+        note=f"streamed (captured {len(captured_bytes)} bytes)",
+    )
+
 
 
 _ctx_cache: Dict[str, Tuple[int, float]] = {}
