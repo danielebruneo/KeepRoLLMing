@@ -39,7 +39,7 @@ export SUMMARY_MAX_TOKENS=256
 export SAFETY_MARGIN_TOK=128
 export LOG_LEVEL="DEBUG"
 export LOG_LEVEL="INFO"
-export LOG_LEVEL="BASIC"
+#export LOG_LEVEL="BASIC"
 
 
 # =========================

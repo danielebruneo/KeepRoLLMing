@@ -3,7 +3,7 @@
 This is the refactored (multi-module) version.
 
 Run:
-  python keeprollming_orchestrator_profiles.py
+  python keeprollming.py
 
 It still exposes:
   POST /v1/chat/completions

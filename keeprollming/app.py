@@ -27,7 +27,7 @@ from .logger import (
     _snip_obj_active,
     snip_json,
 )
-from .rolling_summary import build_repacked_messages, split_messages, summarize_middle
+from .rolling_summary import build_repacked_messages, should_summarise, summarize_middle
 from .token_counter import TokenCounter
 from .upstream import close_http_client, get_ctx_len_for_model, http_client
 
@@ -71,33 +71,53 @@ async def chat_completions(req: Request) -> Response:
     if LOG_MODE == "BASIC" and last_user:
         log("INFO", "conv_user", req_id=req_id, text=last_user)
 
+    ctx_eff = await get_ctx_len_for_model(upstream_model)
+
     max_tokens_req = payload.get("max_tokens")
     max_out = int(max_tokens_req) if isinstance(max_tokens_req, int) and max_tokens_req > 0 else 900
 
-    ctx_eff = await get_ctx_len_for_model(upstream_model)
-    threshold = max(256, ctx_eff - max_out - SAFETY_MARGIN_TOK)
-    prompt_tok_est = TOK.count_messages(messages)
+    plan = should_summarise(
+        tok=TOK,
+        messages=messages,
+        ctx_eff=ctx_eff,
+        max_out=max_out,
+    )
 
     did_summarize = False
     repacked_messages = messages
 
-    if (not is_passthrough) and prompt_tok_est > threshold and len(messages) >= 6:
-        sys_msg, non_system = split_messages(messages)
-        middle = non_system[2:-2] if len(non_system) > 4 else []
-        log(
-            "INFO",
-            "summary_needed",
-            req_id=req_id,
-            prompt_tok_est=prompt_tok_est,
-            threshold=threshold,
-            non_system_count=len(non_system),
-            middle_count=len(middle),
-            summary_model=summary_model,
-        )
-
+    if (not is_passthrough) and plan.should:
+        # middle are the non-system messages between head and tail chosen by plan
         try:
+            log(
+                "INFO",
+                "summary_needed",
+                req_id=req_id,
+                prompt_tok_est=plan.prompt_tok_est,
+                threshold=plan.threshold,
+                head_n=plan.head_n,
+                tail_n=plan.tail_n,
+                middle_count=plan.middle_count,
+                summary_model=summary_model,
+                repacked_tok_est=plan.repacked_tok_est,
+            )
+
+            # build the middle list to summarize
+            # (we rely on build_repacked_messages to slice consistently and return the middle used)
+            # First slice middle using the same logic:
+            _, non_system = (None, [m for m in messages if m.get("role") != "system"])
+            head_n = plan.head_n
+            tail_n = plan.tail_n
+            n = len(non_system)
+            middle = non_system[head_n : n - tail_n] if (head_n + tail_n) < n else []
+
             summary_text = await summarize_middle(middle, req_id=req_id, summary_model=summary_model)
-            repacked_messages = build_repacked_messages(messages, summary_text=summary_text)
+            repacked_messages, _middle_used = build_repacked_messages(
+                messages,
+                summary_text=summary_text,
+                head_n=plan.head_n,
+                tail_n=plan.tail_n,
+            )
             did_summarize = True
             repacked_tok_est = TOK.count_messages(repacked_messages)
             log(
@@ -107,6 +127,8 @@ async def chat_completions(req: Request) -> Response:
                 did_summarize=True,
                 repacked_msg_count=len(repacked_messages),
                 repacked_tok_est=repacked_tok_est,
+                head_n=plan.head_n,
+                tail_n=plan.tail_n,
             )
         except Exception as e:
             # Fail-open: passthrough original messages (no summary)
