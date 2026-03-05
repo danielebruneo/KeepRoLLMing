@@ -37,6 +37,8 @@ export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
 export DEFAULT_CTX_LEN=4096
 export SUMMARY_MAX_TOKENS=256
 export SAFETY_MARGIN_TOK=128
+export LOG_LEVEL="DEBUG"
+
 
 # =========================
 # RUN SERVER

@@ -119,9 +119,87 @@ MODEL_ALIASES: Dict[str, str] = {
 def _ts() -> float:
     return time.time()
 
+# -----------------------------------------------------------------------------
+# Logging verbosity
+#   DEBUG  : log everything (full JSON, no snipping)
+#   MEDIUM : log requests + final responses (snipped), but not per-chunk SSE logs
+#   BASIC  : minimal conversation-oriented logs (last user msg, assistant reply, tools/summary)
+# -----------------------------------------------------------------------------
+LOG_MODE_ENV = os.getenv("LOG_MODE", os.getenv("LOG_LEVEL", "DEBUG")).upper().strip()
+LOG_MODE_CHOICES = {"DEBUG", "MEDIUM", "BASIC"}
+LOG_MODE = LOG_MODE_ENV if LOG_MODE_ENV in LOG_MODE_CHOICES else "DEBUG"
+
+# When snipping is needed (MEDIUM/BASIC), we DO NOT re-enable snip_json; we use a separate helper.
+LOG_SNIP_CHARS = int(os.getenv("LOG_SNIP_CHARS", "4000"))
+BASIC_SNIP_CHARS = int(os.getenv("BASIC_SNIP_CHARS", "2000"))
+
+def _snip_text_active(s: str | None, limit: int) -> str:
+    if s is None:
+        return ""
+    return s if len(s) <= limit else (s[:limit] + f"... <snip {len(s)-limit} chars>")
+
+def _snip_obj_active(obj: Any, limit: int) -> Any:
+    """Return obj unchanged if small; else return a JSON-safe preview object."""
+    try:
+        if obj is None:
+            return None
+        if isinstance(obj, str):
+            return _snip_text_active(obj, limit)
+        txt = json.dumps(obj, ensure_ascii=False)
+        if len(txt) <= limit:
+            return obj
+        return {"_truncated": True, "preview": _snip_text_active(txt, limit)}
+    except Exception:
+        return {"_truncated": True, "preview": _snip_text_active(str(obj), limit)}
+
+
+def _extract_last_user_text(messages: Any) -> str | None:
+    if not isinstance(messages, list):
+        return None
+    for m in reversed(messages):
+        if isinstance(m, dict) and m.get("role") == "user":
+            c = m.get("content")
+            if isinstance(c, str):
+                return c
+            if isinstance(c, list):
+                parts = []
+                for item in c:
+                    if isinstance(item, dict):
+                        t = item.get("text")
+                        if isinstance(t, str):
+                            parts.append(t)
+                if parts:
+                    return "\n".join(parts)
+            return None
+    return None
+
+def _should_log(msg: str) -> bool:
+    if LOG_MODE == "DEBUG":
+        return True
+    if LOG_MODE == "MEDIUM":
+        return msg not in {"payload_in_full", "response_received"}
+    # BASIC
+    return msg in {
+        "startup",
+        "http_in",
+        "summary_needed",
+        "repacked",
+        "summary_failed_fallback_passthrough",
+        "proxy_exception",
+        "upstream_http_error",
+        "upstream_http_error_stream",
+        "upstream_stream_exception",
+        "conv_user",
+        "conv_assistant",
+        "response_stream_reconstructed",
+        "tool_call",
+        "function_call",
+    }
+
 def log(level: str, msg: str, **fields: Any) -> None:
+    if not _should_log(msg):
+        return
     rec = {"ts": _ts(), "level": level.upper(), "msg": msg, **fields}
-    #print(json.dumps(rec, ensure_ascii=False, indent=4), flush=True)
     print_json(data=rec)
 
 
@@ -144,31 +222,31 @@ def _decode_body(content: bytes) -> str:
     return content.decode("utf-8", errors="replace")
 
 async def log_request(req: httpx.Request) -> None:
-    content_type = req.headers.get("content-type")
-    body_repr: object | str = ""
+    if LOG_MODE == "BASIC":
+        return
 
-    # NOTE: req.content is bytes. For huge uploads you may want to skip logging.
-    content = req.content or b""
+    content_type = req.headers.get("content-type", "")
+    body_repr: Any = None
 
-    if content:
-        if _is_json_content_type(content_type):
+    if req.content:
+        if "json" in content_type:
             try:
-                decoded = _decode_body(content)
-                body_repr = json.loads(decoded)  # object (dict/list/etc)
+                body_repr = json.loads(req.content.decode())
             except Exception:
-                # Not valid JSON; log decoded text instead
-                body_repr = _snip(_decode_body(content))
+                body_repr = req.content.decode(errors="replace")
         else:
-            # Non-JSON: log text-ish content, snipped
-            body_repr = _snip(_decode_body(content))
+            body_repr = req.content.decode(errors="replace")
+
+    if LOG_MODE == "MEDIUM":
+        body_repr = _snip_obj_active(body_repr, LOG_SNIP_CHARS)
 
     log(
-        "INFO",
+        "DEBUG" if LOG_MODE == "DEBUG" else "INFO",
         "request_sent",
         url=str(req.url),
         method=req.method,
         headers=dict(req.headers),
-        body=snip_json(body_repr) if isinstance(body_repr, (dict, list)) else body_repr,
+        body=body_repr,
     )
 
 def snip_json(obj: Any, max_chars: int = LOG_PAYLOAD_MAX_CHARS) -> str:
@@ -233,6 +311,9 @@ TOK = TokenCounter()
 # ----------------------------
 _http_client: httpx.AsyncClient | None = None
 
+_ctx_cache: Dict[str, Tuple[int, float]] = {}
+_CTX_TTL_SEC = 60.0
+
 MAX_SSE_BYTES = 8000  # capture only the first N bytes of SSE bodies for logging
 
 
@@ -278,13 +359,15 @@ async def http_client() -> httpx.AsyncClient:
 
 
 async def log_response(r: httpx.Response, elapsed_ms: float | None = None) -> None:
+    if LOG_MODE == "BASIC":
+        return
+
     content_type = r.headers.get("content-type")
-    body_repr: object | str = ""
+    body_repr: Any = None
 
     try:
         content = r.content or b""
     except httpx.ResponseNotRead:
-        # Response was streamed and not read yet
         content = b""
 
     if content:
@@ -292,20 +375,22 @@ async def log_response(r: httpx.Response, elapsed_ms: float | None = None) -> No
             try:
                 body_repr = r.json()
             except Exception:
-                body_repr = _snip(content.decode("utf-8", errors="replace"))
+                body_repr = content.decode("utf-8", errors="replace")
         else:
-            body_repr = _snip(content.decode("utf-8", errors="replace"))
+            body_repr = content.decode("utf-8", errors="replace")
+
+    if LOG_MODE == "MEDIUM":
+        body_repr = _snip_obj_active(body_repr, LOG_SNIP_CHARS)
 
     log(
-        "INFO",
-        "response_received_fully",
+        "DEBUG" if LOG_MODE == "DEBUG" else "INFO",
+        "response_received",
         url=str(r.request.url),
         method=r.request.method,
         status=r.status_code,
         elapsed_ms=elapsed_ms,
         headers=dict(r.headers),
         body=body_repr,
-        #body=snip_json(body_repr) if isinstance(body_repr, (dict, list)) else body_repr,
     )
 
 async def log_streaming_response(
@@ -314,87 +399,64 @@ async def log_streaming_response(
     *,
     elapsed_ms: float | None = None,
 ) -> None:
+    # Only DEBUG logs raw streamed chunks
+    if LOG_MODE != "DEBUG":
+        return
+
     text = captured_bytes.decode("utf-8", errors="replace")
-    """Log SSE responses as an array of JSON objects when possible.
 
-    We capture only the first N bytes of the stream for logs, so the last event
-    may be truncated. We therefore:
-    - split by SSE event separators (blank line)
-    - join multi-line `data:` fields per event
-    - drop obviously truncated JSON payloads
-    - fall back to raw strings when JSON parsing fails
-    """
-    
-    events: list[object] = []
-
-    # SSE events are separated by a blank line
-    blocks = text.split("\n\n")
-    for block in blocks:
-        block = block.strip("\n")
+    # Parse SSE "data:" lines into JSON objects (or markers)
+    events: list[Any] = []
+    # One chunk can contain 0..N SSE events, separated by blank line
+    for block in text.split("\n\n"):
+        block = block.strip()
         if not block:
             continue
 
-        data_lines = []
+        data_lines: list[str] = []
         for line in block.splitlines():
-            line = line.rstrip("\r")  # tolerate CRLF
+            line = line.rstrip("\r")
             if line.startswith("data:"):
-                data_lines.append(line[5:].lstrip())  # strip "data:" and optional space
+                data_lines.append(line[5:].lstrip())
 
         if not data_lines:
             continue
 
         payload = "\n".join(data_lines).strip()
-        if not payload or payload == "[DONE]":
+        if not payload:
             continue
 
-        # Try JSON parse
+        if payload == "[DONE]":
+            events.append({"done": True})
+            continue
+
+        # Try JSON
         try:
             events.append(json.loads(payload))
-            continue
         except Exception:
-            pass
-
-        # Salvage: attempt to extract a JSON object/array substring.
-        first_obj = payload.find("{")
-        last_obj = payload.rfind("}")
-        first_arr = payload.find("[")
-        last_arr = payload.rfind("]")
-
-        candidates = []
-        if first_obj != -1 and last_obj != -1 and last_obj > first_obj:
-            candidates.append(payload[first_obj:last_obj + 1])
-        if first_arr != -1 and last_arr != -1 and last_arr > first_arr:
-            candidates.append(payload[first_arr:last_arr + 1])
-
-        for cand in candidates:
-            try:
-                events.append(json.loads(cand))
-                break
-            except Exception:
-                continue
-        else:
-            # If it looks like truncated JSON (starts with { or [ but doesn't close), drop it.
-            if payload.startswith("{") or payload.startswith("["):
-                continue
+            # Fallback: keep raw payload (unescaped) but structured
             events.append({"_raw": payload})
 
+    # If nothing parsed, fallback to raw text (still unescaped content)
+    body: Any
+    if not events:
+        body = {"_raw": text}
+    elif len(events) == 1:
+        body = events[0]
+    else:
+        body = events
+
     log(
-        "INFO",
+        "DEBUG",
         "response_received",
         url=str(r.request.url),
         method=r.request.method,
         status=r.status_code,
         elapsed_ms=elapsed_ms,
         headers=dict(r.headers),
-        body=snip_json(events),
-        note=f"streamed (captured {len(captured_bytes)} bytes)",
+        body=body,
+        note=f"streamed-chunk (bytes {len(captured_bytes)})",
     )
-
-
-
-_ctx_cache: Dict[str, Tuple[int, float]] = {}
-_CTX_TTL_SEC = 60.0
-
 def _extract_ctx_len_from_model_obj(obj: Optional[Dict[str, Any]]) -> Optional[Tuple[int, str]]:
     if not isinstance(obj, dict):
         return None
@@ -426,7 +488,7 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
                 chosen = m
                 break
 
-        print(chosen)
+        
         ctx_tuple = _extract_ctx_len_from_model_obj(chosen)
         if ctx_tuple is None:
             # best-effort fallback: try first model entry with a ctx field
@@ -625,7 +687,8 @@ async def chat_completions(req: Request) -> Response:
     req_id = os.urandom(6).hex()
     payload = await req.json()
 
-    log("INFO", "payload_in_full", req_id=req_id, body_json=snip_json(payload))
+    if LOG_MODE == "DEBUG":
+        log("INFO", "payload_in_full", req_id=req_id, body_json=snip_json(payload))
 
     client_model = payload.get("model", MAIN_MODEL)
     profile, upstream_model, summary_model, is_passthrough = _resolve_profile_and_models(client_model)
@@ -636,6 +699,10 @@ async def chat_completions(req: Request) -> Response:
 
     stream = bool(payload.get("stream", False))
 
+    last_user = _extract_last_user_text(messages)
+    if LOG_MODE == "BASIC" and last_user:
+        log("INFO", "conv_user", req_id=req_id, text=last_user)
+
     max_tokens_req = payload.get("max_tokens")
     max_out = int(max_tokens_req) if isinstance(max_tokens_req, int) and max_tokens_req > 0 else 900
 
@@ -643,22 +710,7 @@ async def chat_completions(req: Request) -> Response:
     threshold = max(256, ctx_eff - max_out - SAFETY_MARGIN_TOK)
     prompt_tok_est = TOK.count_messages(messages)
 
-    log(
-        "INFO",
-        "http_in",
-        req_id=req_id,
-        client_model=client_model,
-        profile=(profile.name if profile else None),
-        passthrough=is_passthrough,
-        upstream_model=upstream_model,
-        summary_model=summary_model,
-        stream=stream,
-        ctx_eff=ctx_eff,
-        threshold=threshold,
-        prompt_tok_est=prompt_tok_est,
-        msg_count=len(messages),
-        token_mode=TOK.mode,
-    )
+
 
     did_summarize = False
     repacked_messages = messages
@@ -733,6 +785,13 @@ async def chat_completions(req: Request) -> Response:
                     async for chunk in resp.aiter_bytes():
                         if not chunk:
                             continue
+
+                        # DEBUG: log every single upstream SSE chunk as it arrives
+                        if LOG_MODE == "DEBUG":
+                            try:
+                                await log_streaming_response(resp, chunk, elapsed_ms=None)
+                            except Exception:
+                                pass
                         
                         # capture a snippet for logging (intentionally limited)
                         if len(captured) < MAX_SSE_BYTES:
@@ -832,19 +891,41 @@ async def chat_completions(req: Request) -> Response:
                 # NEW: reconstructed full assistant message (clear log, not snipped)
                 try:
                     full_text = "".join(assistant_parts).strip()
-                    log(
-                        "INFO",
-                        "response_stream_reconstructed",
-                        req_id=req_id,
-                        upstream_model=(upstream_model_seen or upstream_payload.get("model")),
-                        elapsed_ms=elapsed_ms,
-                        did_summarize=did_summarize,
-                        passthrough=is_passthrough,
-                        finish_reason=finish_reason,
-                        usage=final_usage,
-                        event_count=stream_event_count,
-                        assistant_text=full_text,
-                    )
+                    if LOG_MODE == "DEBUG":
+                        log(
+                            "INFO",
+                            "response_stream_reconstructed",
+                            req_id=req_id,
+                            url=url,
+                            upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                            elapsed_ms=elapsed_ms,
+                            did_summarize=did_summarize,
+                            passthrough=is_passthrough,
+                            finish_reason=finish_reason,
+                            usage=final_usage,
+                            event_count=stream_event_count,
+                            assistant_text=full_text,
+                        )
+                    elif LOG_MODE == "MEDIUM":
+                        log(
+                            "INFO",
+                            "response_stream_reconstructed",
+                            req_id=req_id,
+                            upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                            elapsed_ms=elapsed_ms,
+                            finish_reason=finish_reason,
+                            usage=final_usage,
+                            event_count=stream_event_count,
+                            assistant_text=_snip_obj_active(full_text, LOG_SNIP_CHARS),
+                        )
+                    else:
+                        log(
+                            "INFO",
+                            "conv_assistant",
+                            req_id=req_id,
+                            text=_snip_obj_active(full_text, BASIC_SNIP_CHARS),
+                            finish_reason=finish_reason,
+                        )
                 except Exception as _e:
                     log("WARN", "stream_reconstruct_log_failed", req_id=req_id, err=str(_e))
 
@@ -873,17 +954,40 @@ async def chat_completions(req: Request) -> Response:
             return JSONResponse({"error": {"message": "Upstream error", "details": r.text}}, status_code=r.status_code)
 
         data = r.json()
-        log(
-            "INFO",
-            "http_out",
-            req_id=req_id,
-            status=200,
-            elapsed_ms=round(elapsed_ms, 2),
-            did_summarize=did_summarize,
-            passthrough=is_passthrough,
-            usage=data.get("usage"),
-            data=data
-        )
+        if LOG_MODE == "DEBUG":
+            log(
+                "INFO",
+                "http_out",
+                req_id=req_id,
+                status=200,
+                elapsed_ms=round(elapsed_ms, 2),
+                did_summarize=did_summarize,
+                passthrough=is_passthrough,
+                usage=data.get("usage"),
+                data=data,
+            )
+        elif LOG_MODE == "MEDIUM":
+            log(
+                "INFO",
+                "http_out",
+                req_id=req_id,
+                status=200,
+                elapsed_ms=round(elapsed_ms, 2),
+                usage=data.get("usage"),
+                data=_snip_obj_active(data, LOG_SNIP_CHARS),
+            )
+        else:
+            assistant_text = None
+            try:
+                choices = data.get("choices")
+                if isinstance(choices, list) and choices:
+                    msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+                    if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+                        assistant_text = msg.get("content")
+            except Exception:
+                pass
+            if assistant_text:
+                log("INFO", "conv_assistant", req_id=req_id, text=_snip_obj_active(assistant_text, BASIC_SNIP_CHARS))
         return JSONResponse(data, status_code=200)
     except Exception as e:
         elapsed_ms = (time.time() - t0) * 1000.0
@@ -901,14 +1005,24 @@ async def chat_completions(req: Request) -> Response:
 
 if __name__ == "__main__":
     import uvicorn
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
+    import argparse
+
+    parser = argparse.ArgumentParser(description="KeepRoLLMing orchestrator")
+    parser.add_argument("--log-mode", "--log-level", dest="log_mode", choices=sorted(LOG_MODE_CHOICES), help="Logging verbosity (overrides env LOG_MODE/LOG_LEVEL)")
+    parser.add_argument("--host", dest="host", default=os.getenv("HOST", "0.0.0.0"))
+    parser.add_argument("--port", dest="port", type=int, default=int(os.getenv("PORT", "8000")))
+    args = parser.parse_args()
+
+    if args.log_mode:
+        globals()["LOG_MODE"] = args.log_mode.upper()
+
     log(
         "INFO",
         "startup",
         upstream=UPSTREAM_BASE_URL,
         main_model=MAIN_MODEL,
         summary_model=SUMMARY_MODEL,
+        log_mode=LOG_MODE,
         profiles={
             "quick": {"main": QUICK_MAIN_MODEL, "summary": QUICK_SUMMARY_MODEL},
             "main": {"main": BASE_MAIN_MODEL, "summary": BASE_SUMMARY_MODEL},
@@ -916,4 +1030,4 @@ if __name__ == "__main__":
         },
         default_ctx=DEFAULT_CTX_LEN,
     )
-    uvicorn.run("keeprollming_orchestrator_profiles:app", host=host, port=port, reload=False)
+    uvicorn.run("keeprollming_orchestrator_profiles:app", host=args.host, port=args.port, reload=False)
