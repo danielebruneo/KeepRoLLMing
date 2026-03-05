@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 from keeprollming.rolling_summary import should_summarise
 
 @pytest.mark.parametrize("messages, ctx_eff, max_out, summary_insert_budget_tok, expected", [
