@@ -38,6 +38,8 @@ export DEFAULT_CTX_LEN=4096
 export SUMMARY_MAX_TOKENS=256
 export SAFETY_MARGIN_TOK=128
 export LOG_LEVEL="DEBUG"
+export LOG_LEVEL="INFO"
+export LOG_LEVEL="BASIC"
 
 
 # =========================
@@ -45,7 +47,9 @@ export LOG_LEVEL="DEBUG"
 # =========================
 trap 'echo "ByeBye"' INT
 
-uvicorn keeprollming_orchestrator:app \
-  --host 0.0.0.0 \
-  --port 8000 \
-  --log-level info
+python keeprollming.py
+
+#uvicorn keeprollming_orchestrator:app \
+#  --host 0.0.0.0 \
+#  --port 8000 \
+#  --log-level info
