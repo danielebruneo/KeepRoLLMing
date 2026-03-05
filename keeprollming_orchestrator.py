@@ -124,23 +124,51 @@ def log(level: str, msg: str, **fields: Any) -> None:
     #print(json.dumps(rec, ensure_ascii=False, indent=4), flush=True)
     print_json(data=rec)
 
+
+MAX_BODY_CHARS = 4000  # tweak
+
+def _snip(s: str, limit: int = MAX_BODY_CHARS) -> str:
+    return s
+    if s is None:
+        return ""
+    return s if len(s) <= limit else (s[:limit] + f"... <snip {len(s)-limit} chars>")
+
+def _is_json_content_type(content_type: str | None) -> bool:
+    if not content_type:
+        return False
+    ct = content_type.split(";", 1)[0].strip().lower()
+    return ct == "application/json" or ct.endswith("+json")
+
+def _decode_body(content: bytes) -> str:
+    # try utf-8; fall back with replacement to avoid exceptions
+    return content.decode("utf-8", errors="replace")
+
 async def log_request(req: httpx.Request) -> None:
+    content_type = req.headers.get("content-type")
+    body_repr: object | str = ""
+
+    # NOTE: req.content is bytes. For huge uploads you may want to skip logging.
+    content = req.content or b""
+
+    if content:
+        if _is_json_content_type(content_type):
+            try:
+                decoded = _decode_body(content)
+                body_repr = json.loads(decoded)  # object (dict/list/etc)
+            except Exception:
+                # Not valid JSON; log decoded text instead
+                body_repr = _snip(_decode_body(content))
+        else:
+            # Non-JSON: log text-ish content, snipped
+            body_repr = _snip(_decode_body(content))
+
     log(
         "INFO",
         "request_sent",
-        url=req.url,
+        url=str(req.url),
         method=req.method,
         headers=dict(req.headers),
-        body=snip_json(req.json() if req.content_type == "application/json" else req.text)
-    )
-
-async def log_response(r: httpx.Response) -> None:
-    log(
-        "INFO",
-        "response_received",
-        status=r.status_code,
-        headers=dict(r.headers),
-        body=snip_json(r.json() if r.content_type == "application/json" else r.text)
+        body=snip_json(body_repr) if isinstance(body_repr, (dict, list)) else body_repr,
     )
 
 def snip_json(obj: Any, max_chars: int = LOG_PAYLOAD_MAX_CHARS) -> str:
@@ -203,23 +231,115 @@ TOK = TokenCounter()
 # ----------------------------
 # Upstream helpers
 # ----------------------------
+_http_client: httpx.AsyncClient | None = None
 
-_http_client: Optional[httpx.AsyncClient] = None
+MAX_SSE_BYTES = 8000  # capture only the first N bytes of SSE bodies for logging
+
 
 async def http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None:
-        _http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
 
-    class WrappedClient(httpx.AsyncClient):
-        async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
-            req = httpx.Request(method, url, headers=kwargs.get("headers", {}))
-            await log_request(req)
-            r = await super().request(method, url, **kwargs)
-            await log_response(r)
-            return r
+        async def _on_request(request: httpx.Request) -> None:
+            # mettiamo start time per calcolare elapsed nel response hook
+            request.extensions["ts_start"] = time.perf_counter()
+            await log_request(request)
 
-    return WrappedClient()
+        async def _on_response(response: httpx.Response) -> None:
+            ts_start = response.request.extensions.get("ts_start")
+            elapsed_ms = (time.perf_counter() - ts_start) * 1000.0 if ts_start else None
+
+            ct = (response.headers.get("content-type") or "").lower()
+
+            # For SSE / streaming responses, the body is not read here. We only log metadata.
+            if ct.startswith("text/event-stream"):
+                log(
+                    "INFO",
+                    "response_received",
+                    url=str(response.request.url),
+                    method=response.request.method,
+                    status=response.status_code,
+                    elapsed_ms=elapsed_ms,
+                    headers=dict(response.headers),
+                    body="",
+                    note="SSE response headers received (body logged by stream tee when consumed)",
+                )
+                return
+
+            # Non-streaming: body is generally available (client.post/get reads it).
+            await log_response(response, elapsed_ms=elapsed_ms)
+
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            event_hooks={"request": [_on_request], "response": [_on_response]},
+        )
+
+    return _http_client
+
+
+async def log_response(r: httpx.Response, elapsed_ms: float | None = None) -> None:
+    content_type = r.headers.get("content-type")
+    body_repr: object | str = ""
+
+    try:
+        content = r.content or b""
+    except httpx.ResponseNotRead:
+        # Response was streamed and not read yet
+        content = b""
+
+    if content:
+        if _is_json_content_type(content_type):
+            try:
+                body_repr = r.json()
+            except Exception:
+                body_repr = _snip(content.decode("utf-8", errors="replace"))
+        else:
+            body_repr = _snip(content.decode("utf-8", errors="replace"))
+
+    log(
+        "INFO",
+        "response_received_fully",
+        url=str(r.request.url),
+        method=r.request.method,
+        status=r.status_code,
+        elapsed_ms=elapsed_ms,
+        headers=dict(r.headers),
+        body=body_repr,
+        #body=snip_json(body_repr) if isinstance(body_repr, (dict, list)) else body_repr,
+    )
+
+async def log_streaming_response(
+    r: httpx.Response,
+    captured_bytes: bytes,
+    *,
+    elapsed_ms: float | None = None,
+) -> None:
+    text = captured_bytes.decode("utf-8", errors="replace")
+    try:
+        log(
+            "INFO",
+            "response_received",
+            url=str(r.request.url),
+            method=r.request.method,
+            status=r.status_code,
+            elapsed_ms=elapsed_ms,
+            headers=dict(r.headers),
+            body=json.loads(text),  # volendo _snip(text)
+            note=f"streamed (captured {len(captured_bytes)} bytes)",
+        )
+    except:
+        log(
+            "INFO",
+            "response_received",
+            url=str(r.request.url),
+            method=r.request.method,
+            status=r.status_code,
+            elapsed_ms=elapsed_ms,
+            headers=dict(r.headers),
+            body=_snip(text),  # volendo _snip(text)
+            note=f"streamed (captured {len(captured_bytes)} bytes)",
+        )
+
 
 _ctx_cache: Dict[str, Tuple[int, float]] = {}
 _CTX_TTL_SEC = 60.0
@@ -544,11 +664,19 @@ async def chat_completions(req: Request) -> Response:
 
     if stream:
         async def _iter():
+            t0 = time.perf_counter()
+            captured = bytearray()
+            r: httpx.Response | None = None
             try:
-                async with client.stream("POST", url, json=upstream_payload) as r:
-                    r.raise_for_status()
-                    async for chunk in r.aiter_bytes():
+                async with client.stream("POST", url, json=upstream_payload) as resp:
+                    r = resp
+                    resp.raise_for_status()
+                    async for chunk in resp.aiter_bytes():
                         if chunk:
+                            # capture a snippet for logging
+                            if len(captured) < MAX_SSE_BYTES:
+                                take = min(len(chunk), MAX_SSE_BYTES - len(captured))
+                                captured.extend(chunk[:take])
                             yield chunk
             except httpx.HTTPStatusError as e:
                 err_text = e.response.text
@@ -574,6 +702,15 @@ async def chat_completions(req: Request) -> Response:
                 )
                 yield (f"data: {json.dumps({'error': {'message': 'Upstream stream exception', 'details': str(e)}})}\n\n").encode("utf-8")
                 yield b"data: [DONE]\n\n"
+            finally:
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                # If we did receive a response object, log the captured SSE snippet.
+                if r is not None:
+                    try:
+                        await log_streaming_response(r, bytes(captured), elapsed_ms=elapsed_ms)
+                    except Exception as _e:
+                        # never let logging break streaming
+                        log("WARN", "stream_log_failed", req_id=req_id, err=str(_e))
 
         log("INFO", "upstream_stream_start", req_id=req_id, did_summarize=did_summarize, passthrough=is_passthrough)
         headers = {
