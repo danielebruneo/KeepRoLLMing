@@ -1,27 +1,66 @@
-# Orchestrator v3.6 — overflow-only summary + token accounting + tok/s metrics
+# Keeprollming Orchestrator
 
-## What changed
-- Removed proactive summary triggers. Summary happens ONLY on overflow.
-- Streaming proxy now captures the assistant output to update internal STATE.
-- Adds token accounting logs (estimated) and tok/s:
-  - main: tok_s_est and (best-effort) tok_s_backend if backend returns usage in stream/non-stream
-  - summary: tok_s_est and (best-effort) tok_s_backend if backend returns usage
+A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio)
+and adds **rolling-summary** support to avoid context overflow.
 
-## Key logs
-- budget: shows ctx_eff, input/out budgets, current prompt token estimate, and whether summarization happened.
-- summary_trigger: emitted right before calling summary model (reason=overflow).
-- summary_call: summary timing + token/sec metrics.
-- summary_applied: new summary/tail sizes after summary.
-- main_stream_done / main_completion: tok/sec metrics + backend usage if available.
+## Features
 
-## Backend usage availability
-To get usage in streaming, LibreChat typically sends:
-  "stream_options": {"include_usage": true}
-If LM Studio returns usage in SSE, v3.6 will log `usage` and compute `tok_s_backend`.
+- OpenAI-compatible endpoint: `POST /v1/chat/completions`
+- Profiles:
+  - `local/quick`
+  - `local/main`
+  - `local/deep`
+- Passthrough mode:
+  - `pass/<BACKEND_MODEL_NAME>` (routes directly, **no summarization**)
+- Streaming proxy (SSE) support
+- Best-effort token accounting
 
-## Recommended env (direct to LM Studio)
-export LITELLM_BASE=http://127.0.0.1:1234/v1
-export MAIN_MODEL=qwen2.5-3b-instruct
-export SUMMARY_MODEL=qwen2.5-1.5b-instruct
-export DEBUG_ENABLE_ENDPOINTS=1
-export LOG_JSON=1
+## Run
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+export UPSTREAM_BASE_URL="http://127.0.0.1:1234"   # LM Studio base (no /v1)
+uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
+```
+
+Then call:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
+```
+
+## Tests
+
+Install dev requirements:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run:
+
+```bash
+pytest
+```
+
+Notes:
+- Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
+
+## Configuration
+
+- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1` is accepted, but recommended to provide without `/v1`)
+- `MAIN_MODEL`, `SUMMARY_MODEL`
+- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
+- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
+- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
+- `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
+
+## Aider tips
+
+See `AIDER.md` for a small set of rules that helps keep patches small, tests deterministic,
+and avoids the "duplicate-tests explosion".

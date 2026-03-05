@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -42,12 +43,15 @@ LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
 MAX_SSE_BYTES = 8000  # capture only the first N bytes of SSE bodies for logging
 
 
-app = FastAPI()
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # startup: nothing special
+    yield
+    # shutdown
     await close_http_client()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/v1/chat/completions")
