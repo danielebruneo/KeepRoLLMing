@@ -717,18 +717,84 @@ async def chat_completions(req: Request) -> Response:
         async def _iter():
             t0 = time.perf_counter()
             captured = bytearray()
+            
+            # Reconstruct full assistant reply from streamed SSE events (OpenAI-compatible chunks).
+            sse_buf = ""
+            assistant_parts: list[str] = []
+            final_usage: dict | None = None
+            finish_reason: str | None = None
+            upstream_model_seen: str | None = None
+            stream_event_count = 0
             r: httpx.Response | None = None
             try:
                 async with client.stream("POST", url, json=upstream_payload) as resp:
                     r = resp
                     resp.raise_for_status()
                     async for chunk in resp.aiter_bytes():
-                        if chunk:
-                            # capture a snippet for logging
-                            if len(captured) < MAX_SSE_BYTES:
-                                take = min(len(chunk), MAX_SSE_BYTES - len(captured))
-                                captured.extend(chunk[:take])
-                            yield chunk
+                        if not chunk:
+                            continue
+                        
+                        # capture a snippet for logging (intentionally limited)
+                        if len(captured) < MAX_SSE_BYTES:
+                            take = min(len(chunk), MAX_SSE_BYTES - len(captured))
+                            captured.extend(chunk[:take])
+                        
+                        # Feed SSE parser buffer (best-effort utf-8 decode)
+                        try:
+                            sse_buf += chunk.decode("utf-8", errors="replace")
+                        except Exception:
+                            pass
+                        
+                        # Drain complete SSE blocks separated by blank line
+                        while True:
+                            sep = sse_buf.find("\n\n")
+                            if sep == -1:
+                                break
+                            block = sse_buf[:sep]
+                            sse_buf = sse_buf[sep + 2:]
+                            
+                            data_lines = []
+                            for line in block.splitlines():
+                                line = line.rstrip("\r")
+                                if line.startswith("data:"):
+                                    data_lines.append(line[5:].lstrip())
+                            
+                            if not data_lines:
+                                continue
+                            
+                            payload = "\n".join(data_lines).strip()
+                            if not payload or payload == "[DONE]":
+                                continue
+                            
+                            stream_event_count += 1
+                            try:
+                                obj = json.loads(payload)
+                            except Exception:
+                                continue
+                            
+                            if not isinstance(obj, dict):
+                                continue
+                            
+                            if upstream_model_seen is None and isinstance(obj.get("model"), str):
+                                upstream_model_seen = obj.get("model")
+                            
+                            if isinstance(obj.get("usage"), dict):
+                                final_usage = obj.get("usage")
+                            
+                            choices = obj.get("choices")
+                            if isinstance(choices, list) and choices:
+                                c0 = choices[0] if isinstance(choices[0], dict) else None
+                                if isinstance(c0, dict):
+                                    delta = c0.get("delta")
+                                    if isinstance(delta, dict):
+                                        piece = delta.get("content")
+                                        if isinstance(piece, str) and piece:
+                                            assistant_parts.append(piece)
+                                    fr = c0.get("finish_reason")
+                                    if isinstance(fr, str) and fr:
+                                        finish_reason = fr
+                        
+                        yield chunk
             except httpx.HTTPStatusError as e:
                 err_text = e.response.text
                 log(
@@ -762,6 +828,25 @@ async def chat_completions(req: Request) -> Response:
                     except Exception as _e:
                         # never let logging break streaming
                         log("WARN", "stream_log_failed", req_id=req_id, err=str(_e))
+
+                # NEW: reconstructed full assistant message (clear log, not snipped)
+                try:
+                    full_text = "".join(assistant_parts).strip()
+                    log(
+                        "INFO",
+                        "response_stream_reconstructed",
+                        req_id=req_id,
+                        upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                        elapsed_ms=elapsed_ms,
+                        did_summarize=did_summarize,
+                        passthrough=is_passthrough,
+                        finish_reason=finish_reason,
+                        usage=final_usage,
+                        event_count=stream_event_count,
+                        assistant_text=full_text,
+                    )
+                except Exception as _e:
+                    log("WARN", "stream_reconstruct_log_failed", req_id=req_id, err=str(_e))
 
         log("INFO", "upstream_stream_start", req_id=req_id, did_summarize=did_summarize, passthrough=is_passthrough)
         headers = {
