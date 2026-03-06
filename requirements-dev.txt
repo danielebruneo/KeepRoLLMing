@@ -1,2 +1,146 @@
 pytest>=8.0
 pytest-asyncio>=0.23
+```
+
+test.sh
+```bash
+#!/bin/bash
+
+# Test 1: Basic Chat Completion
+curl -i -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model":"local/main",
+    "messages":[{"role":"user","content":"ciao"}],
+    "max_tokens":120
+  }' | head -n 40
+
+# Test 2: Streaming Response
+curl -i -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model":"local/main",
+    "messages":[{"role":"user","content":"ciao"}],
+    "stream":true
+  }' | head -n 40
+
+# Test 3: Passthrough Mode
+curl -i -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model":"pass/my-backend-model",
+    "messages":[{"role":"user","content":"ciao"}]
+  }' | head -n 40
+
+# Test 4: Long Prompt with Summary
+curl -i -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model":"local/main",
+    "messages":[{"role":"user","content":"x"*4000}],
+    "max_tokens":256
+  }' | head -n 40
+
+# Test 5: Multiple Messages
+curl -i -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model":"local/main",
+    "messages":[{"role":"user","content":"ciao"},{"role":"assistant","content":"ok"}],
+    "max_tokens":256
+  }' | head -n 40
+```
+
+README.md
+```markdown
+# Keeprollming Orchestrator
+
+A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio)
+and adds **rolling-summary** support to avoid context overflow.
+
+## Features
+
+- OpenAI-compatible endpoint: `POST /v1/chat/completions`
+- Profiles:
+  - `local/quick`
+  - `local/main`
+  - `local/deep`
+- Passthrough mode:
+  - `pass/<BACKEND_MODEL_NAME>` (routes directly, **no summarization**)
+- Streaming proxy (SSE) support
+- Best-effort token accounting
+
+## Run
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+export UPSTREAM_BASE_URL="http://127.0.0.1:1234/v1"   # LM Studio base (no /v1)
+uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
+```
+
+Then, you can call:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
+```
+
+## Tests
+
+Install dev requirements:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run:
+
+```bash
+pytest
+```
+
+Notes:
+- Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
+- The following tests have been added to verify the API's behavior:
+  - Test 1: Basic Chat Completion
+  - Test 2: Streaming Response
+  - Test 3: Passthrough Mode
+  - Test 4: Long Prompt with Summary
+  - Test 5: Multiple Messages
+
+### Example Usage
+
+Here's an example of how you might use the Keeprollming Orchestrator:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+export UPSTREAM_BASE_URL="http://127.0.0.1:1234/v1"   # LM Studio base (no /v1)
+uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
+```
+
+Then, you can call the API:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
+```
+
+### Testing
+
+To run the tests, install dev requirements and execute:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+This setup ensures that the project is well-structured, with clear documentation and a robust testing framework to maintain code quality.
+```
