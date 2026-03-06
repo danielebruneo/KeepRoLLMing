@@ -213,6 +213,9 @@ def test_web_search_payload_does_not_trigger_summary(client, monkeypatch):
 def test_basic_plain_logs_show_relevant_flow(client, monkeypatch, capsys):
     monkeypatch.setattr(app_mod, "LOG_MODE", "BASIC_PLAIN")
     monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
+    monkeypatch.setattr(logger_mod, "LOG_PLAIN_COLORS", False)
+    monkeypatch.setattr(logger_mod, "_PLAIN_LAST_REQ_ID", None)
+    monkeypatch.setattr(logger_mod, "_PLAIN_CLOSED_REQ_IDS", set())
 
     resp = client.post(
         "/v1/chat/completions",
@@ -224,6 +227,75 @@ def test_basic_plain_logs_show_relevant_flow(client, monkeypatch, capsys):
     assert resp.status_code == 200, resp.text
 
     out = capsys.readouterr().out
-    assert "USER: ciao orchestrator" in out
-    assert "CALL kind=chat" in out
-    assert "RESULT model=qwen2.5-3b-instruct" in out
+    assert "┌─ REQUEST" in out
+    assert "│ USER" in out
+    assert "│   ciao orchestrator" in out
+    assert "│ CALL kind=chat" in out
+    assert "│ RESULT model=qwen2.5-3b-instruct" in out
+    assert "└─ END" in out
+
+
+def test_basic_plain_multiline_content_is_indented_and_colored(monkeypatch):
+    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
+    monkeypatch.setattr(logger_mod, "LOG_PLAIN_COLORS", True)
+    monkeypatch.setattr(logger_mod, "_PLAIN_LAST_REQ_ID", None)
+    monkeypatch.setattr(logger_mod, "_PLAIN_CLOSED_REQ_IDS", set())
+
+    rendered = logger_mod._format_plain({
+        "msg": "http_out",
+        "req_id": "abc123",
+        "model": "demo-model",
+        "elapsed_ms": 12.3,
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        "assistant_text": "line one\n[line like markup]\nline three",
+    })
+
+    assert "\x1b[" in rendered
+    plain = logger_mod._strip_ansi(rendered)
+    assert "┌─ REQUEST abc123" in plain
+    assert "│ RESULT model=demo-model elapsed_ms=12.3 usage=prompt=10, completion=20, total=30" in plain
+    assert "│   assistant:" in plain
+    assert "│     [line like markup]" in plain
+    assert "└─ END abc123" in plain
+
+
+def test_basic_plain_does_not_truncate_by_default(monkeypatch):
+    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
+    monkeypatch.setattr(logger_mod, "LOG_PLAIN_COLORS", False)
+    monkeypatch.setattr(logger_mod, "BASIC_SNIP_CHARS", 0)
+    monkeypatch.setattr(logger_mod, "_PLAIN_LAST_REQ_ID", None)
+    monkeypatch.setattr(logger_mod, "_PLAIN_CLOSED_REQ_IDS", set())
+
+    long_text = "A" * 2500
+    rendered = logger_mod._format_plain({
+        "msg": "http_out",
+        "req_id": "req-full",
+        "model": "demo-model",
+        "elapsed_ms": 1.2,
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        "assistant_text": long_text,
+    })
+
+    assert "<snip" not in rendered
+    assert long_text in rendered
+
+
+def test_basic_plain_summary_reply_unescapes_newlines_and_keeps_indent(monkeypatch):
+    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
+    monkeypatch.setattr(logger_mod, "LOG_PLAIN_COLORS", False)
+    monkeypatch.setattr(logger_mod, "_PLAIN_LAST_REQ_ID", None)
+    monkeypatch.setattr(logger_mod, "_PLAIN_CLOSED_REQ_IDS", set())
+
+    rendered = logger_mod._format_plain({
+        "msg": "summary_reply",
+        "req_id": "sum-1",
+        "elapsed_ms": 99.9,
+        "usage": {"prompt_tokens": 11, "completion_tokens": 22, "total_tokens": 33},
+        "summary_snip": json.dumps("line one\nline two\n[line three]"),
+    })
+
+    assert '\nline two' not in rendered
+    assert '"line one' not in rendered
+    assert "│   line one" in rendered
+    assert "│   line two" in rendered
+    assert "│   [line three]" in rendered

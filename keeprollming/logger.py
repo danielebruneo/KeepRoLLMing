@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 from rich import print_json
@@ -20,13 +21,36 @@ LOG_MODE_CHOICES = {"DEBUG", "MEDIUM", "BASIC", "BASIC_PLAIN"}
 LOG_MODE = LOG_MODE_ENV if LOG_MODE_ENV in LOG_MODE_CHOICES else "DEBUG"
 
 LOG_SNIP_CHARS = int(os.getenv("LOG_SNIP_CHARS", "4000"))
-BASIC_SNIP_CHARS = int(os.getenv("BASIC_SNIP_CHARS", "2000"))
+BASIC_SNIP_CHARS = int(os.getenv("BASIC_SNIP_CHARS", "0"))
 LOG_STREAM_CHUNKS = os.getenv("LOG_STREAM_CHUNKS", "0").strip().lower() in {"1", "true", "yes", "on"}
+LOG_PLAIN_COLORS = os.getenv("LOG_PLAIN_COLORS", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+_PLAIN_LAST_REQ_ID: str | None = None
+_PLAIN_CLOSED_REQ_IDS: set[str] = set()
+
+ANSI_RESET = "\x1b[0m"
+ANSI_BOLD = "\x1b[1m"
+ANSI_DIM = "\x1b[2m"
+ANSI_CYAN = "\x1b[36m"
+ANSI_GREEN = "\x1b[32m"
+ANSI_MAGENTA = "\x1b[35m"
+ANSI_YELLOW = "\x1b[33m"
+ANSI_BLUE = "\x1b[34m"
+ANSI_RED = "\x1b[31m"
+ANSI_GRAY = "\x1b[90m"
+
+
+def _c(text: str, *codes: str) -> str:
+    if not LOG_PLAIN_COLORS or not codes:
+        return text
+    return "".join(codes) + text + ANSI_RESET
 
 
 def _snip_text_active(s: str | None, limit: int) -> str:
     if s is None:
         return ""
+    if limit <= 0:
+        return s
     return s if len(s) <= limit else (s[:limit] + f"... <snip {len(s)-limit} chars>")
 
 
@@ -180,47 +204,190 @@ def _should_log(msg: str) -> bool:
     }
 
 
+def _indent_block(text: str | None, prefix: str = "│   ") -> str:
+    if not text:
+        return prefix.rstrip()
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.split("\n")
+    return "\n".join(prefix + line for line in lines)
+
+
+
+
+def _fmt_meta_item(key: str, value: Any) -> str:
+    return f"{_c(key, ANSI_DIM, ANSI_CYAN)}={_c(str(value), ANSI_BOLD, ANSI_YELLOW)}"
+
+
+def _fmt_meta(**kwargs: Any) -> str:
+    return " ".join(_fmt_meta_item(k, v) for k, v in kwargs.items() if v is not None)
+
+
+def _normalize_summary_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, str):
+                value = parsed
+        except Exception:
+            pass
+        return value.replace("\r\n", "\n").replace("\r", "\n")
+    return str(value)
+
+def _fmt_usage(usage: Any) -> str:
+    if not isinstance(usage, dict):
+        return "-"
+    p = usage.get("prompt_tokens")
+    c = usage.get("completion_tokens")
+    t = usage.get("total_tokens")
+    parts = []
+    if p is not None:
+        parts.append(f"prompt={p}")
+    if c is not None:
+        parts.append(f"completion={c}")
+    if t is not None:
+        parts.append(f"total={t}")
+    return ", ".join(parts) if parts else "-"
+
+
+def _plain_header(req_id: str) -> str:
+    return _c(f"┌─ REQUEST {req_id}", ANSI_BOLD, ANSI_CYAN)
+
+
+def _plain_footer(req_id: str) -> str:
+    return _c(f"└─ END {req_id}", ANSI_DIM, ANSI_GRAY)
+
+
+def _open_plain_request_if_needed(req_id: str) -> str:
+    global _PLAIN_LAST_REQ_ID
+    if not req_id or req_id == "-":
+        return ""
+
+    out: list[str] = []
+    if _PLAIN_LAST_REQ_ID and _PLAIN_LAST_REQ_ID != req_id and _PLAIN_LAST_REQ_ID not in _PLAIN_CLOSED_REQ_IDS:
+        out.append(_plain_footer(_PLAIN_LAST_REQ_ID))
+        _PLAIN_CLOSED_REQ_IDS.add(_PLAIN_LAST_REQ_ID)
+        out.append("")
+    if _PLAIN_LAST_REQ_ID != req_id:
+        out.append(_plain_header(req_id))
+        _PLAIN_LAST_REQ_ID = req_id
+    return "\n".join(out)
+
+
+def _maybe_close_plain_request(msg: str, req_id: str) -> str:
+    global _PLAIN_LAST_REQ_ID
+    if not req_id or req_id == "-":
+        return ""
+    terminal_msgs = {
+        "http_out",
+        "response_stream_reconstructed",
+        "proxy_exception",
+        "upstream_http_error",
+        "upstream_http_error_stream",
+        "upstream_stream_exception",
+    }
+    if msg not in terminal_msgs or req_id in _PLAIN_CLOSED_REQ_IDS:
+        return ""
+    _PLAIN_CLOSED_REQ_IDS.add(req_id)
+    if _PLAIN_LAST_REQ_ID == req_id:
+        _PLAIN_LAST_REQ_ID = None
+    return _plain_footer(req_id)
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def _format_plain(rec: Dict[str, Any]) -> str:
     msg = rec.get("msg")
     req_id = rec.get("req_id", "-")
+    parts: list[str] = []
+    header = _open_plain_request_if_needed(req_id)
+    if header:
+        parts.append(header)
+
+    def add_section(title: str, color: str, body: str | None = None, meta: str | None = None) -> None:
+        title_txt = _c(f"│ {title}", ANSI_BOLD, color)
+        if meta:
+            title_txt += " " + meta
+        parts.append(title_txt)
+        if body is not None:
+            parts.append(_indent_block(body))
+
     if msg == "conv_user":
-        return f"[{req_id}] USER: {rec.get('text', '')}"
-    if msg == "conv_assistant":
-        return f"[{req_id}] ASSISTANT: {rec.get('text', '')}"
-    if msg == "summary_needed":
-        return (
-            f"[{req_id}] SUMMARY_NEEDED model={rec.get('summary_model')} "
-            f"prompt_tok={rec.get('prompt_tok_est')} threshold={rec.get('threshold')} "
-            f"head={rec.get('head_n')} tail={rec.get('tail_n')} middle={rec.get('middle_count')}"
+        add_section("USER", ANSI_CYAN, rec.get("text", ""))
+    elif msg == "conv_assistant":
+        add_section("ASSISTANT", ANSI_GREEN, rec.get("text", ""))
+    elif msg == "summary_needed":
+        meta = _fmt_meta(
+            model=rec.get("summary_model"),
+            prompt_tok=rec.get("prompt_tok_est"),
+            threshold=rec.get("threshold"),
+            head=rec.get("head_n"),
+            tail=rec.get("tail_n"),
+            middle=rec.get("middle_count"),
         )
-    if msg == "summary_req":
-        return (
-            f"[{req_id}] SUMMARY_REQ model={rec.get('summary_model')} middle={rec.get('middle_count')} "
-            f"transcript_chars={rec.get('transcript_chars')}"
+        add_section("SUMMARY_NEEDED", ANSI_MAGENTA, meta=meta)
+    elif msg == "summary_req":
+        meta = _fmt_meta(
+            model=rec.get("summary_model"),
+            middle=rec.get("middle_count"),
+            transcript_chars=rec.get("transcript_chars"),
         )
-    if msg == "summary_reply":
-        return (
-            f"[{req_id}] SUMMARY_REPLY elapsed_ms={rec.get('elapsed_ms')} usage={rec.get('usage')} "
-            f"summary={rec.get('summary_snip', '')}"
+        add_section("SUMMARY_REQ", ANSI_MAGENTA, meta=meta)
+    elif msg == "summary_reply":
+        meta = _fmt_meta(
+            elapsed_ms=rec.get("elapsed_ms"),
+            usage=_fmt_usage(rec.get("usage")),
         )
-    if msg == "upstream_req_repacked":
+        add_section("SUMMARY_REPLY", ANSI_MAGENTA, _normalize_summary_text(rec.get("summary_snip", "")), meta=meta)
+    elif msg == "upstream_req_repacked":
         kind = rec.get("kind", "chat")
-        return (
-            f"[{req_id}] CALL kind={kind} model={rec.get('model')} prompt_tokens={rec.get('prompt_tokens')} "
-            f"did_summarize={rec.get('did_summarize')} archived={rec.get('has_archived_context')} "
-            f"last_user={rec.get('last_user', '')}"
+        meta = _fmt_meta(
+            kind=kind,
+            model=rec.get("model"),
+            prompt_tokens=rec.get("prompt_tokens"),
+            did_summarize=rec.get("did_summarize"),
+            archived=rec.get("has_archived_context"),
         )
-    if msg == "http_out":
-        return (
-            f"[{req_id}] RESULT model={rec.get('model')} elapsed_ms={rec.get('elapsed_ms')} usage={rec.get('usage')} "
-            f"assistant={rec.get('assistant_text', '')} tool_calls={rec.get('tool_calls')}"
+        add_section("CALL", ANSI_YELLOW, meta=meta)
+        last_user = rec.get("last_user")
+        if last_user:
+            parts.append(_c("│   last_user:", ANSI_DIM, ANSI_GRAY))
+            parts.append(_indent_block(last_user, prefix="│     "))
+    elif msg == "http_out":
+        meta = _fmt_meta(
+            model=rec.get("model"),
+            elapsed_ms=rec.get("elapsed_ms"),
+            usage=_fmt_usage(rec.get("usage")),
         )
-    if msg == "response_stream_reconstructed":
-        return (
-            f"[{req_id}] STREAM_RESULT model={rec.get('upstream_model')} elapsed_ms={rec.get('elapsed_ms')} "
-            f"usage={rec.get('usage')} assistant={rec.get('assistant_text', '')}"
+        add_section("RESULT", ANSI_GREEN, meta=meta)
+        assistant = rec.get("assistant_text")
+        if assistant:
+            parts.append(_c("│   assistant:", ANSI_DIM, ANSI_GRAY))
+            parts.append(_indent_block(assistant, prefix="│     "))
+        tool_calls = rec.get("tool_calls")
+        if tool_calls:
+            parts.append(_c(f"│   tool_calls: {tool_calls}", ANSI_DIM, ANSI_GRAY))
+    elif msg == "response_stream_reconstructed":
+        meta = _fmt_meta(
+            model=rec.get("upstream_model"),
+            elapsed_ms=rec.get("elapsed_ms"),
+            usage=_fmt_usage(rec.get("usage")),
         )
-    return f"[{req_id}] {msg}: {_snip_text_active(json.dumps(rec, ensure_ascii=False), BASIC_SNIP_CHARS)}"
+        add_section("STREAM_RESULT", ANSI_GREEN, meta=meta)
+        assistant = rec.get("assistant_text")
+        if assistant:
+            parts.append(_c("│   assistant:", ANSI_DIM, ANSI_GRAY))
+            parts.append(_indent_block(assistant, prefix="│     "))
+    else:
+        add_section(msg or "LOG", ANSI_BLUE, _snip_text_active(json.dumps(rec, ensure_ascii=False), BASIC_SNIP_CHARS))
+
+    footer = _maybe_close_plain_request(msg, req_id)
+    if footer:
+        parts.append(footer)
+    return "\n".join(parts)
 
 
 def log(level: str, msg: str, **fields: Any) -> None:
