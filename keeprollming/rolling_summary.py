@@ -4,11 +4,22 @@ import os
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
 
 from .config import SAFETY_MARGIN_TOK, SUMMARY_MAX_TOKENS, UPSTREAM_BASE_URL
 from .logger import log, snip_json
 from .upstream import http_client
 from .token_counter import TokenCounter
+
+
+# ---------------------------------------------------------------------
+# Summary prompt config
+# ---------------------------------------------------------------------
+
+SUMMARY_PROMPT_DIR = os.getenv("SUMMARY_PROMPT_DIR", "./prompts")
+SUMMARY_PROMPT_TYPE = os.getenv("SUMMARY_PROMPT_TYPE", "curated")
+SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
+
 
 # ----------------------------
 # Rolling summary (decision + repack)
@@ -20,6 +31,215 @@ MAX_TAIL = int(os.getenv("MAX_TAIL", "3"))
 # We need to budget how many tokens the inserted summary will take in the prompt.
 # Default: tie it to SUMMARY_MAX_TOKENS (the summary model output cap), conservative.
 SUMMARY_INSERT_BUDGET_TOK = int(os.getenv("SUMMARY_INSERT_BUDGET_TOK", str(SUMMARY_MAX_TOKENS)))
+
+
+DEFAULT_SUMMARY_PROMPTS: Dict[str, str] = {
+    "classic": """Sei un assistente che produce un RIASSUNTO DI CONTESTO per un altro modello.
+
+Obiettivo:
+comprimere la parte centrale della conversazione preservando fatti, nomi, decisioni, richieste, vincoli, TODO e dettagli tecnici utili.
+
+Regole:
+- non inventare
+- mantieni lingua coerente (preferisci {{LANG_HINT}})
+- sii breve ma denso
+- usa bullet points se utile
+- includi decisioni e TODO ancora aperti
+- non aggiungere commenti extra
+
+Transcript:
+
+=== TRANSCRIPT START ===
+{{TRANSCRIPT}}
+=== TRANSCRIPT END ===
+
+RISPOSTA:
+solo il riassunto finale, senza prefazioni.
+""",
+    "structured": """Sei un motore di compressione del contesto.
+
+Obiettivo:
+trasformare la parte centrale della conversazione in uno stato strutturato e compatto, utile per proseguire correttamente il dialogo.
+
+Regole:
+- non inventare
+- mantieni lingua coerente (preferisci {{LANG_HINT}})
+- preferisci bullet points brevi
+- separa chiaramente fatti, decisioni, vincoli e attività aperte
+- includi dettagli tecnici solo se realmente utili
+- niente prose introduttive
+
+Formato di output obbligatorio:
+
+[STATUS]
+
+FACTS:
+- ...
+
+DECISIONS:
+- ...
+
+CONSTRAINTS:
+- ...
+
+OPEN_TASKS:
+- ...
+
+STYLE_NOTES:
+- ...
+
+[/STATUS]
+
+Transcript:
+
+=== TRANSCRIPT START ===
+{{TRANSCRIPT}}
+=== TRANSCRIPT END ===
+""",
+    "curated": """You are a context compaction engine.
+
+Your task is NOT to simply summarize a conversation.
+
+Your task is to produce a compressed reconstruction of the conversation that preserves the information necessary to continue the discussion correctly.
+
+The reconstruction must balance:
+- verbatim preservation of critical passages
+- summarized sections for less critical spans
+- a structured status snapshot
+
+The output must be concise but faithful.
+
+COMPACTION STRATEGY:
+1. Preserve VERBATIM when content is critical:
+   - instructions given to the assistant
+   - constraints or rules
+   - technical specifications
+   - examples of style or tone
+   - key decisions
+   - code snippets
+   - prompts or templates
+
+2. Summarize when content is:
+   - repetitive
+   - exploratory discussion
+   - background reasoning
+   - intermediate brainstorming
+
+3. Prefer short bullet summaries rather than prose.
+
+4. Preserve the latest part of the provided transcript verbatim only if especially useful for continuity.
+   Do NOT overuse verbatim excerpts.
+
+5. Extract a STATUS block describing the current state.
+
+OUTPUT FORMAT:
+
+[INIT_INSTRUCTIONS_RAW]
+Verbatim excerpts of important initial instructions or constraints.
+Keep only the most relevant ones.
+Maximum: 2 excerpts.
+[/INIT_INSTRUCTIONS_RAW]
+
+[ARCHIVE_SUMMARY]
+Bullet summary of older conversation parts that are not critical to keep verbatim.
+Focus on facts, reasoning steps, outcomes, technical constraints and conclusions.
+Maximum: 10 bullets.
+[/ARCHIVE_SUMMARY]
+
+[KEY_EXCERPTS_RAW]
+Short verbatim excerpts that are especially important to preserve.
+Maximum: 3 excerpts.
+[/KEY_EXCERPTS_RAW]
+
+[STATUS]
+
+FACTS:
+- ...
+
+DECISIONS:
+- ...
+
+CONSTRAINTS:
+- ...
+
+OPEN_TASKS:
+- ...
+
+STYLE_NOTES:
+- ...
+
+[/STATUS]
+
+RULES:
+- Be concise.
+- Do NOT invent information.
+- Do NOT repeat the entire transcript.
+- Preserve key technical content if present.
+- If unsure whether something is important, summarize it instead of preserving verbatim.
+- Keep the output compact.
+
+Transcript:
+
+=== TRANSCRIPT START ===
+{{TRANSCRIPT}}
+=== TRANSCRIPT END ===
+"""
+}
+
+
+def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
+    """
+    Load a summary prompt template from:
+      {SUMMARY_PROMPT_DIR}/{prompt_type}.summary_prompt.txt
+    Fallback to embedded defaults.
+    """
+    effective_type = (prompt_type or SUMMARY_PROMPT_TYPE or "curated").strip()
+    prompt_dir = Path(SUMMARY_PROMPT_DIR)
+    prompt_file = prompt_dir / f"{effective_type}.summary_prompt.txt"
+
+    if prompt_file.exists():
+        return prompt_file.read_text(encoding="utf-8")
+
+    return DEFAULT_SUMMARY_PROMPTS.get(effective_type, DEFAULT_SUMMARY_PROMPTS["curated"])
+
+
+def render_summary_prompt(
+    transcript: str,
+    *,
+    prompt_type: Optional[str] = None,
+    lang_hint: str = "italiano",
+) -> str:
+    template = load_summary_prompt_template(prompt_type=prompt_type)
+    return (
+        template
+        .replace("{{TRANSCRIPT}}", transcript)
+        .replace("{{LANG_HINT}}", lang_hint)
+    )
+
+
+def get_summary_system_prompt(prompt_type: Optional[str] = None) -> str:
+    """
+    Keep system prompt small and stable.
+    The real task instructions live in the file-based user template.
+    """
+    effective_type = (prompt_type or SUMMARY_PROMPT_TYPE or "curated").strip()
+
+    if effective_type == "classic":
+        return (
+            "Sei un assistente che comprime conversazioni per un altro modello. "
+            "Non inventare nulla. Sii fedele, compatto e utile."
+        )
+
+    if effective_type == "structured":
+        return (
+            "Sei un assistente che trasforma conversazioni in stato strutturato compatto. "
+            "Non inventare nulla. Mantieni solo ciò che è utile a continuare la conversazione."
+        )
+
+    return (
+        "You are a context compaction engine. "
+        "Be faithful, compact, structured, and do not invent information."
+    )
 
 
 @dataclass(frozen=True)
@@ -223,7 +443,8 @@ def should_summarise(
             repacked_tok_est=prompt_tok_est,
         )
 
-    return SummarizePlan(
+    
+    plan = SummarizePlan(
         should=True,
         reason="prompt_exceeds_threshold",
         threshold=threshold,
@@ -233,6 +454,19 @@ def should_summarise(
         middle_count=middle_count,
         repacked_tok_est=repacked_est,
     )
+    log(
+        "INFO",
+        "summary_plan",
+        should=True,
+        reason="prompt_exceeds_threshold",
+        threshold=threshold,
+        prompt_tok_est=prompt_tok_est,
+        head_n=head_n,
+        tail_n=tail_n,
+        middle_count=middle_count,
+        repacked_tok_est=repacked_est,
+    )
+    return plan
 
 
 def render_messages_for_summary(messages: List[Dict[str, Any]], max_chars: int = 12000) -> str:
@@ -265,27 +499,34 @@ def render_messages_for_summary(messages: List[Dict[str, Any]], max_chars: int =
     return "\n".join(lines)
 
 
-async def summarize_middle(middle: List[Dict[str, Any]], req_id: str, summary_model: str) -> str:
+# ---------------------------------------------------------------------
+# Summary call
+# ---------------------------------------------------------------------
+
+async def summarize_middle(
+    middle: List[Dict[str, Any]],
+    req_id: str,
+    summary_model: str,
+    *,
+    prompt_type: Optional[str] = None,
+    lang_hint: str = "italiano",
+) -> str:
     transcript = render_messages_for_summary(middle)
 
-    sys = (
-        "Sei un assistente che produce un RIASSUNTO DI CONTESTO per un altro modello.\n"
-        "Obiettivo: comprimere la parte centrale preservando fatti, nomi, decisioni, richieste, vincoli e TODO.\n"
-        "Regole: non inventare; mantieni lingua coerente (preferisci italiano).\n"
-        "Output: breve e denso; bullet points se utile; includi decisioni e TODO.\n"
-    )
-    user = (
-        "Riassumi la parte centrale della conversazione qui sotto.\n\n"
-        "=== TRANSCRIPT START ===\n"
-        f"{transcript}\n"
-        "=== TRANSCRIPT END ===\n\n"
-        "RISPOSTA (solo riassunto):"
+    sys = get_summary_system_prompt(prompt_type=prompt_type)
+    user = render_summary_prompt(
+        transcript,
+        prompt_type=prompt_type,
+        lang_hint=lang_hint,
     )
 
     body = {
         "model": summary_model,
-        "messages": [{"role": "system", "content": sys}, {"role": "user", "content": user}],
-        "temperature": 0.4,
+        "messages": [
+            {"role": "system", "content": sys},
+            {"role": "user", "content": user},
+        ],
+        "temperature": SUMMARY_TEMPERATURE,
         "max_tokens": SUMMARY_MAX_TOKENS,
         "stream": False,
     }
@@ -295,6 +536,7 @@ async def summarize_middle(middle: List[Dict[str, Any]], req_id: str, summary_mo
         "summary_req",
         req_id=req_id,
         summary_model=summary_model,
+        summary_prompt_type=(prompt_type or SUMMARY_PROMPT_TYPE),
         middle_count=len(middle),
         transcript_chars=len(transcript),
         body_json=snip_json(body),
@@ -313,7 +555,8 @@ async def summarize_middle(middle: List[Dict[str, Any]], req_id: str, summary_mo
     except Exception:
         summary = ""
 
-    summary = (summary or "").strip() or "(Riassunto non disponibile.)"
+    summary = (summary or "").strip() or "(Contesto compattato non disponibile.)"
+
     log(
         "INFO",
         "summary_reply",
@@ -321,11 +564,15 @@ async def summarize_middle(middle: List[Dict[str, Any]], req_id: str, summary_mo
         elapsed_ms=round(elapsed_ms, 2),
         usage=data.get("usage"),
         summary_chars=len(summary),
-        summary_snip=snip_json(summary, max_chars=min(20000000, 4000)),
+        summary_snip=snip_json(summary, max_chars=4000),
         raw_json=snip_json(data),
     )
     return summary
 
+
+# ---------------------------------------------------------------------
+# Repacking
+# ---------------------------------------------------------------------
 
 def build_repacked_messages(
     original: List[Dict[str, Any]],
@@ -334,7 +581,15 @@ def build_repacked_messages(
     head_n: int,
     tail_n: int,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Return (repacked_messages, middle_messages_used_for_summary)."""
+    """
+    Return (repacked_messages, middle_messages_used_for_summary).
+
+    Strategy:
+    - preserve original system message if present
+    - preserve head raw
+    - inject archived/compacted middle as a dedicated system block
+    - preserve tail raw
+    """
     sys_msg, non_system = split_messages(original)
 
     n = len(non_system)
@@ -345,7 +600,6 @@ def build_repacked_messages(
     tail = non_system[-tail_n:] if tail_n else []
     middle = non_system[head_n : n - tail_n] if (head_n + tail_n) < n else []
 
-    # If there is nothing to summarize, return original layout (preserve)
     if not middle:
         merged: List[Dict[str, Any]] = []
         if sys_msg:
@@ -353,14 +607,26 @@ def build_repacked_messages(
         merged.extend(non_system)
         return merged, []
 
-    sys_text = ""
-    if sys_msg and isinstance(sys_msg.get("content"), str) and sys_msg["content"].strip():
-        sys_text += sys_msg["content"].strip() + "\n\n"
+    repacked: List[Dict[str, Any]] = []
 
-    sum_text = summary_text.strip()
+    if sys_msg:
+        repacked.append(sys_msg)
 
-    repacked: List[Dict[str, Any]] = [{"role": "system", "content": sys_text.strip()}]
     repacked.extend(head)
-    repacked.append({"role": "system", "content": "riassunto messaggi intermedi:\n{}".format(sum_text)})
+
+    archived_block = (
+        "[ARCHIVED_COMPACT_CONTEXT]\n"
+        "The following block is a compressed reconstruction of earlier conversation content.\n"
+        "Treat it as authoritative context for continuity, decisions, constraints, facts and pending work.\n"
+        "Prefer this block over trying to infer missing older details from the recent tail alone.\n\n"
+        f"{summary_text.strip()}\n"
+        "[/ARCHIVED_COMPACT_CONTEXT]"
+    )
+
+    repacked.append({
+        "role": "system",
+        "content": archived_block,
+    })
+
     repacked.extend(tail)
     return repacked, middle

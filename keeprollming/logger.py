@@ -68,6 +68,9 @@ def extract_last_user_text(messages: Any) -> str | None:
                 if parts:
                     return "\n".join(parts)
             return None
+        if isinstance(m, dict) and m.get("role") == "system":
+            c = m.get("content")
+            return "\n".split(c)
     return None
 
 def _should_log(msg: str) -> bool:
@@ -201,6 +204,7 @@ async def log_streaming_response(
     *,
     elapsed_ms: float | None = None,
 ) -> None:
+    return
     # Only DEBUG logs raw streamed chunks
     if LOG_MODE != "DEBUG":
         return

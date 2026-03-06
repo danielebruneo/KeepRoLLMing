@@ -9,7 +9,10 @@ source .venv/bin/activate
 # =========================
 # LOGGING
 # =========================
-export LOG_LEVEL=INFO
+export LOG_LEVEL="DEBUG"
+#export LOG_LEVEL="MEDIUM"
+#export LOG_LEVEL="BASIC"
+
 export LOG_JSON=1
 
 # =========================
@@ -28,18 +31,21 @@ export DEEP_MAIN_MODEL="qwen/qwen3.5-35b-a3b"
 export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
 
 
-
 # =========================
 # CONTEXT SETTINGS
 # =========================
 
 # limite hard del modello (puoi aumentare se il modello lo supporta)
 export DEFAULT_CTX_LEN=4096
-export SUMMARY_MAX_TOKENS=256
-export SAFETY_MARGIN_TOK=128
-export LOG_LEVEL="DEBUG"
-export LOG_LEVEL="MEDIUM"
-#export LOG_LEVEL="BASIC"
+export SUMMARY_MAX_TOKENS=512
+export SAFETY_MARGIN_TOK=256
+
+export MAX_HEAD=2
+export MAX_TAIL=2
+export SUMMARY_PROMPT_DIR=./prompts
+export SUMMARY_PROMPT_TYPE=curated
+export SUMMARY_TEMPERATURE=0.2
+
 
 
 # =========================
