@@ -9,9 +9,10 @@ source .venv/bin/activate
 # =========================
 # LOGGING
 # =========================
-export LOG_LEVEL="DEBUG"
+#export LOG_LEVEL="DEBUG"
 #export LOG_LEVEL="MEDIUM"
-#export LOG_LEVEL="BASIC"
+export LOG_LEVEL="BASIC"
+export LOG_LEVEL="BASIC_PLAIN"
 
 export LOG_JSON=1
 

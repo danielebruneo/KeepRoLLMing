@@ -22,9 +22,12 @@ from .logger import (
     LOG_MODE,
     LOG_MODE_CHOICES,
     LOG_SNIP_CHARS,
+    classify_messages,
     extract_last_user_text,
     log,
     log_streaming_response,
+    summarize_request_payload,
+    summarize_response_payload,
     _snip_obj_active,
     snip_json,
 )
@@ -41,6 +44,24 @@ TOK = TokenCounter()
 LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
 
 MAX_SSE_BYTES = 8000  # capture only the first N bytes of SSE bodies for logging
+
+
+def _contains_archived_context(messages: List[Dict[str, Any]]) -> bool:
+    for m in messages:
+        if isinstance(m, dict) and m.get("role") == "system":
+            content = m.get("content")
+            if isinstance(content, str) and "[ARCHIVED_COMPACT_CONTEXT]" in content:
+                return True
+    return False
+
+
+def _is_tool_orchestration_payload(payload: Dict[str, Any], messages: List[Dict[str, Any]]) -> bool:
+    kind = classify_messages(messages)
+    if kind in {"web_search", "memory"}:
+        return True
+    if isinstance(payload.get("tools"), list) and payload.get("tools"):
+        return True
+    return any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
 
 
 @asynccontextmanager
@@ -72,7 +93,7 @@ async def chat_completions(req: Request) -> Response:
     stream = bool(payload.get("stream", False))
 
     last_user = extract_last_user_text(messages)
-    if LOG_MODE == "BASIC" and last_user:
+    if LOG_MODE in {"BASIC", "BASIC_PLAIN"} and last_user:
         log("INFO", "conv_user", req_id=req_id, text=last_user)
 
     ctx_eff = await get_ctx_len_for_model(upstream_model)
@@ -89,8 +110,9 @@ async def chat_completions(req: Request) -> Response:
 
     did_summarize = False
     repacked_messages = messages
+    skip_summary_for_tools = _is_tool_orchestration_payload(payload, messages)
 
-    if (not is_passthrough) and plan.should:
+    if (not is_passthrough) and (not skip_summary_for_tools) and plan.should:
         # middle are the non-system messages between head and tail chosen by plan
         try:
             log(
@@ -144,6 +166,13 @@ async def chat_completions(req: Request) -> Response:
     upstream_payload["model"] = upstream_model
     upstream_payload["messages"] = repacked_messages
 
+    req_summary = summarize_request_payload(upstream_payload)
+    prompt_tokens_for_log = None
+    try:
+        prompt_tokens_for_log = TOK.count_messages(repacked_messages)
+    except Exception:
+        prompt_tokens_for_log = None
+
     log(
         "INFO",
         "upstream_req_repacked",
@@ -151,6 +180,8 @@ async def chat_completions(req: Request) -> Response:
         did_summarize=did_summarize,
         passthrough=is_passthrough,
         upstream_url=f"{UPSTREAM_BASE_URL}/v1/chat/completions",
+        prompt_tokens=prompt_tokens_for_log,
+        **req_summary,
         body_json=snip_json(upstream_payload),
     )
 
@@ -313,10 +344,13 @@ async def chat_completions(req: Request) -> Response:
                     else:
                         log(
                             "INFO",
-                            "conv_assistant",
+                            "response_stream_reconstructed",
                             req_id=req_id,
-                            text=_snip_obj_active(full_text, BASIC_SNIP_CHARS),
+                            upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                            elapsed_ms=elapsed_ms,
+                            usage=final_usage,
                             finish_reason=finish_reason,
+                            assistant_text=_snip_obj_active(full_text, BASIC_SNIP_CHARS),
                         )
                 except Exception as _e:
                     log("WARN", "stream_reconstruct_log_failed", req_id=req_id, err=str(_e))
@@ -346,6 +380,7 @@ async def chat_completions(req: Request) -> Response:
             return JSONResponse({"error": {"message": "Upstream error", "details": r.text}}, status_code=r.status_code)
 
         data = r.json()
+        resp_summary = summarize_response_payload(data)
         if LOG_MODE == "DEBUG":
             log(
                 "INFO",
@@ -369,17 +404,14 @@ async def chat_completions(req: Request) -> Response:
                 data=_snip_obj_active(data, LOG_SNIP_CHARS),
             )
         else:
-            assistant_text = None
-            try:
-                choices = data.get("choices")
-                if isinstance(choices, list) and choices:
-                    msg = choices[0].get("message") if isinstance(choices[0], dict) else None
-                    if isinstance(msg, dict) and isinstance(msg.get("content"), str):
-                        assistant_text = msg.get("content")
-            except Exception:
-                pass
-            if assistant_text:
-                log("INFO", "conv_assistant", req_id=req_id, text=_snip_obj_active(assistant_text, BASIC_SNIP_CHARS))
+            log(
+                "INFO",
+                "http_out",
+                req_id=req_id,
+                status=200,
+                elapsed_ms=round(elapsed_ms, 2),
+                **resp_summary,
+            )
         return JSONResponse(data, status_code=200)
     except Exception as e:
         elapsed_ms = (time.time() - t0) * 1000.0

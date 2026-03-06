@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import keeprollming.app as app_mod
+import keeprollming.logger as logger_mod
 
 
 class _FakeResponse:
@@ -177,3 +178,52 @@ def test_rolling_summary_trigger_repacked_messages(client, monkeypatch):
     # Ensure the inserted summary message is present
     joined = json.dumps(sent_msgs, ensure_ascii=False)
     assert "SOMMARIO-TEST" in joined
+
+def test_web_search_payload_does_not_trigger_summary(client, monkeypatch):
+    async def _boom(*args, **kwargs):
+        raise AssertionError("summarize_middle should not be called for tool orchestration payloads")
+
+    monkeypatch.setattr(app_mod, "summarize_middle", _boom)
+
+    long_text = "z" * 5000
+    resp = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/main",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "# `web_search`:\nExecute immediately without preface.",
+                },
+                {"role": "user", "content": [{"type": "text", "text": long_text}]},
+                {"role": "tool", "name": "web_search", "tool_call_id": "t1", "content": "results"},
+            ],
+            "max_tokens": 64,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    fake = _get_fake_upstream()
+    assert fake.last_post_json is not None
+    sent_msgs = fake.last_post_json["messages"]
+    joined = json.dumps(sent_msgs, ensure_ascii=False)
+    assert "[ARCHIVED_COMPACT_CONTEXT]" not in joined
+
+
+def test_basic_plain_logs_show_relevant_flow(client, monkeypatch, capsys):
+    monkeypatch.setattr(app_mod, "LOG_MODE", "BASIC_PLAIN")
+    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
+
+    resp = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "messages": [{"role": "user", "content": "ciao orchestrator"}],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    out = capsys.readouterr().out
+    assert "USER: ciao orchestrator" in out
+    assert "CALL kind=chat" in out
+    assert "RESULT model=qwen2.5-3b-instruct" in out
