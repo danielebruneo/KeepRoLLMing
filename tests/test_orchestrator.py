@@ -83,15 +83,16 @@ class _FakeAsyncClient:
             },
         )
 
-    def stream(self, method: str, url: str, payload: Dict[str, Any]) -> _FakeStreamCtx:
+    def stream(self, method: str, url: str, json: Dict[str, Any] = None, payload: Dict[str, Any] = None) -> _FakeStreamCtx:
         assert method == "POST"
+        body = json if json is not None else payload
         self.last_stream_url = url
-        self.last_stream_json = payload
+        self.last_stream_json = body
         evt = {
             "id": "x",
             "object": "chat.completion.chunk",
             "created": 0,
-            "model": str(payload.get("model", "m")),
+            "model": str(body.get("model", "m")),
             "choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": None}],
         }
         chunks = [
@@ -194,11 +195,11 @@ def test_rolling_summary_trigger_repacked_messages(client, monkeypatch):
     joined = json.dumps(sent_msgs, ensure_ascii=False)
     assert "SOMMARIO-TEST" in joined
 
-def test_web_search_payload_does_not_trigger_summary(client, monkeypatch):
-    async def _boom(*args, **kwargs):
-        raise AssertionError("summarize_middle should not be called for tool orchestration payloads")
+def test_web_search_payload_can_still_trigger_summary(client, monkeypatch):
+    async def _fake_summary(_middle, **kwargs):
+        return "WEB-SUMMARY"
 
-    monkeypatch.setattr(app_mod, "summarize_middle", _boom)
+    monkeypatch.setattr(app_mod, "summarize_middle", _fake_summary)
 
     long_text = "z" * 5000
     resp = client.post(
@@ -211,8 +212,11 @@ def test_web_search_payload_does_not_trigger_summary(client, monkeypatch):
                     "content": "# `web_search`:\nExecute immediately without preface.",
                 },
                 {"role": "user", "content": [{"type": "text", "text": long_text}]},
+                {"role": "assistant", "content": "ack"},
                 {"role": "tool", "name": "web_search", "tool_call_id": "t1", "content": "results"},
+                {"role": "user", "content": "final question"},
             ],
+            "tools": [{"type": "function", "function": {"name": "web_search", "parameters": {}}}],
             "max_tokens": 64,
         },
     )
@@ -222,8 +226,8 @@ def test_web_search_payload_does_not_trigger_summary(client, monkeypatch):
     assert fake.last_post_json is not None
     sent_msgs = fake.last_post_json["messages"]
     joined = json.dumps(sent_msgs, ensure_ascii=False)
-    assert "[ARCHIVED_COMPACT_CONTEXT]" not in joined
-
+    assert "[ARCHIVED_COMPACT_CONTEXT]" in joined
+    assert "WEB-SUMMARY" in joined
 
 def test_basic_plain_logs_show_relevant_flow(client, monkeypatch, capsys):
     monkeypatch.setattr(app_mod, "LOG_MODE", "BASIC_PLAIN")
@@ -579,28 +583,6 @@ async def test_summary_middle_overflow_chunks(monkeypatch):
     assert len(calls) >= 2
 
 
-
-
-@pytest.mark.asyncio
-async def test_summary_middle_preflight_ctx_overflow_chunks_without_nameerror(monkeypatch):
-    import keeprollming.rolling_summary as rs
-
-    calls = []
-
-    async def fake_request(body):
-        calls.append(body)
-        return {"choices": [{"message": {"content": "SUMMARY OK"}}], "usage": {}}
-
-    async def fake_get_ctx(_model):
-        return 4096
-
-    monkeypatch.setattr(rs, '_request_summary_completion', fake_request)
-    monkeypatch.setattr(rs, 'get_ctx_len_for_model', fake_get_ctx)
-
-    msgs = [{"role": "user", "content": "A" * 12000}, {"role": "assistant", "content": "B" * 12000}]
-    out = await rs.summarize_middle(msgs, req_id='r-preflight', summary_model='sum-model')
-    assert out == 'SUMMARY OK'
-    assert len(calls) >= 1
 def test_cache_append_preserves_first_user_raw(client, monkeypatch, tmp_path):
     async def _fake_summary(_middle, **kwargs):
         return "COMPACT"
@@ -628,94 +610,29 @@ def test_cache_append_preserves_first_user_raw(client, monkeypatch, tmp_path):
     assert first_user_idx < archived_idx
 
 
-@pytest.mark.asyncio
-async def test_summary_middle_overflow_error_payload_chunks(monkeypatch):
-    import keeprollming.rolling_summary as rs
-
-    calls = []
-
-    async def fake_request(body):
-        calls.append(body)
-        if len(calls) == 1:
-            return {
-                "error": {
-                    "details": {
-                        "response": {
-                            "error": {
-                                "code": 400,
-                                "message": "request (4473 tokens) exceeds the available context size (4096 tokens), try increasing it",
-                                "n_ctx": 4096,
-                                "n_prompt_tokens": 4473,
-                                "type": "exceed_context_size_error",
-                            }
-                        },
-                        "status_code": 400,
-                    },
-                    "message": "llama-server request failed",
-                    "type": "backend_error",
-                }
-            }
-        return {"choices": [{"message": {"content": "SUMMARY OK"}}], "usage": {}}
-
-    async def fake_get_ctx(_model):
-        return 4096
-
-    monkeypatch.setattr(rs, '_request_summary_completion', fake_request)
-    monkeypatch.setattr(rs, 'get_ctx_len_for_model', fake_get_ctx)
-
-    msgs = [{"role": "user", "content": "A" * 12000}, {"role": "assistant", "content": "B" * 12000}]
-    out = await rs.summarize_middle(msgs, req_id='r2', summary_model='sum-model')
-    assert out == 'SUMMARY OK'
-    assert len(calls) >= 2
-
-
-def test_cache_append_preserves_tail_window(client, monkeypatch, tmp_path):
-    monkeypatch.setattr(app_mod, 'SUMMARY_CACHE_DIR', str(tmp_path / 'summary_cache3'))
-
-    messages = [
-        {"role": "system", "content": "SYSTEM RULES"},
-        {"role": "user", "content": "FOUNDATIONAL USER PROMPT"},
-        {"role": "assistant", "content": "a1"},
-        {"role": "user", "content": "u2"},
-        {"role": "assistant", "content": "a3"},
-        {"role": "user", "content": "u4"},
-        {"role": "assistant", "content": "a5"},
-        {"role": "user", "content": "latest question"},
-    ]
-
-    from keeprollming.summary_cache import make_cache_entry, save_cache_entry, conversation_fingerprint
-    _sys, non_system = app_mod.split_messages(messages)
-    fp = conversation_fingerprint(messages=messages, n_head=1)
-    entry = make_cache_entry(
-        fingerprint=fp,
-        start_idx=1,
-        end_idx=len(non_system) - 2,
-        messages=non_system,
-        summary_text='COMPACT',
-        summary_model='sum-model',
-        token_estimate=10,
-        source_mode='cache_append_initial',
+def test_parse_captured_sse_text_handles_crlf_and_finish_reason():
+    evt1 = {
+        "id": "x",
+        "object": "chat.completion.chunk",
+        "created": 0,
+        "model": "demo",
+        "choices": [{"index": 0, "delta": {"content": "hello "}, "finish_reason": None}],
+    }
+    evt2 = {
+        "id": "x",
+        "object": "chat.completion.chunk",
+        "created": 0,
+        "model": "demo",
+        "choices": [{"index": 0, "delta": {"content": "world"}, "finish_reason": "length"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 64, "total_tokens": 74},
+    }
+    sse_text = (
+        "data: " + json.dumps(evt1) + "\r\n\r\n"
+        + "data: " + json.dumps(evt2) + "\r\n\r\n"
+        + "data: [DONE]\r\n\r\n"
     )
-    save_cache_entry(str(tmp_path / 'summary_cache3'), entry)
-
-    resp = client.post('/v1/chat/completions', json={"model": "local/main", "messages": messages})
-    assert resp.status_code == 200, resp.text
-    fake = _get_fake_upstream()
-    sent = fake.last_post_json['messages']
-    joined = json.dumps(sent, ensure_ascii=False)
-    assert 'u4' in joined
-    assert 'a5' in joined
-    assert 'latest question' in joined
-
-
-def test_repacked_messages_are_flattened_for_upstream(client):
-    messages = [
-        {"role": "system", "content": "rules"},
-        {"role": "user", "content": [{"type": "text", "text": "hello"}]},
-    ]
-    resp = client.post('/v1/chat/completions', json={"model": "local/main", "messages": messages})
-    assert resp.status_code == 200, resp.text
-    fake = _get_fake_upstream()
-    sent = fake.last_post_json['messages']
-    assert isinstance(sent[-1]['content'], str)
-    assert sent[-1]['content'] == 'hello'
+    text, finish_reason, usage, events = app_mod._parse_captured_sse_text(sse_text)
+    assert text == "hello world"
+    assert finish_reason == "length"
+    assert usage == {"prompt_tokens": 10, "completion_tokens": 64, "total_tokens": 74}
+    assert events == 2

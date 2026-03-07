@@ -197,6 +197,8 @@ def _should_log(msg: str) -> bool:
         "summary_consolidate",
         "repacked",
         "summary_failed_fallback_passthrough",
+        "summary_bypassed",
+        "max_tokens_clamped",
         "proxy_exception",
         "upstream_http_error",
         "upstream_http_error_stream",

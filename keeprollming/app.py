@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
@@ -63,6 +64,52 @@ LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
 MAX_SSE_BYTES = 8000  # capture only the first N bytes of SSE bodies for logging
 
 
+def _parse_captured_sse_text(sse_text: str) -> tuple[str, str | None, dict | None, int]:
+    assistant_parts: list[str] = []
+    finish_reason: str | None = None
+    final_usage: dict | None = None
+    event_count = 0
+    buf = sse_text
+    while True:
+        m_sep = re.search(r"\r?\n\r?\n", buf)
+        if not m_sep:
+            break
+        block = buf[:m_sep.start()]
+        buf = buf[m_sep.end():]
+        data_lines = []
+        for line in block.splitlines():
+            line = line.rstrip("\r")
+            if line.startswith("data:"):
+                data_lines.append(line[5:].lstrip())
+        if not data_lines:
+            continue
+        payload_sse = "\n".join(data_lines).strip()
+        if not payload_sse or payload_sse == "[DONE]":
+            continue
+        event_count += 1
+        try:
+            obj = json.loads(payload_sse)
+        except Exception:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if isinstance(obj.get("usage"), dict):
+            final_usage = obj.get("usage")
+        choices = obj.get("choices")
+        if isinstance(choices, list) and choices:
+            c0 = choices[0] if isinstance(choices[0], dict) else None
+            if isinstance(c0, dict):
+                for candidate in (c0.get("delta"), c0.get("message")):
+                    if isinstance(candidate, dict):
+                        piece = candidate.get("content")
+                        if isinstance(piece, str) and piece:
+                            assistant_parts.append(piece)
+                fr = c0.get("finish_reason")
+                if isinstance(fr, str) and fr:
+                    finish_reason = fr
+    return "".join(assistant_parts).strip(), finish_reason, final_usage, event_count
+
+
 def _contains_archived_context(messages: List[Dict[str, Any]]) -> bool:
     for m in messages:
         if isinstance(m, dict) and m.get("role") == "system":
@@ -74,11 +121,9 @@ def _contains_archived_context(messages: List[Dict[str, Any]]) -> bool:
 
 def _is_tool_orchestration_payload(payload: Dict[str, Any], messages: List[Dict[str, Any]]) -> bool:
     kind = classify_messages(messages)
-    if kind in {"web_search", "memory"}:
-        return True
-    if isinstance(payload.get("tools"), list) and payload.get("tools"):
-        return True
-    return any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
+    # Memory-management payloads should not carry archived compact context,
+    # but tool-enabled chat / web-search requests still benefit from history compaction.
+    return kind == "memory"
 
 
 def _count_tokens_safe(messages: List[Dict[str, Any]]) -> int | None:
@@ -86,36 +131,6 @@ def _count_tokens_safe(messages: List[Dict[str, Any]]) -> int | None:
         return TOK.count_messages(messages)
     except Exception:
         return None
-
-
-def _normalize_content_to_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                txt = item.get("text")
-                if isinstance(txt, str) and txt:
-                    parts.append(txt)
-        return "\n".join(parts).strip()
-    return ""
-
-
-def _flatten_messages_for_upstream(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    flattened: list[Dict[str, Any]] = []
-    changed = False
-    for msg in messages:
-        if not isinstance(msg, dict):
-            flattened.append(msg)
-            continue
-        content = msg.get("content")
-        if isinstance(content, list):
-            changed = True
-            flattened.append({**msg, "content": _normalize_content_to_text(content)})
-        else:
-            flattened.append(msg)
-    return flattened if changed else messages
 
 
 def _clamp_max_out_for_ctx(requested_max_tokens: Any, ctx_eff: int) -> int:
@@ -132,7 +147,6 @@ def _try_cache_append_repack(
     user_id: str = "",
     conv_id: str = "",
     pinned_head_n: int = 0,
-    tail_n: int = 0,
 ) -> tuple[list[Dict[str, Any]] | None, int, str | None, object | None]:
     _sys_msg, non_system = split_messages(messages)
     if not SUMMARY_CACHE_ENABLED or not non_system:
@@ -146,23 +160,18 @@ def _try_cache_append_repack(
         log("INFO", "summary_cache_miss", req_id=req_id, fingerprint=fingerprint)
         return None, -1, fingerprint, None
 
-    effective_covered_end_idx = best.end_idx
-    if non_system and tail_n > 0:
-        max_summary_end = max(pinned_head_n - 1, len(non_system) - tail_n - 1)
-        effective_covered_end_idx = min(best.end_idx, max_summary_end)
-
     append_until_idx = choose_append_until_idx(
         tok=TOK,
         original=messages,
         summary_text=best.summary_text,
-        covered_end_idx=effective_covered_end_idx,
+        covered_end_idx=best.end_idx,
         threshold=threshold,
         pinned_head_n=pinned_head_n,
     )
     repacked = build_messages_from_summary_prefix(
         messages,
         summary_text=best.summary_text,
-        covered_end_idx=effective_covered_end_idx,
+        covered_end_idx=best.end_idx,
         append_until_idx=append_until_idx,
         pinned_head_n=pinned_head_n,
     )
@@ -171,9 +180,8 @@ def _try_cache_append_repack(
         "summary_cache_hit",
         req_id=req_id,
         fingerprint=fingerprint,
-        range=f"{best.start_idx}..{best.end_idx}",
-        effective_covered_end_idx=effective_covered_end_idx,
-        appended_raw=max(0, append_until_idx - effective_covered_end_idx),
+        range=f"0..{best.end_idx}",
+        appended_raw=max(0, append_until_idx - best.end_idx),
         final_last_idx=append_until_idx,
     )
     return repacked, append_until_idx, fingerprint, best
@@ -239,6 +247,13 @@ async def chat_completions(req: Request) -> Response:
     repacked_messages = messages
     skip_summary_for_tools = _is_tool_orchestration_payload(payload, messages)
 
+    if is_passthrough:
+        log("INFO", "summary_bypassed", req_id=req_id, reason="passthrough_model")
+    elif skip_summary_for_tools:
+        log("INFO", "summary_bypassed", req_id=req_id, reason="memory_payload")
+    elif not plan.should:
+        log("INFO", "summary_bypassed", req_id=req_id, reason=plan.reason, prompt_tok_est=plan.prompt_tok_est, threshold=plan.threshold)
+
     if (not is_passthrough) and (not skip_summary_for_tools) and plan.should:
         try:
             log(
@@ -264,7 +279,6 @@ async def chat_completions(req: Request) -> Response:
                     user_id=user_id,
                     conv_id=conv_id,
                     pinned_head_n=pinned_head_n,
-                    tail_n=plan.tail_n,
                 )
                 _sys_msg, non_system = split_messages(messages)
                 if cache_repacked is not None and append_until_idx >= len(non_system) - 1:
@@ -376,7 +390,7 @@ async def chat_completions(req: Request) -> Response:
 
     upstream_payload = dict(payload)
     upstream_payload["model"] = upstream_model
-    upstream_payload["messages"] = _flatten_messages_for_upstream(repacked_messages)
+    upstream_payload["messages"] = repacked_messages
 
     prompt_tokens_for_log = None
     try:
@@ -386,7 +400,19 @@ async def chat_completions(req: Request) -> Response:
 
     max_tokens_upstream = max(64, int(ctx_eff) - int(prompt_tokens_for_log or 0) - int(SAFETY_MARGIN_TOK))
     requested_out = int(max_tokens_req) if isinstance(max_tokens_req, int) and max_tokens_req > 0 else 900
-    upstream_payload["max_tokens"] = min(requested_out, max_tokens_upstream)
+    adjusted_out = min(requested_out, max_tokens_upstream)
+    upstream_payload["max_tokens"] = adjusted_out
+    if adjusted_out < requested_out:
+        log(
+            "WARN",
+            "max_tokens_clamped",
+            req_id=req_id,
+            requested=requested_out,
+            adjusted=adjusted_out,
+            ctx_len=ctx_eff,
+            prompt_tokens=prompt_tokens_for_log,
+            safety_margin=SAFETY_MARGIN_TOK,
+        )
 
     req_summary = summarize_request_payload(upstream_payload)
 
@@ -447,11 +473,11 @@ async def chat_completions(req: Request) -> Response:
 
                         # Drain complete SSE blocks separated by blank line
                         while True:
-                            sep = sse_buf.find("\n\n")
-                            if sep == -1:
+                            m_sep = re.search(r"\r?\n\r?\n", sse_buf)
+                            if not m_sep:
                                 break
-                            block = sse_buf[:sep]
-                            sse_buf = sse_buf[sep + 2:]
+                            block = sse_buf[:m_sep.start()]
+                            sse_buf = sse_buf[m_sep.end():]
 
                             data_lines = []
                             for line in block.splitlines():
@@ -488,6 +514,11 @@ async def chat_completions(req: Request) -> Response:
                                     delta = c0.get("delta")
                                     if isinstance(delta, dict):
                                         piece = delta.get("content")
+                                        if isinstance(piece, str) and piece:
+                                            assistant_parts.append(piece)
+                                    msg_obj = c0.get("message")
+                                    if isinstance(msg_obj, dict):
+                                        piece = msg_obj.get("content")
                                         if isinstance(piece, str) and piece:
                                             assistant_parts.append(piece)
                                     fr = c0.get("finish_reason")
@@ -532,6 +563,16 @@ async def chat_completions(req: Request) -> Response:
                 # NEW: reconstructed full assistant message (clear log, not snipped)
                 try:
                     full_text = "".join(assistant_parts).strip()
+                    if (not full_text or finish_reason is None or final_usage is None) and captured:
+                        parsed_text, parsed_finish, parsed_usage, parsed_events = _parse_captured_sse_text(captured.decode("utf-8", errors="replace"))
+                        if parsed_text and not full_text:
+                            full_text = parsed_text
+                        if parsed_finish and finish_reason is None:
+                            finish_reason = parsed_finish
+                        if parsed_usage and final_usage is None:
+                            final_usage = parsed_usage
+                        if parsed_events and stream_event_count == 0:
+                            stream_event_count = parsed_events
                     if LOG_MODE == "DEBUG":
                         log(
                             "INFO",

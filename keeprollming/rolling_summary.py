@@ -551,51 +551,6 @@ def render_messages_for_summary(messages: List[Dict[str, Any]], max_chars: int =
     return "\n".join(lines)
 
 
-class SummaryContextOverflow(RuntimeError):
-    pass
-
-
-def _extract_error_text_from_payload(data: Dict[str, Any]) -> str:
-    try:
-        if isinstance(data, dict):
-            err = data.get("error")
-            if isinstance(err, dict):
-                details = err.get("details")
-                if isinstance(details, dict):
-                    response = details.get("response")
-                    if isinstance(response, dict):
-                        inner = response.get("error")
-                        if isinstance(inner, dict):
-                            msg = inner.get("message")
-                            if isinstance(msg, str) and msg.strip():
-                                return msg
-                    msg = details.get("message")
-                    if isinstance(msg, str) and msg.strip():
-                        return msg
-                msg = err.get("message")
-                if isinstance(msg, str) and msg.strip():
-                    return msg
-            msg = data.get("message")
-            if isinstance(msg, str) and msg.strip():
-                return msg
-    except Exception:
-        pass
-    return ""
-
-
-def _summary_request_threshold(summary_model_ctx: int) -> int:
-    return max(256, int(summary_model_ctx) - int(SUMMARY_MAX_TOKENS) - int(SAFETY_MARGIN_TOK))
-
-
-def _summary_body_exceeds_ctx(body: Dict[str, Any], *, summary_model_ctx: int) -> bool:
-    try:
-        est = _estimate_tokens_for_msgs(TokenCounter(), body.get("messages") or [])
-    except Exception:
-        return False
-    return est > _summary_request_threshold(summary_model_ctx)
-
-
-
 # ---------------------------------------------------------------------
 # Summary call
 # ---------------------------------------------------------------------
@@ -620,8 +575,6 @@ def _extract_backend_ctx_error_message(err: Exception) -> str:
 
 
 def _is_context_overflow_error(err: Exception) -> bool:
-    if isinstance(err, SummaryContextOverflow):
-        return True
     txt = _extract_backend_ctx_error_message(err).lower()
     return ("context" in txt and ("exceed" in txt or "available context size" in txt or "n_ctx" in txt))
 
@@ -667,25 +620,6 @@ def _split_oversized_message(msg: Dict[str, Any], max_chars: int) -> List[Dict[s
     return [msg]
 
 
-
-
-def _force_split_summary_chunks(messages: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
-    """Guarantee progress when token estimation underestimates and normal chunking returns one oversized chunk."""
-    if not messages:
-        return [[]]
-    if len(messages) >= 2:
-        mid = max(1, len(messages) // 2)
-        return [messages[:mid], messages[mid:]]
-
-    msg = messages[0]
-    pieces = _split_oversized_message(msg, max_chars=max(200, len(str(msg.get("content", ""))) // 2))
-    if len(pieces) >= 2:
-        return [[piece] for piece in pieces]
-    content = msg.get("content", "")
-    if isinstance(content, str) and len(content) >= 2:
-        mid = len(content) // 2
-        return [[{**msg, "content": content[:mid]}], [{**msg, "content": content[mid:]}]]
-    return [messages]
 def _chunk_messages_for_summary(
     messages: List[Dict[str, Any]],
     *,
@@ -751,17 +685,10 @@ async def _summarize_middle_core(
         "max_tokens": SUMMARY_MAX_TOKENS,
         "stream": False,
     }
-    summary_ctx = await get_ctx_len_for_model(summary_model)
-    if _summary_body_exceeds_ctx(body, summary_model_ctx=summary_ctx):
-        raise SummaryContextOverflow(f"summary request exceeds summary model context ({summary_ctx})")
     log("INFO", "summary_req", req_id=req_id, summary_model=summary_model, summary_prompt_type=(prompt_type or SUMMARY_PROMPT_TYPE), middle_count=len(middle), transcript_chars=len(transcript), body_json=snip_json(body))
     t0 = time.time()
     data = await _request_summary_completion(body)
     elapsed_ms = (time.time() - t0) * 1000.0
-    err_text = _extract_error_text_from_payload(data)
-    if err_text and ("context" in err_text.lower() and ("exceed" in err_text.lower() or "available context size" in err_text.lower() or "n_ctx" in err_text.lower())):
-        log("WARN", "summary_backend_context_overflow", req_id=req_id, summary_model=summary_model, err=err_text, raw_json=snip_json(data))
-        raise SummaryContextOverflow(err_text)
     try:
         summary = data["choices"][0]["message"]["content"]
     except Exception:
@@ -786,12 +713,10 @@ async def summarize_middle(
             raise
         summary_ctx = await get_ctx_len_for_model(summary_model)
         chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=summary_ctx)
-        if len(chunks) <= 1:
-            chunks = _force_split_summary_chunks(middle)
         log("WARN", "summary_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
         partials: List[str] = []
         for idx, chunk in enumerate(chunks, start=1):
-            partials.append(await summarize_middle(chunk, f"{req_id}-c{idx}", summary_model, prompt_type=prompt_type, lang_hint=lang_hint))
+            partials.append(await _summarize_middle_core(chunk, f"{req_id}-c{idx}", summary_model, prompt_type=prompt_type, lang_hint=lang_hint))
         merge_messages = [{"role": "user", "content": f"[PARTIAL SUMMARY {i}]\n{s}"} for i, s in enumerate(partials, start=1)]
         if len(merge_messages) == 1:
             return partials[0]
@@ -821,17 +746,10 @@ async def _summarize_incremental_core(
         "max_tokens": SUMMARY_MAX_TOKENS,
         "stream": False,
     }
-    summary_ctx = await get_ctx_len_for_model(summary_model)
-    if _summary_body_exceeds_ctx(body, summary_model_ctx=summary_ctx):
-        raise SummaryContextOverflow(f"incremental summary request exceeds summary model context ({summary_ctx})")
     log("INFO", "summary_req", req_id=req_id, summary_model=summary_model, summary_prompt_type="incremental", middle_count=len(new_messages), transcript_chars=len(user), body_json=snip_json(body))
     t0 = time.time()
     data = await _request_summary_completion(body)
     elapsed_ms = (time.time() - t0) * 1000.0
-    err_text = _extract_error_text_from_payload(data)
-    if err_text and ("context" in err_text.lower() and ("exceed" in err_text.lower() or "available context size" in err_text.lower() or "n_ctx" in err_text.lower())):
-        log("WARN", "summary_backend_context_overflow", req_id=req_id, summary_model=summary_model, err=err_text, raw_json=snip_json(data))
-        raise SummaryContextOverflow(err_text)
     try:
         summary = data["choices"][0]["message"]["content"]
     except Exception:
@@ -856,12 +774,10 @@ async def summarize_incremental(
             raise
         summary_ctx = await get_ctx_len_for_model(summary_model)
         chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=summary_ctx, incremental_existing_summary=existing_summary)
-        if len(chunks) <= 1:
-            chunks = _force_split_summary_chunks(new_messages)
         log("WARN", "summary_incremental_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
         current = existing_summary
         for idx, chunk in enumerate(chunks, start=1):
-            current = await summarize_incremental(current, chunk, f"{req_id}-c{idx}", summary_model, lang_hint=lang_hint)
+            current = await _summarize_incremental_core(current, chunk, f"{req_id}-c{idx}", summary_model, lang_hint=lang_hint)
         return current
 
 

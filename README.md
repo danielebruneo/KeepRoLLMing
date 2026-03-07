@@ -1,6 +1,7 @@
 # Keeprollming Orchestrator
 
-A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (LM Studio, llama.cpp server, Lemonade, etc.) and adds rolling-summary support to avoid context overflow.
+A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio)
+and adds **rolling-summary** support to avoid context overflow.
 
 ## Features
 
@@ -10,50 +11,9 @@ A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible ba
   - `local/main`
   - `local/deep`
 - Passthrough mode:
-  - `pass/<BACKEND_MODEL_NAME>`
+  - `pass/<BACKEND_MODEL_NAME>` (routes directly, **no summarization**)
 - Streaming proxy (SSE) support
-- Summary cache on disk
 - Best-effort token accounting
-- Plain-text and structured logging modes
-
-## Rolling summary flow
-
-The default summary mode is `cache_append`.
-
-When the prompt would exceed the main model budget, the orchestrator tries to preserve the conversation like this:
-
-1. Keep the base `system` prompt raw.
-2. Keep the first `user` message raw.
-3. Keep the recent tail raw.
-4. Compress only the middle portion into `[ARCHIVED_COMPACT_CONTEXT]`.
-5. Reuse a cached compact context from disk when possible.
-6. Rebuild the compact context incrementally only when needed.
-
-This avoids relying entirely on the summary model for foundational prompt instructions.
-
-## Summary cache flow
-
-The cache stores compact summaries on disk and tries to match them back to the same conversation.
-
-Priority order:
-
-- LibreChat headers when available:
-  - `x-librechat-user-id`
-  - `x-librechat-conversation-id`
-- Fallback fingerprint when those headers are not available.
-
-The cache stores which non-system range was compacted and validates that range against the current message history before reusing it.
-
-## Oversized summary requests
-
-If the summary request itself would exceed the summary model context, the orchestrator now handles it in two ways:
-
-- **Preflight check**: estimate the summary prompt size before sending it upstream.
-- **Backend overflow detection**: if the backend returns a JSON error payload such as `request (...) exceeds the available context size (...)`, chunking is triggered automatically.
-
-For large conversations, the orchestrator chunks the summary input, produces partial summaries, then merges them into a final compact context.
-
-The same logic also applies to incremental summary rebuilds.
 
 ## Run
 
@@ -61,13 +21,9 @@ The same logic also applies to incremental summary rebuilds.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+export UPSTREAM_BASE_URL="http://127.0.0.1:1234"   # LM Studio base (no /v1)
 uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
-```
-
-Or use the bundled launcher:
-
-```bash
-bash run.sh
 ```
 
 Then call:
@@ -78,49 +34,82 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
 ```
 
-## Main configuration
-
-### Backend
-
-- `UPSTREAM_BASE_URL`
-- `MAIN_MODEL`, `SUMMARY_MODEL`
-- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
-- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
-- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
-
-### Context / summary
-
-- `DEFAULT_CTX_LEN`
-- `SUMMARY_MAX_TOKENS`
-- `SAFETY_MARGIN_TOK`
-- `MAX_HEAD`, `MAX_TAIL`
-- `SUMMARY_MODE`
-- `SUMMARY_TEMPERATURE`
-- `SUMMARY_PROMPT_DIR`
-- `SUMMARY_PROMPT_TYPE`
-
-### Summary cache
-
-- `SUMMARY_CACHE_ENABLED`
-- `SUMMARY_CACHE_DIR`
-- `SUMMARY_CACHE_FINGERPRINT_MSGS`
-- `SUMMARY_CONSOLIDATE_WHEN_NEEDED`
-- `SUMMARY_FORCE_CONSOLIDATE`
-
-## Notes
-
-- `MAX_HEAD` / `MAX_TAIL` still matter for classic rolling summary planning.
-- In `cache_append`, the effective preservation policy is:
-  - base `system` raw
-  - first `user` raw
-  - tail raw window
-  - compacted middle
-- Outgoing messages are flattened to plain text before being sent upstream, so multimodal-style `content: [{type:"text", ...}]` blocks do not break prompt templates expecting a plain user string.
-
 ## Tests
+
+Install dev requirements:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run:
 
 ```bash
 pytest
 ```
 
-The tests mock upstream calls; no live LM Studio instance is required.
+Notes:
+- Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
+
+## Configuration
+
+- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1` is accepted, but recommended to provide without `/v1`)
+- `MAIN_MODEL`, `SUMMARY_MODEL`
+- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
+- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
+- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
+- `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
+
+## Key components
+
+1. **FastAPI Application (`keeprollming/app.py`)**:
+   - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
+
+2. **Profiles**:
+   - Defined in `keeprollming/config.py` using a dataclass.
+   - Supports different profiles like `local/quick`, `local/main`, and `local/deep`.
+
+3. **Orchestrator Logic**:
+   - Handles token counting, message splitting, and summarization as needed.
+
+4. **Upstream Client (`keeprollming/upstream.py`)**:
+   - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
+
+5. **Testing Framework**:
+   - Uses `pytest` for testing.
+   - Mocks upstream calls in tests to avoid live LM Studio instances.
+
+6. **Configuration Management**:
+   - Environment variables like `UPSTREAM_BASE_URL`, `MAIN_MODEL`, etc., are used to configure the application.
+
+### Example Usage
+
+Here's an example of how you might use the Keeprollming Orchestrator:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+export UPSTREAM_BASE_URL="http://127.0.0.1:1234/v1"   # LM Studio base (no /v1)
+uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
+```
+
+Then, you can call the API:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
+```
+
+### Testing
+
+To run the tests, install dev requirements and execute:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+This setup ensures that the project is well-structured, with clear documentation and a robust testing framework to maintain code quality.
