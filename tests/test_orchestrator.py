@@ -1,4 +1,6 @@
 import json
+import tempfile
+from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Optional
 
 import pytest
@@ -50,6 +52,13 @@ class _FakeStreamCtx:
         return None
 
 
+
+
+def _async_return(value):
+    async def _inner(*args, **kwargs):
+        return value
+    return _inner
+
 class _FakeAsyncClient:
     def __init__(self) -> None:
         self.last_post_url: Optional[str] = None
@@ -93,7 +102,7 @@ class _FakeAsyncClient:
 
 
 @pytest.fixture
-def client(monkeypatch) -> TestClient:
+def client(monkeypatch, tmp_path) -> TestClient:
     # Ensure the app doesn't try to talk to a real upstream.
     fake = _FakeAsyncClient()
 
@@ -106,6 +115,12 @@ def client(monkeypatch) -> TestClient:
 
     monkeypatch.setattr(app_mod, "http_client", _fake_http_client)
     monkeypatch.setattr(app_mod, "get_ctx_len_for_model", _fake_ctx)
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
 
     # Expose fake client to tests
     monkeypatch.setattr(app_mod, "_TEST_FAKE_UPSTREAM", fake, raising=False)
@@ -253,7 +268,9 @@ def test_basic_plain_multiline_content_is_indented_and_colored(monkeypatch):
     assert "\x1b[" in rendered
     plain = logger_mod._strip_ansi(rendered)
     assert "┌─ REQUEST abc123" in plain
-    assert "│ RESULT model=demo-model elapsed_ms=12.3 usage=prompt=10, completion=20, total=30" in plain
+    assert "│ RESULT model=demo-model" in plain
+    assert "elapsed_ms=12.3" in plain
+    assert "usage=prompt=10, completion=20, total=30" in plain
     assert "│   assistant:" in plain
     assert "│     [line like markup]" in plain
     assert "└─ END abc123" in plain
@@ -299,3 +316,235 @@ def test_basic_plain_summary_reply_unescapes_newlines_and_keeps_indent(monkeypat
     assert "│   line one" in rendered
     assert "│   line two" in rendered
     assert "│   [line three]" in rendered
+
+
+def test_summary_cache_hit_skips_new_summary_call(client, monkeypatch):
+    calls = {"count": 0}
+
+    async def _fake_summary(*args, **kwargs):
+        calls["count"] += 1
+        return "PREFIX-SUMMARY"
+
+    async def _boom_incremental(*args, **kwargs):
+        raise AssertionError("incremental summary should not be called when cache+append fits")
+
+    monkeypatch.setattr(app_mod, "summarize_middle", _fake_summary)
+    monkeypatch.setattr(app_mod, "summarize_incremental", _boom_incremental)
+
+    messages = [
+        {"role": "user", "content": "A" * 1200},
+        {"role": "assistant", "content": "B" * 1200},
+        {"role": "user", "content": "C" * 300},
+    ]
+
+    resp1 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
+    assert resp1.status_code == 200, resp1.text
+    assert calls["count"] == 1
+
+    resp2 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
+    assert resp2.status_code == 200, resp2.text
+    assert calls["count"] == 1
+
+    fake = _get_fake_upstream()
+    sent_msgs = fake.last_post_json["messages"]
+    joined = json.dumps(sent_msgs, ensure_ascii=False)
+    assert "PREFIX-SUMMARY" in joined
+
+
+def test_summary_cache_consolidates_when_needed(client, monkeypatch):
+    calls = {"initial": 0, "incremental": 0}
+
+    async def _fake_summary(*args, **kwargs):
+        calls["initial"] += 1
+        return "SHORT-SUMMARY"
+
+    async def _fake_incremental(existing_summary, new_messages, **kwargs):
+        calls["incremental"] += 1
+        return existing_summary + "\nAI: merged"
+
+    monkeypatch.setattr(app_mod, "summarize_middle", _fake_summary)
+    monkeypatch.setattr(app_mod, "summarize_incremental", _fake_incremental)
+
+    first_messages = [
+        {"role": "user", "content": "A" * 1300},
+        {"role": "assistant", "content": "B" * 1300},
+        {"role": "user", "content": "C" * 200},
+    ]
+    resp1 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": first_messages})
+    assert resp1.status_code == 200, resp1.text
+
+    second_messages = first_messages + [
+        {"role": "assistant", "content": "D" * 1400},
+        {"role": "user", "content": "E" * 1400},
+    ]
+    resp2 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": second_messages})
+    assert resp2.status_code == 200, resp2.text
+    assert calls["incremental"] == 1
+
+    fake = _get_fake_upstream()
+    joined = json.dumps(fake.last_post_json["messages"], ensure_ascii=False)
+    assert "merged" in joined
+
+
+def test_basic_plain_highlights_ai_human_chunks(monkeypatch):
+    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
+    monkeypatch.setattr(logger_mod, "LOG_PLAIN_COLORS", True)
+    monkeypatch.setattr(logger_mod, "_PLAIN_LAST_REQ_ID", None)
+    monkeypatch.setattr(logger_mod, "_PLAIN_CLOSED_REQ_IDS", set())
+
+    rendered = logger_mod._format_plain({
+        "msg": "summary_reply",
+        "req_id": "abc123",
+        "elapsed_ms": 1.0,
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        "summary_snip": "Human: hello\nAI: hi there",
+    })
+
+    assert "\x1b[" in rendered
+    plain = logger_mod._strip_ansi(rendered)
+    assert "Human: hello" in plain
+    assert "AI: hi there" in plain
+
+
+def test_repacked_keeps_latest_user_when_consolidated(monkeypatch, client):
+    async def _fake_summary(*args, **kwargs):
+        return "SUMMARY"
+
+    async def _fake_incremental(existing_summary, new_messages, **kwargs):
+        return existing_summary + "\nUPDATED"
+
+    monkeypatch.setattr(app_mod, "summarize_middle", _fake_summary)
+    monkeypatch.setattr(app_mod, "summarize_incremental", _fake_incremental)
+
+    long_text = "y" * 4000
+    messages = [
+        {"role": "user", "content": long_text},
+        {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": long_text},
+        {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": long_text},
+        {"role": "assistant", "content": "a3"},
+    ]
+
+    resp1 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
+    assert resp1.status_code == 200
+
+    messages2 = messages + [{"role": "user", "content": "ultima domanda"}]
+    resp2 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages2})
+    assert resp2.status_code == 200
+
+    fake = _get_fake_upstream()
+    assert fake.last_post_json is not None
+    sent_msgs = fake.last_post_json["messages"]
+    assert any(m.get("role") == "user" for m in sent_msgs)
+    assert sent_msgs[-1].get("role") == "user"
+    assert sent_msgs[-1].get("content") == "ultima domanda"
+
+
+def test_basic_plain_wraps_long_lines(monkeypatch, capsys):
+    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
+    monkeypatch.setattr(logger_mod, "LOG_PLAIN_COLORS", False)
+    monkeypatch.setattr(logger_mod, "LOG_PLAIN_WRAP_WIDTH", 50)
+    monkeypatch.setattr(logger_mod, "_PLAIN_LAST_REQ_ID", None)
+    monkeypatch.setattr(logger_mod, "_PLAIN_CLOSED_REQ_IDS", set())
+
+    logger_mod.log("INFO", "conv_user", req_id="wraptest", text="AI: " + ("x " * 40))
+    out = capsys.readouterr().out
+    assert "┌─ REQUEST wraptest" in out
+    assert "│   AI:" in out
+    assert out.count("│   ") >= 2
+
+
+
+def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(monkeypatch, tmp_path):
+    from keeprollming import app as app_mod
+
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "u0"},
+        {"role": "assistant", "content": "a0"},
+        {"role": "user", "content": "u1"},
+    ]
+
+    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
+    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(app_mod, "get_ctx_len_for_model", _async_return(2000))
+
+    fp = app_mod.conversation_fingerprint(messages, 1)
+    entry = app_mod.make_cache_entry(
+        fingerprint=fp,
+        start_idx=0,
+        end_idx=1,
+        messages=[m for m in messages if m["role"] != "system"],
+        summary_text="cached summary",
+        summary_model="sum-model",
+        token_estimate=10,
+        source_mode="test",
+    )
+    app_mod.save_cache_entry(str(tmp_path / "summary_cache"), entry)
+
+    async def _boom(*args, **kwargs):
+        raise AssertionError("incremental summary should not be called")
+
+    monkeypatch.setattr(app_mod, "summarize_incremental", _boom)
+
+    sent = {}
+
+    class _Resp:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return {"choices": [{"message": {"content": "ok"}}], "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}, "model": "main-model"}
+
+    class _Client:
+        async def post(self, url, json):
+            sent["payload"] = json
+            return _Resp()
+
+    monkeypatch.setattr(app_mod, "http_client", _async_return(_Client()))
+
+    payload = {"model": "local/deep", "messages": messages, "stream": False, "max_tokens": 2000}
+
+    import asyncio
+    from starlette.requests import Request
+
+    async def _call():
+        scope = {"type": "http", "method": "POST", "path": "/v1/chat/completions", "headers": [(b"content-type", b"application/json")]}
+        body = json.dumps(payload).encode()
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+        req = Request(scope, receive)
+        return await app_mod.chat_completions(req)
+
+    resp = asyncio.run(_call())
+    assert resp.status_code == 200
+    assert sent["payload"]["max_tokens"] < 2000
+    roles = [m["role"] for m in sent["payload"]["messages"]]
+    assert roles[-1] == "user"
+
+
+def test_sanitize_summary_text_removes_prompt_echo():
+    from keeprollming.rolling_summary import _sanitize_summary_text
+
+    raw = """=== EXISTING SUMMARY START ===
+[ARCHIVED_COMPACT_CONTEXT]
+EXTRACTION_SUMMARY_START
+hello
+[/EXTRACTION_SUMMARY_START]
+[/ARCHIVED_COMPACT_CONTEXT]
+=== EXISTING SUMMARY END ===
+
+=== NEW MESSAGES START ===
+USER: test
+=== NEW MESSAGES END ==="""
+    cleaned = _sanitize_summary_text(raw, fallback="fallback")
+    assert "NEW MESSAGES" not in cleaned
+    assert "ARCHIVED_COMPACT_CONTEXT" not in cleaned
+    assert "EXTRACTION_SUMMARY_START" not in cleaned
+    assert cleaned == "hello"

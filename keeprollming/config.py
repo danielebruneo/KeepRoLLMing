@@ -31,6 +31,13 @@ SAFETY_MARGIN_TOK = int(os.getenv("SAFETY_MARGIN_TOK", "128"))
 # Max chars for logging large payloads (input conversation, summary requests, etc.)
 LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
 
+SUMMARY_MODE = os.getenv("SUMMARY_MODE", "cache_append").strip().lower()
+SUMMARY_CACHE_ENABLED = os.getenv("SUMMARY_CACHE_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
+SUMMARY_CACHE_DIR = os.getenv("SUMMARY_CACHE_DIR", "./summary_cache")
+SUMMARY_CACHE_FINGERPRINT_MSGS = int(os.getenv("SUMMARY_CACHE_FINGERPRINT_MSGS", "1"))
+SUMMARY_FORCE_CONSOLIDATE = os.getenv("SUMMARY_FORCE_CONSOLIDATE", "0").strip().lower() in {"1", "true", "yes", "on"}
+SUMMARY_CONSOLIDATE_WHEN_NEEDED = os.getenv("SUMMARY_CONSOLIDATE_WHEN_NEEDED", "1").strip().lower() in {"1", "true", "yes", "on"}
+
 PASSTHROUGH_PREFIX = "pass/"
 
 

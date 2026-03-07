@@ -79,7 +79,8 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
     if cached and (now - cached[1]) < _CTX_TTL_SEC:
         return cached[0]
 
-    url = f"{UPSTREAM_BASE_URL}/api/v0/models"
+    #url = f"{UPSTREAM_BASE_URL}/api/v0/models"
+    url = f"{UPSTREAM_BASE_URL}/v0/models"
     try:
         client = await http_client()
         r = await client.get(url)

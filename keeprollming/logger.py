@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+import textwrap
 from typing import Any, Dict
 
 import httpx
@@ -24,6 +25,7 @@ LOG_SNIP_CHARS = int(os.getenv("LOG_SNIP_CHARS", "4000"))
 BASIC_SNIP_CHARS = int(os.getenv("BASIC_SNIP_CHARS", "0"))
 LOG_STREAM_CHUNKS = os.getenv("LOG_STREAM_CHUNKS", "0").strip().lower() in {"1", "true", "yes", "on"}
 LOG_PLAIN_COLORS = os.getenv("LOG_PLAIN_COLORS", "1").strip().lower() in {"1", "true", "yes", "on"}
+LOG_PLAIN_WRAP_WIDTH = int(os.getenv("LOG_PLAIN_WRAP_WIDTH", "80"))
 
 _PLAIN_LAST_REQ_ID: str | None = None
 _PLAIN_CLOSED_REQ_IDS: set[str] = set()
@@ -188,6 +190,11 @@ def _should_log(msg: str) -> bool:
         "summary_needed",
         "summary_req",
         "summary_reply",
+        "summary_cache_lookup",
+        "summary_cache_hit",
+        "summary_cache_miss",
+        "summary_cache_save",
+        "summary_consolidate",
         "repacked",
         "summary_failed_fallback_passthrough",
         "proxy_exception",
@@ -204,14 +211,47 @@ def _should_log(msg: str) -> bool:
     }
 
 
+def _highlight_speaker_chunk(line: str) -> str:
+    for speaker, color in (("AI:", ANSI_GREEN), ("Human:", ANSI_CYAN), ("USER:", ANSI_CYAN), ("ASSISTANT:", ANSI_GREEN)):
+        if line.startswith(speaker):
+            return _c(speaker, ANSI_BOLD, color) + line[len(speaker):]
+    return line
+
+
+def _wrap_plain_line(line: str, *, available_width: int) -> list[str]:
+    if available_width <= 0 or LOG_PLAIN_WRAP_WIDTH <= 0:
+        return [line]
+    if len(_strip_ansi(line)) <= available_width:
+        return [line]
+
+    speaker_prefix = ""
+    m = re.match(r"^(AI:|Human:|USER:|ASSISTANT:)(\s*)", line)
+    if m:
+        speaker_prefix = " " * len(_strip_ansi(m.group(0)))
+
+    wrapped = textwrap.wrap(
+        line,
+        width=available_width,
+        replace_whitespace=False,
+        drop_whitespace=False,
+        break_long_words=False,
+        break_on_hyphens=False,
+        subsequent_indent=speaker_prefix,
+    )
+    return wrapped or [line]
+
+
 def _indent_block(text: str | None, prefix: str = "│   ") -> str:
     if not text:
         return prefix.rstrip()
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     lines = text.split("\n")
-    return "\n".join(prefix + line for line in lines)
-
-
+    available_width = max(0, LOG_PLAIN_WRAP_WIDTH - len(_strip_ansi(prefix)))
+    out: list[str] = []
+    for line in lines:
+        for wrapped in _wrap_plain_line(line, available_width=available_width):
+            out.append(prefix + _highlight_speaker_chunk(wrapped))
+    return "\n".join(out)
 
 
 def _fmt_meta_item(key: str, value: Any) -> str:
@@ -311,7 +351,20 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         title_txt = _c(f"│ {title}", ANSI_BOLD, color)
         if meta:
             title_txt += " " + meta
-        parts.append(title_txt)
+        plain_title = _strip_ansi(title_txt)
+        if LOG_PLAIN_WRAP_WIDTH > 0 and len(plain_title) > LOG_PLAIN_WRAP_WIDTH:
+            wrapped = textwrap.wrap(
+                title_txt,
+                width=LOG_PLAIN_WRAP_WIDTH,
+                replace_whitespace=False,
+                drop_whitespace=False,
+                break_long_words=False,
+                break_on_hyphens=False,
+                subsequent_indent="│   ",
+            )
+            parts.extend(wrapped or [title_txt])
+        else:
+            parts.append(title_txt)
         if body is not None:
             parts.append(_indent_block(body))
 
@@ -342,6 +395,21 @@ def _format_plain(rec: Dict[str, Any]) -> str:
             usage=_fmt_usage(rec.get("usage")),
         )
         add_section("SUMMARY_REPLY", ANSI_MAGENTA, _normalize_summary_text(rec.get("summary_snip", "")), meta=meta)
+    elif msg == "summary_cache_lookup":
+        meta = _fmt_meta(fingerprint=rec.get("fingerprint"), candidates=rec.get("candidates"))
+        add_section("SUMMARY_CACHE_LOOKUP", ANSI_BLUE, meta=meta)
+    elif msg == "summary_cache_hit":
+        meta = _fmt_meta(fingerprint=rec.get("fingerprint"), range=rec.get("range"), appended_raw=rec.get("appended_raw"), final_last_idx=rec.get("final_last_idx"))
+        add_section("SUMMARY_CACHE_HIT", ANSI_GREEN, meta=meta)
+    elif msg == "summary_cache_miss":
+        meta = _fmt_meta(fingerprint=rec.get("fingerprint"))
+        add_section("SUMMARY_CACHE_MISS", ANSI_RED, meta=meta)
+    elif msg == "summary_cache_save":
+        meta = _fmt_meta(range=rec.get("range"), path=rec.get("path"))
+        add_section("SUMMARY_CACHE_SAVE", ANSI_BLUE, meta=meta)
+    elif msg == "summary_consolidate":
+        meta = _fmt_meta(range=rec.get("range"))
+        add_section("SUMMARY_CONSOLIDATE", ANSI_MAGENTA, meta=meta)
     elif msg == "upstream_req_repacked":
         kind = rec.get("kind", "chat")
         meta = _fmt_meta(
@@ -350,6 +418,7 @@ def _format_plain(rec: Dict[str, Any]) -> str:
             prompt_tokens=rec.get("prompt_tokens"),
             did_summarize=rec.get("did_summarize"),
             archived=rec.get("has_archived_context"),
+            max_tokens=rec.get("adjusted_max_tokens") or rec.get("max_tokens"),
         )
         add_section("CALL", ANSI_YELLOW, meta=meta)
         last_user = rec.get("last_user")

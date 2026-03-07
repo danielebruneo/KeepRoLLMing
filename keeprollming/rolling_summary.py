@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -240,6 +241,35 @@ def get_summary_system_prompt(prompt_type: Optional[str] = None) -> str:
         "You are a context compaction engine. "
         "Be faithful, compact, structured, and do not invent information."
     )
+
+
+def render_incremental_summary_prompt(
+    existing_summary: str,
+    new_messages: List[Dict[str, Any]],
+    *,
+    lang_hint: str = "italiano",
+) -> str:
+    transcript = render_messages_for_summary(new_messages)
+    return f"""Sei un assistente che aggiorna un riassunto di contesto per un altro modello.
+
+Obiettivo:
+integrare il riassunto esistente con i nuovi messaggi, preservando fatti, vincoli, decisioni, richieste e TODO ancora aperti.
+
+Regole:
+- non inventare
+- mantieni lingua coerente (preferisci {lang_hint})
+- sii compatto ma fedele
+- integra il nuovo contenuto nel summary esistente invece di limitarti ad accodarlo
+- restituisci solo il summary aggiornato
+
+=== EXISTING SUMMARY START ===
+{existing_summary}
+=== EXISTING SUMMARY END ===
+
+=== NEW MESSAGES START ===
+{transcript}
+=== NEW MESSAGES END ===
+"""
 
 
 @dataclass(frozen=True)
@@ -555,7 +585,7 @@ async def summarize_middle(
     except Exception:
         summary = ""
 
-    summary = (summary or "").strip() or "(Contesto compattato non disponibile.)"
+    summary = _sanitize_summary_text(summary, fallback="(Contesto compattato non disponibile.)") or "(Contesto compattato non disponibile.)"
 
     log(
         "INFO",
@@ -564,10 +594,97 @@ async def summarize_middle(
         elapsed_ms=round(elapsed_ms, 2),
         usage=data.get("usage"),
         summary_chars=len(summary),
-        summary_snip=snip_json(summary, max_chars=4000),
+        summary_snip=summary,
         raw_json=snip_json(data),
     )
     return summary
+
+
+async def summarize_incremental(
+    existing_summary: str,
+    new_messages: List[Dict[str, Any]],
+    req_id: str,
+    summary_model: str,
+    *,
+    lang_hint: str = "italiano",
+) -> str:
+    sys = (
+        "Sei un assistente che aggiorna un riassunto di contesto per un altro modello. "
+        "Non inventare nulla. Mantieni il risultato compatto e fedele."
+    )
+    user = render_incremental_summary_prompt(existing_summary, new_messages, lang_hint=lang_hint)
+    body = {
+        "model": summary_model,
+        "messages": [
+            {"role": "system", "content": sys},
+            {"role": "user", "content": user},
+        ],
+        "temperature": SUMMARY_TEMPERATURE,
+        "max_tokens": SUMMARY_MAX_TOKENS,
+        "stream": False,
+    }
+    log(
+        "INFO",
+        "summary_req",
+        req_id=req_id,
+        summary_model=summary_model,
+        summary_prompt_type="incremental",
+        middle_count=len(new_messages),
+        transcript_chars=len(user),
+        body_json=snip_json(body),
+    )
+    url = f"{UPSTREAM_BASE_URL}/v1/chat/completions"
+    t0 = time.time()
+    client = await http_client()
+    r = await client.post(url, json=body)
+    elapsed_ms = (time.time() - t0) * 1000.0
+    r.raise_for_status()
+    data = r.json()
+    try:
+        summary = data["choices"][0]["message"]["content"]
+    except Exception:
+        summary = ""
+    summary = _sanitize_summary_text(summary, fallback=existing_summary.strip() or "(Contesto compattato non disponibile.)") or existing_summary.strip() or "(Contesto compattato non disponibile.)"
+    log(
+        "INFO",
+        "summary_reply",
+        req_id=req_id,
+        elapsed_ms=round(elapsed_ms, 2),
+        usage=data.get("usage"),
+        summary_chars=len(summary),
+        summary_snip=summary,
+        raw_json=snip_json(data),
+    )
+    return summary
+
+
+def _sanitize_summary_text(text: str, *, fallback: str = "") -> str:
+    return text
+    out = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not out:
+        return (fallback or "").strip()
+
+    out = re.sub(r"=== NEW MESSAGES START ===.*?=== NEW MESSAGES END ===", "", out, flags=re.S)
+    out = out.replace("=== EXISTING SUMMARY START ===", "")
+    out = out.replace("=== EXISTING SUMMARY END ===", "")
+    out = out.replace("[ARCHIVED_COMPACT_CONTEXT]", "")
+    out = out.replace("[/ARCHIVED_COMPACT_CONTEXT]", "")
+
+    cleaned_lines: list[str] = []
+    for line in out.split("\n"):
+        s = line.strip()
+        if s in {
+            "EXTRACTION_SUMMARY_START",
+            "[EXTRACTION_SUMMARY_START]",
+            "[/EXTRACTION_SUMMARY_START]",
+            "[EXTRACTION_SUMMARY_END]",
+            "[/EXTRACTION_SUMMARY_END]",
+        }:
+            continue
+        cleaned_lines.append(line)
+    out = "\n".join(cleaned_lines).strip()
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out or (fallback or "").strip()
 
 
 # ---------------------------------------------------------------------
@@ -630,3 +747,83 @@ def build_repacked_messages(
 
     repacked.extend(tail)
     return repacked, middle
+
+
+def build_archived_summary_message(summary_text: str) -> Dict[str, Any]:
+    archived_block = (
+        "[ARCHIVED_COMPACT_CONTEXT]\n"
+        "The following block is a compressed reconstruction of earlier conversation content.\n"
+        "Treat it as authoritative context for continuity, decisions, constraints, facts and pending work.\n"
+        "Prefer this block over trying to infer missing older details from the recent tail alone.\n\n"
+        f"{summary_text.strip()}\n"
+        "[/ARCHIVED_COMPACT_CONTEXT]"
+    )
+    return {"role": "system", "content": archived_block}
+
+
+def build_messages_from_summary_prefix(
+    original: List[Dict[str, Any]],
+    *,
+    summary_text: str,
+    covered_end_idx: int,
+    append_until_idx: int,
+) -> List[Dict[str, Any]]:
+    sys_msg, non_system = split_messages(original)
+    repacked: List[Dict[str, Any]] = []
+    if sys_msg:
+        repacked.append(sys_msg)
+    repacked.append(build_archived_summary_message(summary_text))
+    if non_system:
+        start = max(0, covered_end_idx + 1)
+        end = min(len(non_system) - 1, append_until_idx)
+        if end >= start:
+            repacked.extend(non_system[start : end + 1])
+    return repacked
+
+
+
+
+def ensure_repacked_has_user_message(
+    repacked: List[Dict[str, Any]],
+    original: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if any(isinstance(m, dict) and m.get("role") == "user" for m in repacked):
+        return repacked
+    _sys_msg, non_system = split_messages(original)
+    last_user: Dict[str, Any] | None = None
+    for m in reversed(non_system):
+        if isinstance(m, dict) and m.get("role") == "user":
+            last_user = m
+            break
+    if last_user is None:
+        return repacked
+    return [*repacked, last_user]
+
+
+def choose_append_until_idx(
+    *,
+    tok: TokenCounter,
+    original: List[Dict[str, Any]],
+    summary_text: str,
+    covered_end_idx: int,
+    threshold: int,
+) -> int:
+    sys_msg, non_system = split_messages(original)
+    if not non_system:
+        return covered_end_idx
+    best = min(covered_end_idx, len(non_system) - 1)
+    for idx in range(covered_end_idx + 1, len(non_system)):
+        repacked = build_messages_from_summary_prefix(
+            original,
+            summary_text=summary_text,
+            covered_end_idx=covered_end_idx,
+            append_until_idx=idx,
+        )
+        est = _estimate_tokens_for_msgs(tok, repacked)
+        if est <= threshold:
+            best = idx
+        else:
+            break
+    if best < covered_end_idx:
+        best = covered_end_idx
+    return best
