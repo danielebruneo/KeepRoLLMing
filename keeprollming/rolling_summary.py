@@ -580,6 +580,11 @@ async def summarize_middle(
     r.raise_for_status()
 
     data = r.json()
+    print("SUMMARYYYYYYYYYYYYYY")
+    print(data)
+    #TODO: manage context overflow
+    # we can get an error like: {'error': {'details': {'response': {'error': {'code': 400, 'message': 'request (4544 tokens) exceeds the available context size (4096 tokens), try increasing it', 'n_ctx': 4096, 'n_prompt_tokens': 4544, 'type': 'exceed_context_size_error'}}, 'status_code': 400}, 'message': 'llama-server request failed', 'type': 'backend_error'}}
+    # in that case we should extract the max length from the resposne, split the conversatino in chunks and do multiple calls to the summary model one per chunk, then genrate multiple summary blocks
     try:
         summary = data["choices"][0]["message"]["content"]
     except Exception:
@@ -640,6 +645,8 @@ async def summarize_incremental(
     elapsed_ms = (time.time() - t0) * 1000.0
     r.raise_for_status()
     data = r.json()
+    print("SUMMARYYYYYYYYYYYYYYYYYYYYYYYYYY")
+    print(data)
     try:
         summary = data["choices"][0]["message"]["content"]
     except Exception:

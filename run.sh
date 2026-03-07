@@ -12,7 +12,7 @@ source .venv/bin/activate
 export LOG_LEVEL="DEBUG"
 #export LOG_LEVEL="MEDIUM"
 #export LOG_LEVEL="BASIC"
-#export LOG_LEVEL="BASIC_PLAIN"
+export LOG_LEVEL="BASIC_PLAIN"
 
 export LOG_JSON=1
 
@@ -33,8 +33,8 @@ export DEEP_MAIN_MODEL="qwen/qwen3.5-35b-a3b"
 export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
 
 
-export DEEP_MAIN_MODEL="Qwen3-Coder-30B-A3B-Instruct-GGUF"
-export DEEP_SUMMARY_MODEL="Qwen-2.5-7B-Instruct-NPU"
+export DEEP_MAIN_MODEL="DeepSeek-R1-0528-Qwen3-8B-FLM"
+export DEEP_SUMMARY_MODEL="Llama-3.2-3B-Instruct-GGUF"
 
 
 # =========================
