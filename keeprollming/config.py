@@ -33,6 +33,10 @@ SUMMARY_CACHE_ENABLED = os.getenv("SUMMARY_CACHE_ENABLED", "1").strip().lower() 
 SUMMARY_CACHE_DIR = os.getenv("SUMMARY_CACHE_DIR", "./summary_cache")
 SUMMARY_CACHE_FINGERPRINT_MSGS = int(os.getenv("SUMMARY_CACHE_FINGERPRINT_MSGS", "1"))
 SUMMARY_MIN_RAW_TAIL = max(1, int(os.getenv("SUMMARY_MIN_RAW_TAIL", "1")))
+SUMMARY_FORCE_CONSOLIDATE = int(os.getenv("SUMMARY_FORCE_CONSOLIDATE", "0"))
+SUMMARY_CONSOLIDATE_WHEN_NEEDED = int(os.getenv("SUMMARY_CONSOLIDATE_WHEN_NEEDED", "1"))
+
+
 
 # Max chars for logging large payloads (input conversation, summary requests, etc.)
 LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
