@@ -636,3 +636,53 @@ def test_parse_captured_sse_text_handles_crlf_and_finish_reason():
     assert finish_reason == "length"
     assert usage == {"prompt_tokens": 10, "completion_tokens": 64, "total_tokens": 74}
     assert events == 2
+
+
+def test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_path):
+    import keeprollming.app as app_mod
+    from keeprollming.summary_cache import make_cache_entry, save_cache_entry
+
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "first user"},
+        {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "u2"},
+        {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "u3"},
+        {"role": "assistant", "content": "a3"},
+        {"role": "user", "content": "u4"},
+    ]
+    _sys, non_system = app_mod.split_messages(messages)
+    fp = app_mod.conversation_fingerprint(messages=messages, user_id="u", conv_id="c", n_head=1)
+    monkeypatch.setattr(app_mod, 'SUMMARY_CACHE_DIR', str(tmp_path / 'summary_cache'))
+    entry = make_cache_entry(
+        fingerprint=fp,
+        start_idx=3,
+        end_idx=5,
+        messages=non_system,
+        summary_text='cached summary text that is definitely long enough',
+        summary_model='sum',
+        token_estimate=100,
+        source_mode='cache_append_initial',
+    )
+    save_cache_entry(app_mod.SUMMARY_CACHE_DIR, entry)
+    repacked, append_until_idx, _fp, best = app_mod._try_cache_append_repack(
+        req_id='t1',
+        messages=messages,
+        threshold=10000,
+        desired_start_idx=3,
+        user_id='u',
+        conv_id='c',
+        pinned_head_n=1,
+    )
+    assert repacked is not None
+    assert best is not None
+    joined = json.dumps(repacked, ensure_ascii=False)
+    assert '[ARCHIVED_COMPACT_CONTEXT]' in joined
+    assert 'first user' in joined
+
+
+def test_failed_placeholder_summary_is_not_cacheable():
+    import keeprollming.rolling_summary as rs
+    assert rs.is_summary_cacheable('(Contesto compattato non disponibile.)') is False
+    assert rs.is_summary_cacheable('useful summary with enough content to store in cache') is True

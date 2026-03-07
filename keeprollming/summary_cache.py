@@ -6,7 +6,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -117,16 +117,7 @@ def load_cache_entries(cache_dir: str | Path, fingerprint: str) -> list[SummaryC
 
 
 def find_best_prefix_entry(entries: List[SummaryCacheEntry], messages: List[Dict[str, Any]], expected_start_idx: int = 0) -> Optional[SummaryCacheEntry]:
-    best: Optional[SummaryCacheEntry] = None
-    for entry in entries:
-        if entry.start_idx != expected_start_idx or entry.end_idx < entry.start_idx:
-            continue
-        if entry.end_idx >= len(messages):
-            continue
-        if range_hash(messages, entry.start_idx, entry.end_idx) != entry.range_hash:
-            continue
-        if best is None or entry.end_idx > best.end_idx:
-            best = entry
+    best, _reasons = find_best_prefix_entry_with_reasons(entries, messages, expected_start_idx=expected_start_idx)
     return best
 
 
@@ -153,3 +144,28 @@ def make_cache_entry(
         token_estimate=token_estimate,
         source_mode=source_mode,
     )
+
+
+def find_best_prefix_entry_with_reasons(
+    entries: List[SummaryCacheEntry],
+    messages: List[Dict[str, Any]],
+    expected_start_idx: int = 0,
+) -> Tuple[Optional[SummaryCacheEntry], List[Dict[str, Any]]]:
+    best: Optional[SummaryCacheEntry] = None
+    reasons: List[Dict[str, Any]] = []
+    for entry in sorted(entries, key=lambda e: (e.start_idx, e.end_idx)):
+        reason = None
+        if entry.start_idx != expected_start_idx or entry.end_idx < entry.start_idx:
+            reason = "start_mismatch"
+        elif entry.end_idx >= len(messages):
+            reason = "end_out_of_bounds"
+        else:
+            actual_hash = range_hash(messages, entry.start_idx, entry.end_idx)
+            if actual_hash != entry.range_hash:
+                reason = "hash_mismatch"
+        if reason is not None:
+            reasons.append({"start_idx": entry.start_idx, "end_idx": entry.end_idx, "reason": reason})
+            continue
+        if best is None or entry.end_idx > best.end_idx:
+            best = entry
+    return best, reasons

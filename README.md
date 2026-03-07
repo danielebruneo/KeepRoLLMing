@@ -114,56 +114,10 @@ pytest
 
 This setup ensures that the project is well-structured, with clear documentation and a robust testing framework to maintain code quality.
 
-## Rolling summary flow
+## Recent summary/cache updates
 
-The orchestrator supports a `cache_append` summary mode.
-
-High-level behavior:
-- preserve raw `system` messages
-- preserve a pinned initial `user` message when enabled
-- preserve the most recent raw tail
-- summarize only the middle span
-- save that middle summary in `summary_cache/`
-- on later turns, reuse the best valid cached checkpoint and append raw tail messages
-- if the tail no longer fits, run **incremental summary** to extend the checkpoint instead of rebuilding from scratch
-
-### Overflow handling for the summary model
-
-If the summary request is too large for the summary model context:
-- the middle span is split into chunks
-- each chunk is summarized recursively
-- partial summaries are merged and, if needed, summarized again recursively
-
-This also applies to **incremental summary** updates.
-
-Failed or unusable summaries are **not** saved into the summary cache.
-
-## Important environment variables
-
-- `SUMMARY_MODE` (default: `cache_append`)
-- `SUMMARY_CACHE_ENABLED`
-- `SUMMARY_CACHE_DIR`
-- `SUMMARY_CACHE_FINGERPRINT_MSGS`
-- `SUMMARY_FORCE_CONSOLIDATE`
-- `SUMMARY_CONSOLIDATE_WHEN_NEEDED`
-- `SUMMARY_PIN_FIRST_USER`
-- `SUMMARY_MAX_TOKENS`
-- `SUMMARY_INSERT_BUDGET_TOK`
-- `MAX_HEAD`, `MAX_TAIL`
-- `DEFAULT_CTX_LEN`
-- `SAFETY_MARGIN_TOK`
-
-## Logging notes
-
-Useful log events for debugging the summary flow:
-- `summary_plan`
-- `summary_needed`
-- `summary_cache_lookup`
-- `summary_cache_hit`
-- `summary_cache_miss`
-- `summary_overflow_chunking`
-- `summary_incremental_overflow_chunking`
-- `summary_consolidate`
-- `summary_cache_save`
-- `summary_cache_skip_save`
-- `max_tokens_clamped`
+- Cache retrieval now matches reusable checkpoints by the current summary start index and validates the saved range hash only on the covered prefix.
+- When a reusable checkpoint is found, the orchestrator prefers incremental reuse (`existing summary + delta`) instead of regenerating the whole middle from scratch.
+- Failed / placeholder summaries are skipped for cache save.
+- The default curated summary prompt now asks for compact YAML output to reduce template leakage and make the compressed context more stable across turns.
+- Extra logs were added for cache candidate rejection and incremental reuse (`summary_cache_candidate_rejected`, `summary_incremental_reuse`, `summary_cache_skip_save`).

@@ -43,14 +43,14 @@ export DEEP_SUMMARY_MODEL="Llama-3.2-3B-Instruct-GGUF"
 
 # limite hard del modello (puoi aumentare se il modello lo supporta)
 export DEFAULT_CTX_LEN=4000
-export SUMMARY_MAX_TOKENS=512
+export SUMMARY_MAX_TOKENS=1500
 export SAFETY_MARGIN_TOK=300
 
 export MAX_HEAD=5
 export MAX_TAIL=5
 export SUMMARY_PROMPT_DIR=./prompts
 export SUMMARY_PROMPT_TYPE=curated
-export SUMMARY_TEMPERATURE=0.2
+export SUMMARY_TEMPERATURE=0.1
 export SUMMARY_MODE="cache_append"
 
 
