@@ -560,7 +560,10 @@ async def _request_summary_completion(body: Dict[str, Any]) -> Dict[str, Any]:
     client = await http_client()
     r = await client.post(url, json=body)
     r.raise_for_status()
-    return r.json()
+    data = r.json()
+    if _is_backend_error_payload(data):
+        raise RuntimeError(_extract_payload_error_message(data))
+    return data
 
 
 def _extract_backend_ctx_error_message(err: Exception) -> str:
@@ -577,6 +580,57 @@ def _extract_backend_ctx_error_message(err: Exception) -> str:
 def _is_context_overflow_error(err: Exception) -> bool:
     txt = _extract_backend_ctx_error_message(err).lower()
     return ("context" in txt and ("exceed" in txt or "available context size" in txt or "n_ctx" in txt))
+
+
+def _is_backend_error_payload(data: Any) -> bool:
+    return isinstance(data, dict) and isinstance(data.get("error"), dict)
+
+
+def _extract_payload_error_message(data: Dict[str, Any]) -> str:
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except Exception:
+        return str(data)
+
+
+def _summary_request_exceeds_ctx(body_messages: List[Dict[str, Any]], summary_model_ctx: int) -> bool:
+    threshold = max(256, int(summary_model_ctx) - int(SUMMARY_MAX_TOKENS) - int(SAFETY_MARGIN_TOK))
+    est = _estimate_tokens_for_msgs(TokenCounter(), body_messages)
+    return est > threshold
+
+
+def _force_split_chunks(chunks: List[List[Dict[str, Any]]], messages: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    if len(chunks) > 1:
+        return chunks
+    if len(messages) <= 1:
+        msg = messages[0] if messages else {"role": "user", "content": ""}
+        parts = _split_oversized_message(msg, max(400, len(str(msg.get("content", ""))) // 2 or 400))
+        if len(parts) <= 1:
+            content = str(msg.get("content", ""))
+            mid = max(1, len(content) // 2)
+            return [
+                [{**msg, "content": content[:mid]}],
+                [{**msg, "content": content[mid:]}],
+            ]
+        half = max(1, len(parts) // 2)
+        return [parts[:half], parts[half:]]
+    mid = max(1, len(messages) // 2)
+    return [messages[:mid], messages[mid:]]
+
+
+def is_usable_summary_text(text: str) -> bool:
+    out = (text or "").strip()
+    if not out:
+        return False
+    lowered = out.lower()
+    bad_markers = [
+        "contesto compattato non disponibile",
+        "compact context unavailable",
+        "summary unavailable",
+        "backend_error",
+        "exceed_context_size_error",
+    ]
+    return not any(marker in lowered for marker in bad_markers)
 
 
 def _split_text_preserve_lines(text: str, max_chars: int) -> List[str]:
@@ -675,12 +729,16 @@ async def _summarize_middle_core(
     transcript = render_messages_for_summary(middle)
     sys = get_summary_system_prompt(prompt_type=prompt_type)
     user = render_summary_prompt(transcript, prompt_type=prompt_type, lang_hint=lang_hint)
+    body_messages = [
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user},
+    ]
+    summary_ctx = await get_ctx_len_for_model(summary_model)
+    if _summary_request_exceeds_ctx(body_messages, summary_ctx):
+        raise RuntimeError(f"summary request exceeds summary model context ({summary_ctx})")
     body = {
         "model": summary_model,
-        "messages": [
-            {"role": "system", "content": sys},
-            {"role": "user", "content": user},
-        ],
+        "messages": body_messages,
         "temperature": SUMMARY_TEMPERATURE,
         "max_tokens": SUMMARY_MAX_TOKENS,
         "stream": False,
@@ -689,6 +747,8 @@ async def _summarize_middle_core(
     t0 = time.time()
     data = await _request_summary_completion(body)
     elapsed_ms = (time.time() - t0) * 1000.0
+    if _is_backend_error_payload(data):
+        raise RuntimeError(_extract_payload_error_message(data))
     try:
         summary = data["choices"][0]["message"]["content"]
     except Exception:
@@ -713,10 +773,11 @@ async def summarize_middle(
             raise
         summary_ctx = await get_ctx_len_for_model(summary_model)
         chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=summary_ctx)
+        chunks = _force_split_chunks(chunks, middle)
         log("WARN", "summary_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
         partials: List[str] = []
         for idx, chunk in enumerate(chunks, start=1):
-            partials.append(await _summarize_middle_core(chunk, f"{req_id}-c{idx}", summary_model, prompt_type=prompt_type, lang_hint=lang_hint))
+            partials.append(await summarize_middle(chunk, f"{req_id}-c{idx}", summary_model, prompt_type=prompt_type, lang_hint=lang_hint))
         merge_messages = [{"role": "user", "content": f"[PARTIAL SUMMARY {i}]\n{s}"} for i, s in enumerate(partials, start=1)]
         if len(merge_messages) == 1:
             return partials[0]
@@ -736,12 +797,16 @@ async def _summarize_incremental_core(
         "Non inventare nulla. Mantieni il risultato compatto e fedele."
     )
     user = render_incremental_summary_prompt(existing_summary, new_messages, lang_hint=lang_hint)
+    body_messages = [
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user},
+    ]
+    summary_ctx = await get_ctx_len_for_model(summary_model)
+    if _summary_request_exceeds_ctx(body_messages, summary_ctx):
+        raise RuntimeError(f"summary request exceeds summary model context ({summary_ctx})")
     body = {
         "model": summary_model,
-        "messages": [
-            {"role": "system", "content": sys},
-            {"role": "user", "content": user},
-        ],
+        "messages": body_messages,
         "temperature": SUMMARY_TEMPERATURE,
         "max_tokens": SUMMARY_MAX_TOKENS,
         "stream": False,
@@ -750,6 +815,8 @@ async def _summarize_incremental_core(
     t0 = time.time()
     data = await _request_summary_completion(body)
     elapsed_ms = (time.time() - t0) * 1000.0
+    if _is_backend_error_payload(data):
+        raise RuntimeError(_extract_payload_error_message(data))
     try:
         summary = data["choices"][0]["message"]["content"]
     except Exception:
@@ -774,10 +841,11 @@ async def summarize_incremental(
             raise
         summary_ctx = await get_ctx_len_for_model(summary_model)
         chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=summary_ctx, incremental_existing_summary=existing_summary)
+        chunks = _force_split_chunks(chunks, new_messages)
         log("WARN", "summary_incremental_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
         current = existing_summary
         for idx, chunk in enumerate(chunks, start=1):
-            current = await _summarize_incremental_core(current, chunk, f"{req_id}-c{idx}", summary_model, lang_hint=lang_hint)
+            current = await summarize_incremental(current, chunk, f"{req_id}-c{idx}", summary_model, lang_hint=lang_hint)
         return current
 
 

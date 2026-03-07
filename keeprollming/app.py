@@ -48,6 +48,7 @@ from .rolling_summary import (
     summarize_middle,
     ensure_repacked_has_user_message,
     _pinned_head_count,
+    is_usable_summary_text,
 )
 from .summary_cache import conversation_fingerprint, find_best_prefix_entry, load_cache_entries, make_cache_entry, save_cache_entry
 from .token_counter import TokenCounter
@@ -159,6 +160,9 @@ def _try_cache_append_repack(
     if not best:
         log("INFO", "summary_cache_miss", req_id=req_id, fingerprint=fingerprint)
         return None, -1, fingerprint, None
+    if not is_usable_summary_text(best.summary_text):
+        log("WARN", "summary_cache_rejected", req_id=req_id, fingerprint=fingerprint, reason="unusable_summary_text", range=f"{best.start_idx}..{best.end_idx}")
+        return None, -1, fingerprint, None
 
     append_until_idx = choose_append_until_idx(
         tok=TOK,
@@ -180,7 +184,7 @@ def _try_cache_append_repack(
         "summary_cache_hit",
         req_id=req_id,
         fingerprint=fingerprint,
-        range=f"0..{best.end_idx}",
+        range=f"{best.start_idx}..{best.end_idx}",
         appended_raw=max(0, append_until_idx - best.end_idx),
         final_last_idx=append_until_idx,
     )
@@ -301,7 +305,7 @@ async def chat_completions(req: Request) -> Response:
                             pinned_head_n=pinned_head_n,
                         )
                         did_summarize = True
-                        if middle:
+                        if middle and is_usable_summary_text(summary_text):
                             start_idx = head_n
                             end_idx = n - tail_n - 1
                             entry = make_cache_entry(
@@ -316,41 +320,47 @@ async def chat_completions(req: Request) -> Response:
                             )
                             path = save_cache_entry(SUMMARY_CACHE_DIR, entry)
                             log("INFO", "summary_cache_save", req_id=req_id, range=f"{start_idx}..{end_idx}", path=str(path))
+                        elif middle:
+                            log("WARN", "summary_cache_skip_save", req_id=req_id, reason="unusable_summary_text")
                     elif need_consolidate and cache_entry is not None:
-                        new_messages = non_system[cache_entry.end_idx + 1 :]
-                        if not new_messages:
+                        tail_keep = max(1, plan.tail_n) if non_system else 0
+                        target_end_idx = max(cache_entry.start_idx, len(non_system) - tail_keep - 1)
+                        if target_end_idx <= cache_entry.end_idx:
                             repacked_messages = cache_repacked or messages
                             did_summarize = cache_repacked is not None
+                            log("INFO", "summary_cache_reuse_full", req_id=req_id, range=f"{cache_entry.start_idx}..{cache_entry.end_idx}")
                         else:
+                            new_messages = non_system[cache_entry.end_idx + 1 : target_end_idx + 1]
                             summary_text = await summarize_incremental(
                                 cache_entry.summary_text,
                                 new_messages,
                                 req_id=req_id,
                                 summary_model=summary_model,
                             )
-                            tail_keep = max(1, plan.tail_n) if non_system else 0
-                            end_idx = max(cache_entry.start_idx, len(non_system) - tail_keep - 1)
                             repacked_messages = build_messages_from_summary_prefix(
                                 messages,
                                 summary_text=summary_text,
-                                covered_end_idx=end_idx,
+                                covered_end_idx=target_end_idx,
                                 append_until_idx=len(non_system) - 1,
                                 pinned_head_n=pinned_head_n,
                             )
                             did_summarize = True
-                            entry = make_cache_entry(
-                                fingerprint=fingerprint or conversation_fingerprint(messages=messages, user_id=user_id, conv_id=conv_id, n_head=SUMMARY_CACHE_FINGERPRINT_MSGS),
-                                start_idx=cache_entry.start_idx,
-                                end_idx=end_idx,
-                                messages=non_system,
-                                summary_text=summary_text,
-                                summary_model=summary_model,
-                                token_estimate=_count_tokens_safe(repacked_messages) or 0,
-                                source_mode="cache_append_consolidated",
-                            )
-                            path = save_cache_entry(SUMMARY_CACHE_DIR, entry)
-                            log("INFO", "summary_consolidate", req_id=req_id, range=f"0..{end_idx}")
-                            log("INFO", "summary_cache_save", req_id=req_id, range=f"0..{end_idx}", path=str(path))
+                            if is_usable_summary_text(summary_text):
+                                entry = make_cache_entry(
+                                    fingerprint=fingerprint or conversation_fingerprint(messages=messages, user_id=user_id, conv_id=conv_id, n_head=SUMMARY_CACHE_FINGERPRINT_MSGS),
+                                    start_idx=cache_entry.start_idx,
+                                    end_idx=target_end_idx,
+                                    messages=non_system,
+                                    summary_text=summary_text,
+                                    summary_model=summary_model,
+                                    token_estimate=_count_tokens_safe(repacked_messages) or 0,
+                                    source_mode="cache_append_consolidated",
+                                )
+                                path = save_cache_entry(SUMMARY_CACHE_DIR, entry)
+                                log("INFO", "summary_consolidate", req_id=req_id, range=f"{cache_entry.start_idx}..{target_end_idx}")
+                                log("INFO", "summary_cache_save", req_id=req_id, range=f"{cache_entry.start_idx}..{target_end_idx}", path=str(path))
+                            else:
+                                log("WARN", "summary_cache_skip_save", req_id=req_id, reason="unusable_incremental_summary")
                     else:
                         repacked_messages = cache_repacked or messages
                         did_summarize = cache_repacked is not None
