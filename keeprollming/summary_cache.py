@@ -56,9 +56,33 @@ def _digest(parts: Iterable[str]) -> str:
     return h.hexdigest()
 
 
-def conversation_fingerprint(messages: List[Dict[str, Any]], n_head: int = 1) -> str:
+def conversation_fingerprint(
+    *,
+    messages: List[Dict[str, Any]] | None = None,
+    user_id: str = "",
+    conv_id: str = "",
+    n_head: int = 1
+) -> str:
+    """Generate a fingerprint based on provided context or messages."""
+    
+    # Se abbiamo gli header, usiamoli direttamente come identificatore
+    if user_id or conv_id:
+        # Creiamo un fingerprint basato sugli ID utente e conversazione
+        return _digest([
+            normalize_message_for_hash({"role": "", "content": user_id}),
+            normalize_message_for_hash({"role": "", "content": conv_id})
+        ])
+
+    # Altrimenti ricadiamo sul comportamento precedente
     n = max(1, int(n_head or 1))
-    return _digest(normalize_message_for_hash(m) for m in messages[:n])[:16]
+    parts = []
+    if messages is not None:
+        for m in messages[:n]:
+            part = normalize_message_for_hash(m)
+            parts.append(part)
+            
+    digest_str = _digest(parts)
+    return digest_str[:16]
 
 
 def range_hash(messages: List[Dict[str, Any]], start_idx: int, end_idx: int) -> str:

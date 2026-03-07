@@ -101,12 +101,14 @@ def _try_cache_append_repack(
     req_id: str,
     messages: List[Dict[str, Any]],
     threshold: int,
+    user_id: str = "",
+    conv_id: str = "",
 ) -> tuple[list[Dict[str, Any]] | None, int, str | None, object | None]:
     _sys_msg, non_system = split_messages(messages)
     if not SUMMARY_CACHE_ENABLED or not non_system:
         return None, -1, None, None
 
-    fingerprint = conversation_fingerprint(messages, SUMMARY_CACHE_FINGERPRINT_MSGS)
+    fingerprint = conversation_fingerprint(messages=messages, user_id=user_id, conv_id=conv_id, n_head=SUMMARY_CACHE_FINGERPRINT_MSGS)
     entries = load_cache_entries(SUMMARY_CACHE_DIR, fingerprint)
     log("INFO", "summary_cache_lookup", req_id=req_id, fingerprint=fingerprint, candidates=len(entries))
     best = find_best_prefix_entry(entries, non_system)
@@ -156,7 +158,15 @@ async def chat_completions(req: Request) -> Response:
     payload = await req.json()
     headers = dict(req.headers)
 
-
+    # Controllare se ci sono gli header necessari per il caching
+    user_id = headers.get("x-librechat-user-id", "")
+    conv_id = headers.get("x-librechat-conversation-id", "")
+    msg_id = headers.get("x-librechat-message-id", "")
+    parent_msg_id = headers.get("x-librechat-parent-message-id", "")
+    
+    # Se abbiamo gli header, li usiamo per il fingerprint
+    has_headers = bool(user_id or conv_id)
+    
     if LOG_MODE == "DEBUG":
         log("INFO", "request_received", header=headers, req_id=req_id, body_json=snip_json(payload))
 
@@ -210,6 +220,8 @@ async def chat_completions(req: Request) -> Response:
                     req_id=req_id,
                     messages=messages,
                     threshold=plan.threshold,
+                    user_id=user_id,
+                    conv_id=conv_id,
                 )
                 _sys_msg, non_system = split_messages(messages)
                 if cache_repacked is not None and append_until_idx >= len(non_system) - 1:
@@ -230,7 +242,7 @@ async def chat_completions(req: Request) -> Response:
                         )
                         did_summarize = True
                         entry = make_cache_entry(
-                            fingerprint=fingerprint or conversation_fingerprint(messages, SUMMARY_CACHE_FINGERPRINT_MSGS),
+                            fingerprint=fingerprint or conversation_fingerprint(messages=messages, user_id=user_id, conv_id=conv_id, n_head=SUMMARY_CACHE_FINGERPRINT_MSGS),
                             start_idx=0,
                             end_idx=end_idx,
                             messages=non_system,
@@ -263,7 +275,7 @@ async def chat_completions(req: Request) -> Response:
                             )
                             did_summarize = True
                             entry = make_cache_entry(
-                                fingerprint=fingerprint or conversation_fingerprint(messages, SUMMARY_CACHE_FINGERPRINT_MSGS),
+                                fingerprint=fingerprint or conversation_fingerprint(messages=messages, user_id=user_id, conv_id=conv_id, n_head=SUMMARY_CACHE_FINGERPRINT_MSGS),
                                 start_idx=0,
                                 end_idx=end_idx,
                                 messages=non_system,
