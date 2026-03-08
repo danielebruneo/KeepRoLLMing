@@ -431,6 +431,8 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         meta = _fmt_meta(
             model=rec.get("model"),
             elapsed_ms=rec.get("elapsed_ms"),
+            tps=rec.get("tps"),
+            ttft_ms=rec.get("ttft_ms"),
             usage=_fmt_usage(rec.get("usage")),
         )
         add_section("RESULT", ANSI_GREEN, meta=meta)
@@ -445,6 +447,8 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         meta = _fmt_meta(
             model=rec.get("upstream_model"),
             elapsed_ms=rec.get("elapsed_ms"),
+            tps=rec.get("tps"),
+            ttft_ms=rec.get("ttft_ms"),
             usage=_fmt_usage(rec.get("usage")),
         )
         add_section("STREAM_RESULT", ANSI_GREEN, meta=meta)

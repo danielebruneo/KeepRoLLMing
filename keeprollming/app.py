@@ -53,6 +53,7 @@ from .rolling_summary import (
 from .summary_cache import conversation_fingerprint, find_best_prefix_entry_with_reasons, load_cache_entries, make_cache_entry, save_cache_entry
 from .token_counter import TokenCounter
 from .upstream import close_http_client, get_ctx_len_for_model, http_client
+from .performance import record_request_performance
 
 # ----------------------------
 # Token counter
@@ -110,6 +111,19 @@ def _parse_captured_sse_text(sse_text: str) -> tuple[str, str | None, dict | Non
                     finish_reason = fr
     return "".join(assistant_parts).strip(), finish_reason, final_usage, event_count
 
+def _usage_tokens(usage: Any) -> Tuple[Optional[int], Optional[int], Optional[int]]:
+    if not isinstance(usage, dict):
+        return (None, None, None)
+
+    def _get_int(name: str) -> Optional[int]:
+        try:
+            value = usage.get(name)
+            return int(value) if value is not None else None
+        except Exception:
+            return None
+
+    return (_get_int("prompt_tokens"), _get_int("completion_tokens"), _get_int("total_tokens"))
+
 
 def _contains_archived_context(messages: List[Dict[str, Any]]) -> bool:
     for m in messages:
@@ -130,6 +144,13 @@ def _is_tool_orchestration_payload(payload: Dict[str, Any], messages: List[Dict[
 def _count_tokens_safe(messages: List[Dict[str, Any]]) -> int | None:
     try:
         return TOK.count_messages(messages)
+    except Exception:
+        return None
+
+
+def _count_text_tokens_safe(text: str) -> int | None:
+    try:
+        return TOK.count_text(text)
     except Exception:
         return None
 
@@ -447,6 +468,7 @@ async def chat_completions(req: Request) -> Response:
     if stream:
         async def _iter():
             t0 = time.perf_counter()
+            ttft_ms: float | None = None
             captured = bytearray()
 
             # Reconstruct full assistant reply from streamed SSE events (OpenAI-compatible chunks).
@@ -527,11 +549,15 @@ async def chat_completions(req: Request) -> Response:
                                     if isinstance(delta, dict):
                                         piece = delta.get("content")
                                         if isinstance(piece, str) and piece:
+                                            if ttft_ms is None:
+                                                ttft_ms = (time.perf_counter() - t0) * 1000.0
                                             assistant_parts.append(piece)
                                     msg_obj = c0.get("message")
                                     if isinstance(msg_obj, dict):
                                         piece = msg_obj.get("content")
                                         if isinstance(piece, str) and piece:
+                                            if ttft_ms is None:
+                                                ttft_ms = (time.perf_counter() - t0) * 1000.0
                                             assistant_parts.append(piece)
                                     fr = c0.get("finish_reason")
                                     if isinstance(fr, str) and fr:
@@ -585,19 +611,45 @@ async def chat_completions(req: Request) -> Response:
                             final_usage = parsed_usage
                         if parsed_events and stream_event_count == 0:
                             stream_event_count = parsed_events
+                    model_for_metrics = (upstream_model_seen or upstream_payload.get("model"))
+                    prompt_tokens_u, completion_tokens_u, total_tokens_u = _usage_tokens(final_usage)
+                    completion_tokens_source = "usage"
+                    if completion_tokens_u is None and full_text:
+                        completion_tokens_u = _count_text_tokens_safe(full_text)
+                        completion_tokens_source = "estimated_text" if completion_tokens_u is not None else "missing"
+                    elif completion_tokens_u is None:
+                        completion_tokens_source = "missing"
+                    perf_entry = record_request_performance(
+                        model=model_for_metrics or "unknown",
+                        req_id=req_id,
+                        stream=True,
+                        elapsed_ms=elapsed_ms,
+                        ttft_ms=ttft_ms,
+                        completion_tokens=completion_tokens_u,
+                        prompt_tokens=prompt_tokens_u,
+                        total_tokens=total_tokens_u,
+                        finish_reason=finish_reason,
+                        did_summarize=did_summarize,
+                        passthrough=is_passthrough,
+                        completion_tokens_source=completion_tokens_source,
+                    )
                     if LOG_MODE == "DEBUG":
                         log(
                             "INFO",
                             "response_stream_reconstructed",
                             req_id=req_id,
                             url=url,
-                            upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                            upstream_model=model_for_metrics,
                             elapsed_ms=elapsed_ms,
                             did_summarize=did_summarize,
                             passthrough=is_passthrough,
                             finish_reason=finish_reason,
                             usage=final_usage,
                             event_count=stream_event_count,
+                            ttft_ms=perf_entry.get("ttft_ms"),
+                            tps=perf_entry.get("tps"),
+                            completion_tokens_source=completion_tokens_source,
+                            completion_tokens=completion_tokens_u,
                             assistant_text=full_text,
                         )
                     elif LOG_MODE == "MEDIUM":
@@ -605,11 +657,15 @@ async def chat_completions(req: Request) -> Response:
                             "INFO",
                             "response_stream_reconstructed",
                             req_id=req_id,
-                            upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                            upstream_model=model_for_metrics,
                             elapsed_ms=elapsed_ms,
                             finish_reason=finish_reason,
                             usage=final_usage,
                             event_count=stream_event_count,
+                            ttft_ms=perf_entry.get("ttft_ms"),
+                            tps=perf_entry.get("tps"),
+                            completion_tokens_source=completion_tokens_source,
+                            completion_tokens=completion_tokens_u,
                             assistant_text=_snip_obj_active(full_text, LOG_SNIP_CHARS),
                         )
                     else:
@@ -617,10 +673,14 @@ async def chat_completions(req: Request) -> Response:
                             "INFO",
                             "response_stream_reconstructed",
                             req_id=req_id,
-                            upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                            upstream_model=model_for_metrics,
                             elapsed_ms=elapsed_ms,
                             usage=final_usage,
                             finish_reason=finish_reason,
+                            ttft_ms=perf_entry.get("ttft_ms"),
+                            tps=perf_entry.get("tps"),
+                            completion_tokens_source=completion_tokens_source,
+                            completion_tokens=completion_tokens_u,
                             assistant_text=_snip_obj_active(full_text, BASIC_SNIP_CHARS),
                         )
                 except Exception as _e:
@@ -652,6 +712,36 @@ async def chat_completions(req: Request) -> Response:
 
         data = r.json()
         resp_summary = summarize_response_payload(data)
+        usage = data.get("usage") if isinstance(data, dict) else None
+        prompt_tokens_u, completion_tokens_u, total_tokens_u = _usage_tokens(usage)
+        completion_tokens_source = "usage"
+        if completion_tokens_u is None and isinstance(data, dict):
+            try:
+                choice0 = (data.get("choices") or [{}])[0]
+                msg = choice0.get("message") if isinstance(choice0, dict) else None
+                content = msg.get("content") if isinstance(msg, dict) else None
+                if isinstance(content, str) and content:
+                    completion_tokens_u = _count_text_tokens_safe(content)
+                    completion_tokens_source = "estimated_text" if completion_tokens_u is not None else "missing"
+                else:
+                    completion_tokens_source = "missing"
+            except Exception:
+                completion_tokens_source = "missing"
+        elif completion_tokens_u is None:
+            completion_tokens_source = "missing"
+        perf_entry = record_request_performance(
+            model=str(data.get("model") or upstream_model),
+            req_id=req_id,
+            stream=False,
+            elapsed_ms=elapsed_ms,
+            completion_tokens=completion_tokens_u,
+            prompt_tokens=prompt_tokens_u,
+            total_tokens=total_tokens_u,
+            finish_reason=(data.get("choices") or [{}])[0].get("finish_reason") if isinstance(data, dict) and isinstance(data.get("choices"), list) and data.get("choices") else None,
+            did_summarize=did_summarize,
+            passthrough=is_passthrough,
+            completion_tokens_source=completion_tokens_source,
+        )
         if LOG_MODE == "DEBUG":
             log(
                 "INFO",
@@ -662,6 +752,10 @@ async def chat_completions(req: Request) -> Response:
                 did_summarize=did_summarize,
                 passthrough=is_passthrough,
                 usage=data.get("usage"),
+                tps=perf_entry.get("tps"),
+                ttft_ms=perf_entry.get("ttft_ms"),
+                completion_tokens_source=completion_tokens_source,
+                completion_tokens=completion_tokens_u,
                 data=data,
             )
         elif LOG_MODE == "MEDIUM":
@@ -672,6 +766,10 @@ async def chat_completions(req: Request) -> Response:
                 status=200,
                 elapsed_ms=round(elapsed_ms, 2),
                 usage=data.get("usage"),
+                tps=perf_entry.get("tps"),
+                ttft_ms=perf_entry.get("ttft_ms"),
+                completion_tokens_source=completion_tokens_source,
+                completion_tokens=completion_tokens_u,
                 data=_snip_obj_active(data, LOG_SNIP_CHARS),
             )
         else:
@@ -681,6 +779,10 @@ async def chat_completions(req: Request) -> Response:
                 req_id=req_id,
                 status=200,
                 elapsed_ms=round(elapsed_ms, 2),
+                tps=perf_entry.get("tps"),
+                ttft_ms=perf_entry.get("ttft_ms"),
+                completion_tokens_source=completion_tokens_source,
+                completion_tokens=completion_tokens_u,
                 **resp_summary,
             )
         return JSONResponse(data, status_code=200)

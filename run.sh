@@ -32,7 +32,8 @@ export BASE_SUMMARY_MODEL="qwen2.5-3b-instruct"
 #export DEEP_MAIN_MODEL="qwen/qwen3.5-35b-a3b"
 #export DEEP_MAIN_MODEL="qwen/qwen3.5-9b"
 #export DEEP_MAIN_MODEL="google/gemma-3-12b"
-export DEEP_MAIN_MODEL="qwen3.5-4b-uncensored-hauhaucs-aggressive"
+#export DEEP_MAIN_MODEL="qwen3.5-4b-uncensored-hauhaucs-aggressive"
+export DEEP_MAIN_MODEL="qwen/qwen3.5-35b-a3b"
 export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
 
 # =========================
