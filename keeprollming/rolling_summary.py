@@ -574,6 +574,14 @@ def _extract_backend_ctx_error_message(err: Exception) -> str:
     return str(err)
 
 
+def _http_status_from_error(err: Exception) -> int | None:
+    resp = getattr(err, "response", None)
+    status = getattr(resp, "status_code", None)
+    if isinstance(status, int):
+        return status
+    return None
+
+
 def _is_context_overflow_error(err: Exception) -> bool:
     txt = _extract_backend_ctx_error_message(err).lower()
     patterns = [
@@ -590,6 +598,23 @@ def _is_context_overflow_error(err: Exception) -> bool:
     if any(p in txt for p in patterns):
         return True
     return ("context" in txt and any(k in txt for k in ["exceed", "overflow", "too large", "too long", "limit"]))
+
+
+def _should_retry_with_reduced_context(err: Exception) -> bool:
+    status = _http_status_from_error(err)
+    if status == 400:
+        return True
+    if isinstance(status, int) and 500 <= status < 600:
+        return True
+    txt = _extract_backend_ctx_error_message(err).lower()
+    if any(k in txt for k in ["bad request", "server error", "internal server error", "upstream error"]):
+        return True
+    return False
+
+
+def _reduced_ctx_for_retry(summary_ctx: int) -> int:
+    summary_ctx = max(512, int(summary_ctx))
+    return max(512, summary_ctx // 2)
 
 
 def _split_text_preserve_lines(text: str, max_chars: int) -> List[str]:
@@ -724,11 +749,20 @@ async def summarize_middle(
     try:
         return await _summarize_middle_core(middle, req_id, summary_model, prompt_type=prompt_type, lang_hint=lang_hint)
     except Exception as err:
-        if not _is_context_overflow_error(err):
-            raise
         summary_ctx = await get_ctx_len_for_model(summary_model)
-        chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=summary_ctx)
-        log("WARN", "summary_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+        if _is_context_overflow_error(err):
+            chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=summary_ctx)
+            log("WARN", "summary_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+        elif _should_retry_with_reduced_context(err):
+            reduced_ctx = _reduced_ctx_for_retry(summary_ctx)
+            chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=reduced_ctx)
+            log("WARN", "summary_http_retry_reduced_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, status=_http_status_from_error(err), reduced_ctx=reduced_ctx, err=_extract_backend_ctx_error_message(err))
+            if len(chunks) <= 1 and len(middle) > 1:
+                mid = max(1, len(middle) // 2)
+                chunks = [middle[:mid], middle[mid:]]
+                log("WARN", "summary_http_retry_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+        else:
+            raise
         partials: List[str] = []
         for idx, chunk in enumerate(chunks, start=1):
             partials.append(await summarize_middle(chunk, f"{req_id}-c{idx}", summary_model, prompt_type=prompt_type, lang_hint=lang_hint))
@@ -803,11 +837,20 @@ async def summarize_incremental(
     try:
         return await _summarize_incremental_core(existing_summary, new_messages, req_id, summary_model, lang_hint=lang_hint)
     except Exception as err:
-        if not _is_context_overflow_error(err):
-            raise
         summary_ctx = await get_ctx_len_for_model(summary_model)
-        chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=summary_ctx, incremental_existing_summary=existing_summary)
-        log("WARN", "summary_incremental_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+        if _is_context_overflow_error(err):
+            chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=summary_ctx, incremental_existing_summary=existing_summary)
+            log("WARN", "summary_incremental_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+        elif _should_retry_with_reduced_context(err):
+            reduced_ctx = _reduced_ctx_for_retry(summary_ctx)
+            chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=reduced_ctx, incremental_existing_summary=existing_summary)
+            log("WARN", "summary_incremental_http_retry_reduced_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, status=_http_status_from_error(err), reduced_ctx=reduced_ctx, err=_extract_backend_ctx_error_message(err))
+            if len(chunks) <= 1 and len(new_messages) > 1:
+                mid = max(1, len(new_messages) // 2)
+                chunks = [new_messages[:mid], new_messages[mid:]]
+                log("WARN", "summary_incremental_http_retry_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+        else:
+            raise
         current = existing_summary
         for idx, chunk in enumerate(chunks, start=1):
             current = await summarize_incremental(current, chunk, f"{req_id}-c{idx}", summary_model, lang_hint=lang_hint)
