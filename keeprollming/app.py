@@ -155,7 +155,7 @@ def _try_cache_append_repack(
         return None, -1, None, None
 
     fingerprint = conversation_fingerprint(messages=messages, user_id=user_id, conv_id=conv_id, n_head=SUMMARY_CACHE_FINGERPRINT_MSGS)
-    entries = load_cache_entries(SUMMARY_CACHE_DIR, fingerprint)
+    entries = load_cache_entries(SUMMARY_CACHE_DIR, fingerprint, user_id=user_id, conv_id=conv_id)
     log("INFO", "summary_cache_lookup", req_id=req_id, fingerprint=fingerprint, candidates=len(entries))
     best, rejected = find_best_prefix_entry_with_reasons(entries, non_system, expected_start_idx=desired_start_idx)
     for item in rejected:
@@ -320,7 +320,7 @@ async def chat_completions(req: Request) -> Response:
                                     token_estimate=_count_tokens_safe(repacked_messages) or 0,
                                     source_mode="cache_append_initial",
                                 )
-                                path = save_cache_entry(SUMMARY_CACHE_DIR, entry)
+                                path = save_cache_entry(SUMMARY_CACHE_DIR, entry, user_id=user_id, conv_id=conv_id)
                                 log("INFO", "summary_cache_save", req_id=req_id, range=f"{start_idx}..{end_idx}", path=str(path))
                             else:
                                 log("INFO", "summary_cache_skip_save", req_id=req_id, reason="summary_not_cacheable", range=f"{start_idx}..{end_idx}")
@@ -358,7 +358,7 @@ async def chat_completions(req: Request) -> Response:
                                     token_estimate=_count_tokens_safe(repacked_messages) or 0,
                                     source_mode="cache_append_consolidated",
                                 )
-                                path = save_cache_entry(SUMMARY_CACHE_DIR, entry)
+                                path = save_cache_entry(SUMMARY_CACHE_DIR, entry, user_id=user_id, conv_id=conv_id)
                                 log("INFO", "summary_consolidate", req_id=req_id, range=f"{cache_entry.start_idx}..{end_idx}")
                                 log("INFO", "summary_cache_save", req_id=req_id, range=f"{cache_entry.start_idx}..{end_idx}", path=str(path))
                             else:

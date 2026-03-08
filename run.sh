@@ -20,7 +20,7 @@ export LOG_JSON=1
 # BACKEND LLM (LM Studio)
 # =========================
 export UPSTREAM_BASE_URL="http://arkai.local:1234"
-export UPSTREAM_BASE_URL="http://arkai.local:8000/api"
+
 #export MAIN_MODEL="qwen2.5-7b-instruct-uncensored"
 
 export QUICK_MAIN_MODEL="qwen2.5-3b-instruct"
@@ -29,12 +29,28 @@ export QUICK_SUMMARY_MODEL="qwen2.5-1.5b-instruct"
 export BASE_MAIN_MODEL="qwen2.5-vl-7b-instruct"
 export BASE_SUMMARY_MODEL="qwen2.5-3b-instruct"
 
-export DEEP_MAIN_MODEL="qwen/qwen3.5-35b-a3b"
+#export DEEP_MAIN_MODEL="qwen/qwen3.5-35b-a3b"
+#export DEEP_MAIN_MODEL="qwen/qwen3.5-9b"
+#export DEEP_MAIN_MODEL="google/gemma-3-12b"
+export DEEP_MAIN_MODEL="qwen3.5-4b-uncensored-hauhaucs-aggressive"
 export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
 
+# =========================
+# BACKEND LLM (Lemonade)
+# =========================
+# export UPSTREAM_BASE_URL="http://arkai.local:8000/api"
+# export QUICK_MAIN_MODEL="Qwen-2.5-3B-Instruct-NPU"
+# export QUICK_SUMMARY_MODEL="Qwen-2.5-3B-Instruct-NPU"
 
-export DEEP_MAIN_MODEL="DeepSeek-R1-0528-Qwen3-8B-FLM"
-export DEEP_SUMMARY_MODEL="Llama-3.2-3B-Instruct-GGUF"
+# export BASE_MAIN_MODEL="DeepSeek-R1-Distill-Llama-8B-Hybrid"
+# export BASE_SUMMARY_MODEL="Qwen-2.5-3B-Instruct-NPU"
+
+# #export DEEP_MAIN_MODEL="Qwen3-Coder-30B-A3B-Instruct-GGUF"
+# export DEEP_MAIN_MODEL="Qwen3-VL-8B-Instruct-GGUF"
+# export DEEP_SUMMARY_MODEL="Qwen-2.5-3B-Instruct-NPU"
+
+# #export DEEP_MAIN_MODEL="DeepSeek-R1-0528-Qwen3-8B-FLM"
+# #export DEEP_SUMMARY_MODEL="Llama-3.2-3B-Instruct-GGUF"
 
 
 # =========================
@@ -43,14 +59,14 @@ export DEEP_SUMMARY_MODEL="Llama-3.2-3B-Instruct-GGUF"
 
 # limite hard del modello (puoi aumentare se il modello lo supporta)
 export DEFAULT_CTX_LEN=4000
-export SUMMARY_MAX_TOKENS=1500
+export SUMMARY_MAX_TOKENS=1000
 export SAFETY_MARGIN_TOK=300
 
 export MAX_HEAD=5
 export MAX_TAIL=5
 export SUMMARY_PROMPT_DIR=./prompts
 export SUMMARY_PROMPT_TYPE=curated
-export SUMMARY_TEMPERATURE=0.1
+export SUMMARY_TEMPERATURE=0.8
 export SUMMARY_MODE="cache_append"
 
 

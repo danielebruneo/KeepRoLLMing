@@ -665,7 +665,7 @@ def test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_path):
         token_estimate=100,
         source_mode='cache_append_initial',
     )
-    save_cache_entry(app_mod.SUMMARY_CACHE_DIR, entry)
+    save_cache_entry(app_mod.SUMMARY_CACHE_DIR, entry, user_id='u', conv_id='c')
     repacked, append_until_idx, _fp, best = app_mod._try_cache_append_repack(
         req_id='t1',
         messages=messages,
@@ -680,6 +680,32 @@ def test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_path):
     joined = json.dumps(repacked, ensure_ascii=False)
     assert '[ARCHIVED_COMPACT_CONTEXT]' in joined
     assert 'first user' in joined
+
+
+def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
+    from keeprollming.summary_cache import make_cache_entry, save_cache_entry, load_cache_entries
+
+    messages = [
+        {"role": "user", "content": "u1"},
+        {"role": "assistant", "content": "a1"},
+    ]
+    entry = make_cache_entry(
+        fingerprint='fp123',
+        start_idx=0,
+        end_idx=1,
+        messages=messages,
+        summary_text='valid cached summary text',
+        summary_model='sum',
+        token_estimate=10,
+        source_mode='test',
+    )
+    path = save_cache_entry(tmp_path / 'summary_cache', entry, user_id='user/1', conv_id='conv:1')
+    assert 'librechat' in str(path)
+    assert 'user_1' in str(path)
+    assert 'conv_1' in str(path)
+    loaded = load_cache_entries(tmp_path / 'summary_cache', 'fp123', user_id='user/1', conv_id='conv:1')
+    assert len(loaded) == 1
+    assert loaded[0].summary_text == 'valid cached summary text'
 
 
 def test_failed_placeholder_summary_is_not_cacheable():

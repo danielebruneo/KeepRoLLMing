@@ -56,6 +56,14 @@ def _digest(parts: Iterable[str]) -> str:
     return h.hexdigest()
 
 
+def _safe_path_part(value: str, fallback: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return fallback
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw).strip("._-")
+    return safe or fallback
+
+
 def conversation_fingerprint(
     messages: List[Dict[str, Any]] | None = None,
     n_head: int = 1,
@@ -94,22 +102,31 @@ def ensure_cache_dir(path: str | Path) -> Path:
     return p
 
 
+def resolve_cache_dir(cache_dir: str | Path, *, user_id: str = "", conv_id: str = "", fingerprint: str = "") -> Path:
+    root = ensure_cache_dir(cache_dir)
+    if user_id or conv_id:
+        return ensure_cache_dir(root / "librechat" / _safe_path_part(user_id, "anonymous") / _safe_path_part(conv_id, fingerprint[:16] or "conversation"))
+    return ensure_cache_dir(root / "generic" / _safe_path_part(fingerprint[:32], "default"))
+
+
 def build_cache_filename(entry: SummaryCacheEntry) -> str:
-    return f"{entry.fingerprint}__{entry.start_idx}_{entry.end_idx}__{entry.range_hash[:16]}.json"
+    return f"{entry.start_idx:06d}_{entry.end_idx:06d}__{entry.range_hash[:16]}.json"
 
 
-def save_cache_entry(cache_dir: str | Path, entry: SummaryCacheEntry) -> Path:
-    p = ensure_cache_dir(cache_dir) / build_cache_filename(entry)
+def save_cache_entry(cache_dir: str | Path, entry: SummaryCacheEntry, *, user_id: str = "", conv_id: str = "") -> Path:
+    p = resolve_cache_dir(cache_dir, user_id=user_id, conv_id=conv_id, fingerprint=entry.fingerprint) / build_cache_filename(entry)
     p.write_text(json.dumps(entry.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
     return p
 
 
-def load_cache_entries(cache_dir: str | Path, fingerprint: str) -> list[SummaryCacheEntry]:
-    p = ensure_cache_dir(cache_dir)
+def load_cache_entries(cache_dir: str | Path, fingerprint: str, *, user_id: str = "", conv_id: str = "") -> list[SummaryCacheEntry]:
+    p = resolve_cache_dir(cache_dir, user_id=user_id, conv_id=conv_id, fingerprint=fingerprint)
     out: list[SummaryCacheEntry] = []
-    for f in p.glob(f"{fingerprint}__*.json"):
+    for f in p.glob("*.json"):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
+            if data.get("fingerprint") != fingerprint:
+                continue
             out.append(SummaryCacheEntry(**data))
         except Exception:
             continue
