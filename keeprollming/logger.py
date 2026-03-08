@@ -206,6 +206,7 @@ def _should_log(msg: str) -> bool:
         "conv_user",
         "conv_assistant",
         "response_stream_reconstructed",
+        "stream_progress",
         "tool_call",
         "function_call",
         "upstream_req_repacked",
@@ -431,8 +432,6 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         meta = _fmt_meta(
             model=rec.get("model"),
             elapsed_ms=rec.get("elapsed_ms"),
-            tps=rec.get("tps"),
-            ttft_ms=rec.get("ttft_ms"),
             usage=_fmt_usage(rec.get("usage")),
         )
         add_section("RESULT", ANSI_GREEN, meta=meta)
@@ -447,8 +446,6 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         meta = _fmt_meta(
             model=rec.get("upstream_model"),
             elapsed_ms=rec.get("elapsed_ms"),
-            tps=rec.get("tps"),
-            ttft_ms=rec.get("ttft_ms"),
             usage=_fmt_usage(rec.get("usage")),
         )
         add_section("STREAM_RESULT", ANSI_GREEN, meta=meta)
@@ -456,6 +453,16 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         if assistant:
             parts.append(_c("│   assistant:", ANSI_DIM, ANSI_GRAY))
             parts.append(_indent_block(assistant, prefix="│     "))
+    elif msg == "stream_progress":
+        meta = _fmt_meta(
+            model=rec.get("upstream_model"),
+            elapsed_ms=rec.get("elapsed_ms"),
+            ttft_ms=rec.get("ttft_ms"),
+            generated_tokens_est=rec.get("generated_tokens_est"),
+            tps_live=rec.get("tps_live"),
+            events=rec.get("event_count"),
+        )
+        add_section("STREAM_PROGRESS", ANSI_BLUE, meta=meta)
     else:
         add_section(msg or "LOG", ANSI_BLUE, _snip_text_active(json.dumps(rec, ensure_ascii=False), BASIC_SNIP_CHARS))
 

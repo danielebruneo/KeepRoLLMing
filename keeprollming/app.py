@@ -64,6 +64,7 @@ TOK = TokenCounter()
 LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
 
 MAX_SSE_BYTES = 8000  # capture only the first N bytes of SSE bodies for logging
+LOG_STREAM_PROGRESS_INTERVAL_MS = max(0, int(os.getenv("LOG_STREAM_PROGRESS_INTERVAL_MS", "1000")))
 
 
 def _parse_captured_sse_text(sse_text: str) -> tuple[str, str | None, dict | None, int]:
@@ -478,6 +479,9 @@ async def chat_completions(req: Request) -> Response:
             finish_reason: str | None = None
             upstream_model_seen: str | None = None
             stream_event_count = 0
+            first_token_ts: float | None = None
+            generated_tokens_est: int | None = 0
+            last_progress_log_ms = 0.0
             r: httpx.Response | None = None
             try:
                 async with client.stream("POST", url, json=upstream_payload) as resp:
@@ -546,19 +550,52 @@ async def chat_completions(req: Request) -> Response:
                                 c0 = choices[0] if isinstance(choices[0], dict) else None
                                 if isinstance(c0, dict):
                                     delta = c0.get("delta")
+                                    new_text_piece = False
                                     if isinstance(delta, dict):
                                         piece = delta.get("content")
                                         if isinstance(piece, str) and piece:
-                                            if ttft_ms is None:
-                                                ttft_ms = (time.perf_counter() - t0) * 1000.0
                                             assistant_parts.append(piece)
+                                            new_text_piece = True
                                     msg_obj = c0.get("message")
                                     if isinstance(msg_obj, dict):
                                         piece = msg_obj.get("content")
                                         if isinstance(piece, str) and piece:
-                                            if ttft_ms is None:
-                                                ttft_ms = (time.perf_counter() - t0) * 1000.0
                                             assistant_parts.append(piece)
+                                            new_text_piece = True
+
+                                    if new_text_piece:
+                                        now_perf = time.perf_counter()
+                                        if first_token_ts is None:
+                                            first_token_ts = now_perf
+                                            ttft_ms = (now_perf - t0) * 1000.0
+                                        try:
+                                            generated_tokens_est = TOK.count_text("".join(assistant_parts))
+                                        except Exception:
+                                            generated_tokens_est = generated_tokens_est or None
+
+                                        if LOG_STREAM_PROGRESS_INTERVAL_MS > 0:
+                                            elapsed_since_start_ms = (now_perf - t0) * 1000.0
+                                            should_emit_progress = (
+                                                last_progress_log_ms <= 0.0
+                                                or (elapsed_since_start_ms - last_progress_log_ms) >= LOG_STREAM_PROGRESS_INTERVAL_MS
+                                            )
+                                            if should_emit_progress:
+                                                gen_elapsed_s = max(0.001, now_perf - (first_token_ts or now_perf))
+                                                tps_live = None
+                                                if isinstance(generated_tokens_est, int) and generated_tokens_est > 0:
+                                                    tps_live = round(generated_tokens_est / gen_elapsed_s, 3)
+                                                log(
+                                                    "INFO",
+                                                    "stream_progress",
+                                                    req_id=req_id,
+                                                    upstream_model=(upstream_model_seen or upstream_payload.get("model")),
+                                                    elapsed_ms=round(elapsed_since_start_ms, 3),
+                                                    ttft_ms=(round(ttft_ms, 3) if ttft_ms is not None else None),
+                                                    generated_tokens_est=generated_tokens_est,
+                                                    tps_live=tps_live,
+                                                    event_count=stream_event_count,
+                                                )
+                                                last_progress_log_ms = elapsed_since_start_ms
                                     fr = c0.get("finish_reason")
                                     if isinstance(fr, str) and fr:
                                         finish_reason = fr
