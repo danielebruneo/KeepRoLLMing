@@ -576,7 +576,20 @@ def _extract_backend_ctx_error_message(err: Exception) -> str:
 
 def _is_context_overflow_error(err: Exception) -> bool:
     txt = _extract_backend_ctx_error_message(err).lower()
-    return ("context" in txt and ("exceed" in txt or "available context size" in txt or "n_ctx" in txt))
+    patterns = [
+        "available context size",
+        "exceeds the available context size",
+        "exceed_context_size_error",
+        "maximum context length",
+        "context length exceeded",
+        "context window exceeded",
+        "too many tokens",
+        "prompt is too long",
+        "n_ctx",
+    ]
+    if any(p in txt for p in patterns):
+        return True
+    return ("context" in txt and any(k in txt for k in ["exceed", "overflow", "too large", "too long", "limit"]))
 
 
 def _split_text_preserve_lines(text: str, max_chars: int) -> List[str]:
@@ -628,7 +641,7 @@ def _chunk_messages_for_summary(
     summary_model_ctx: int,
     incremental_existing_summary: str | None = None,
 ) -> List[List[Dict[str, Any]]]:
-    threshold = max(256, int(summary_model_ctx) - int(SUMMARY_MAX_TOKENS) - int(SAFETY_MARGIN_TOK))
+    threshold = max(128, int(summary_model_ctx) - int(SUMMARY_MAX_TOKENS) - int(SAFETY_MARGIN_TOK))
     max_chars_single = max(800, threshold * 4)
     expanded: List[Dict[str, Any]] = []
     for m in messages:
@@ -771,6 +784,22 @@ async def summarize_incremental(
     *,
     lang_hint: str = "italiano",
 ) -> str:
+    should_prechunk, est_tokens, threshold = await _should_prechunk_summary_call(
+        new_messages,
+        summary_model=summary_model,
+        prompt_type=None,
+        lang_hint=lang_hint,
+        incremental_existing_summary=existing_summary,
+    )
+    if should_prechunk:
+        summary_ctx = await get_ctx_len_for_model(summary_model)
+        chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=summary_ctx, incremental_existing_summary=existing_summary)
+        log("WARN", "summary_incremental_preflight_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, est_tokens=est_tokens, threshold=threshold)
+        current = existing_summary
+        for idx, chunk in enumerate(chunks, start=1):
+            current = await summarize_incremental(current, chunk, f"{req_id}-c{idx}", summary_model, lang_hint=lang_hint)
+        return current
+
     try:
         return await _summarize_incremental_core(existing_summary, new_messages, req_id, summary_model, lang_hint=lang_hint)
     except Exception as err:

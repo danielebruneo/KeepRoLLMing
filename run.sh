@@ -69,7 +69,6 @@ export SUMMARY_PROMPT_TYPE=curated
 export SUMMARY_TEMPERATURE=0.8
 export SUMMARY_MODE="cache_append"
 
-#export LOG_STREAM_PROGRESS_INTERVAL_MS
 
 
 # =========================
