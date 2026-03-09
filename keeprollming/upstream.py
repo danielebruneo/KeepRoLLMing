@@ -80,46 +80,51 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
         return cached[0]
 
     #url = f"{UPSTREAM_BASE_URL}/api/v0/models"
-    url = f"{UPSTREAM_BASE_URL}/v1/models"
-    try:
-        client = await http_client()
-        r = await client.get(url)
-        r.raise_for_status()
-        data = r.json()
-        models = data.get("data") if isinstance(data, dict) else None
-        if not isinstance(models, list):
-            raise ValueError("Unexpected /api/v0/models format")
+    url_list = [f"{UPSTREAM_BASE_URL}/v1/models", f"{UPSTREAM_BASE_URL}/api/v0/models"]
+    for url in url_list:
+        try:
+            client = await http_client()
+            r = await client.get(url)
+            r.raise_for_status()
+            data = r.json()
+            models = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(models, list):
+                raise ValueError(f"Unexpected {url} format")
 
-        chosen = None
-        for m in models:
-            if isinstance(m, dict) and m.get("id") == upstream_model:
-                chosen = m
-                break
-
-        ctx_tuple = _extract_ctx_len_from_model_obj(chosen)
-        if ctx_tuple is None:
-            # best-effort fallback: try first model entry with a ctx field
+            chosen = None
             for m in models:
-                ctx_tuple = _extract_ctx_len_from_model_obj(m if isinstance(m, dict) else None)
-                if ctx_tuple:
+                if isinstance(m, dict) and m.get("id") == upstream_model:
+                    chosen = m
                     break
 
-        if ctx_tuple is None:
-            ctx_len = DEFAULT_CTX_LEN
-            ctx_src = "default"
-        else:
-            ctx_len, ctx_src = ctx_tuple
+            ctx_tuple = _extract_ctx_len_from_model_obj(chosen)
+            if ctx_tuple is None:
+                # best-effort fallback: try first model entry with a ctx field
+                for m in models:
+                    ctx_tuple = _extract_ctx_len_from_model_obj(m if isinstance(m, dict) else None)
+                    if ctx_tuple:
+                        break
 
-        _ctx_cache[upstream_model] = (ctx_len, now)
-        log(
-            "INFO",
-            "ctx_len",
-            upstream_model=upstream_model,
-            ctx_len=ctx_len,
-            source=f"/api/v0/models:{ctx_src}" if ctx_len != DEFAULT_CTX_LEN else "default",
-        )
-        return ctx_len
-    except Exception as e:
-        log("WARN", "ctx_len_fallback", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
-        _ctx_cache[upstream_model] = (DEFAULT_CTX_LEN, now)
-        return DEFAULT_CTX_LEN
+            if ctx_tuple is None:
+                ctx_len = DEFAULT_CTX_LEN
+                ctx_src = "default"
+            else:
+                ctx_len, ctx_src = ctx_tuple
+
+            _ctx_cache[upstream_model] = (ctx_len, now)
+            log(
+                "INFO",
+                "ctx_len",
+                upstream_model=upstream_model,
+                ctx_len=ctx_len,
+                source=f"{url}:{ctx_src}" if ctx_len != DEFAULT_CTX_LEN else "default",
+            )
+            return ctx_len
+        except Exception as e:
+            log("WARN", "ctx_len_fallback", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
+            _ctx_cache[upstream_model] = (DEFAULT_CTX_LEN, now)
+            continue
+
+    # Se tutti gli endpoint falliscono, ritorniamo DEFAULT_CTX_LEN
+    log("WARN", "all_endpoints_failed", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN)
+    return DEFAULT_CTX_LEN
