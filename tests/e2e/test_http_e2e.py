@@ -396,3 +396,212 @@ def test_e2e_stream_abort_is_reported_cleanly(
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
     assert "upstream_stream_exception" in stdout_text
     assert "response_stream_reconstructed" in stdout_text
+
+
+@pytest.mark.e2e_fake
+@pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
+def test_e2e_passthrough_large_context_bypasses_summary(
+    backend_target,
+    orchestrator_server,
+    backend_client: httpx.Client,
+    configure_fake_backend,
+    get_fake_stats,
+):
+    configure_fake_backend(
+        {
+            "models": {
+                "main-model": {"context_length": 240},
+                "summary-model": {"context_length": 160},
+            },
+            "chat": {"content": "passthrough response", "include_usage": True},
+        }
+    )
+
+    messages = []
+    for i in range(12):
+        messages.append({"role": "user", "content": f"utente {i} - " + ("P" * 320)})
+        messages.append({"role": "assistant", "content": f"assistente {i} - " + ("Q" * 280)})
+    messages.append({"role": "user", "content": "ultima domanda passthrough"})
+
+    resp = backend_client.post(
+        f"{orchestrator_server.base_url}/v1/chat/completions",
+        json={
+            "model": backend_target.client_model_basic,
+            "messages": messages,
+            "stream": False,
+            "max_tokens": 64,
+        },
+        timeout=40.0,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["choices"][0]["message"]["content"] == "passthrough response"
+
+    stats = get_fake_stats()
+    assert stats["calls_by_kind"].get("summary", 0) == 0
+    assert stats["calls_by_kind"].get("chat", 0) == 1
+    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
+    assert "summary_bypassed" in stdout_text
+    assert "passthrough_model" in stdout_text
+
+
+@pytest.mark.e2e_fake
+@pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
+def test_e2e_summary_cache_hit_reuses_previous_summary(
+    backend_target,
+    orchestrator_server,
+    backend_client: httpx.Client,
+    configure_fake_backend,
+    get_fake_stats,
+):
+    configure_fake_backend(
+        {
+            "models": {
+                "main-model": {"context_length": 260},
+                "summary-model": {"context_length": 5000},
+            },
+            "summary": {
+                "content": "cached summary ok",
+                "overflow_if_prompt_chars_gt": 2600,
+                "include_usage": True,
+            },
+            "chat": {"content": "response using cache", "include_usage": True},
+        }
+    )
+
+    headers = {
+        "x-librechat-user-id": "user-cache",
+        "x-librechat-conversation-id": "conv-cache",
+    }
+    messages = []
+    for i in range(10):
+        messages.append({"role": "user", "content": f"msg {i} - " + ("C" * 340)})
+        messages.append({"role": "assistant", "content": f"reply {i} - " + ("D" * 320)})
+    messages.append({"role": "user", "content": "domanda finale cache"})
+
+    for _ in range(2):
+        resp = backend_client.post(
+            f"{orchestrator_server.base_url}/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": backend_target.client_model_summary,
+                "messages": messages,
+                "stream": False,
+                "max_tokens": 64,
+            },
+            timeout=40.0,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["choices"][0]["message"]["content"] == "response using cache"
+
+    stats = get_fake_stats()
+    assert stats["calls_by_kind"].get("summary", 0) >= 1
+    assert stats["calls_by_kind"].get("summary", 0) < stats["calls_by_kind"].get("chat", 0) + 2
+    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
+    assert "summary_cache_save" in stdout_text
+    assert "summary_cache_hit" in stdout_text
+
+
+@pytest.mark.e2e_fake
+@pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
+def test_e2e_irrecoverable_summary_failure_falls_back_passthrough(
+    backend_target,
+    orchestrator_server,
+    backend_client: httpx.Client,
+    configure_fake_backend,
+    get_fake_stats,
+):
+    configure_fake_backend(
+        {
+            "models": {
+                "main-model": {"context_length": 260},
+                "summary-model": {"context_length": 5000},
+            },
+            "summary": {
+                "script": [
+                    {"type": "error", "status": 500, "message": "boom1"},
+                    {"type": "error", "status": 500, "message": "boom2"},
+                    {"type": "error", "status": 500, "message": "boom3"},
+                    {"type": "error", "status": 500, "message": "boom4"},
+                    {"type": "error", "status": 500, "message": "boom5"},
+                    {"type": "error", "status": 500, "message": "boom6"},
+                ]
+            },
+            "chat": {"content": "fallback main response", "include_usage": True},
+        }
+    )
+
+    messages = []
+    for i in range(10):
+        messages.append({"role": "user", "content": f"segmento {i} - " + ("Z" * 360)})
+        messages.append({"role": "assistant", "content": f"reply {i} - " + ("W" * 340)})
+    messages.append({"role": "user", "content": "chiudi test fallback"})
+
+    resp = backend_client.post(
+        f"{orchestrator_server.base_url}/v1/chat/completions",
+        json={
+            "model": backend_target.client_model_summary,
+            "messages": messages,
+            "stream": False,
+            "max_tokens": 64,
+        },
+        timeout=40.0,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["choices"][0]["message"]["content"] == "fallback main response"
+
+    stats = get_fake_stats()
+    assert stats["calls_by_kind"].get("summary", 0) >= 1
+    assert stats["calls_by_kind"].get("chat", 0) == 1
+    req_file = resolve_perf_request_file(orchestrator_server.perf_dir, backend_target.client_model_basic)
+    text = req_file.read_text(encoding="utf-8")
+    assert "did_summarize: false" in text
+    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
+    assert "summary_failed_fallback_passthrough" in stdout_text
+
+
+@pytest.mark.e2e_fake
+@pytest.mark.parametrize(
+    ("models_mode", "expected_source"),
+    [("v1_only", "/v1/models"), ("api_v0_only", "/api/v0/models")],
+)
+@pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
+def test_e2e_ctx_len_model_endpoint_fallbacks_are_used(
+    backend_target,
+    orchestrator_server,
+    backend_client: httpx.Client,
+    configure_fake_backend,
+    get_fake_stats,
+    models_mode,
+    expected_source,
+):
+    configure_fake_backend(
+        {
+            "models_endpoint_mode": models_mode,
+            "models": {
+                "main-model": {"context_length": 300},
+                "summary-model": {"context_length": 200},
+            },
+            "chat": {"content": "endpoint fallback ok", "include_usage": True},
+        }
+    )
+
+    resp = backend_client.post(
+        f"{orchestrator_server.base_url}/v1/chat/completions",
+        json={
+            "model": backend_target.client_model_basic,
+            "messages": [{"role": "user", "content": "test ctx endpoint fallback"}],
+            "stream": False,
+            "max_tokens": 2048,
+        },
+        timeout=30.0,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["choices"][0]["message"]["content"] == "endpoint fallback ok"
+
+    stats = get_fake_stats()
+    assert stats["calls_by_kind"].get("chat", 0) == 1
+    assert stats["requests"][-1]["max_tokens"] != 2048
+    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
+    assert "ctx_len" in stdout_text
+    assert expected_source in stdout_text
+    assert "max_tokens_clamped" in stdout_text
