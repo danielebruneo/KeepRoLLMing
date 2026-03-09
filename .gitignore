@@ -1,0 +1,27 @@
+.aider*
+__pycache__/
+.gitignore
+.env
+run copy.sh
+run.sh.old
+test copy.sh
+.env/
+execution_log.txt
+keeprollming.zip
+keeprollming/__init__.py
+keeprollming/__pycache__
+.venv/bin
+.venv/include
+.venv/lib
+.venv/lib64
+.venv/pyvenv.cfg
+orchestrator copy 2.py
+orchestrator copy.py
+orchestrator.py
+summary_cache/
+keeprollming_orchestrator_old.py
+keeprollming_app_app.stderr.log
+keeprollming_app_app.stdout.log
+tests_e2e_fake_backend_create_app.stderr.log
+tests_e2e_fake_backend_create_app.stdout.log
+tests.log
