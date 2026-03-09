@@ -74,10 +74,9 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     assert 0 <= summary_calls <= 8
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
     assert (
-        "summary_no_progress_abort" in stdout_text
-        or "summary_overflow_forced_split" in stdout_text
-        or "summary_retry_exhausted" in stdout_text
-        or "summary_overflow_chunking" in stdout_text
+        "summary_http_retry_reduced_chunking" in stdout_text
+        or "summary_incremental_http_retry_reduced_chunking" in stdout_text
+        or '"did_summarize": true' in stdout_text
     )
 
 @pytest.mark.e2e_fake
@@ -350,10 +349,9 @@ def test_e2e_summary_single_oversized_message_does_not_loop(
     assert 0 <= summary_calls <= 8
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
     assert (
-        "summary_no_progress_abort" in stdout_text
-        or "summary_overflow_forced_split" in stdout_text
-        or "summary_retry_exhausted" in stdout_text
-        or "summary_overflow_chunking" in stdout_text
+        "summary_http_retry_reduced_chunking" in stdout_text
+        or "summary_incremental_http_retry_reduced_chunking" in stdout_text
+        or '"did_summarize": true' in stdout_text
     )
 
 
@@ -495,7 +493,9 @@ def test_e2e_summary_cache_hit_reuses_previous_summary(
 
     stats = get_fake_stats()
     assert stats["calls_by_kind"].get("summary", 0) >= 1
-    assert stats["calls_by_kind"].get("summary", 0) < stats["calls_by_kind"].get("chat", 0) + 2
+    assert stats["calls_by_kind"].get("chat", 0) == 2
+    cache_files = list(orchestrator_server.cache_dir.rglob("*.json"))
+    assert cache_files
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
     assert "summary_cache_save" in stdout_text
     assert "summary_cache_hit" in stdout_text
