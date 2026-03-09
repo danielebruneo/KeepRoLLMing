@@ -80,7 +80,7 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
         return cached[0]
 
     #url = f"{UPSTREAM_BASE_URL}/api/v0/models"
-    url_list = [f"{UPSTREAM_BASE_URL}/v1/models", f"{UPSTREAM_BASE_URL}/api/v0/models"]
+    url_list = [f"{UPSTREAM_BASE_URL}/v0/models", f"{UPSTREAM_BASE_URL}/v1/models", f"{UPSTREAM_BASE_URL}/api/v0/models"]
     for url in url_list:
         try:
             client = await http_client()
