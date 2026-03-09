@@ -24,6 +24,63 @@ def resolve_perf_request_file(perf_dir: Path, client_model: str) -> Path:
     )
 
 @pytest.mark.e2e_fake
+def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
+    backend_target,
+    orchestrator_server,
+    backend_client: httpx.Client,
+    configure_fake_backend,
+    get_fake_stats,
+):
+    configure_fake_backend(
+        {
+            "models": {
+                "main-model": {"context_length": 280},
+                "summary-model": {"context_length": 5000},
+            },
+            "summary": {
+                "content": "summary after retry",
+                "script": [
+                    {"type": "error", "status": 500, "message": "temporary backend failure"},
+                    {"content": "summary chunk 1 ok", "include_usage": True},
+                    {"content": "summary chunk 2 ok", "include_usage": True},
+                    {"content": "merged summary ok", "include_usage": True},
+                ],
+            },
+            "chat": {"content": "response after retry summary", "include_usage": True},
+        }
+    )
+
+    messages = []
+    for i in range(10):
+        messages.append({"role": "user", "content": f"segmento {i} - " + ("X" * 360)})
+        messages.append({"role": "assistant", "content": f"reply {i} - " + ("Y" * 340)})
+    messages.append({"role": "user", "content": "chiudi il test"})
+
+    resp = backend_client.post(
+        f"{orchestrator_server.base_url}/v1/chat/completions",
+        json={
+            "model": backend_target.client_model_summary,
+            "messages": messages,
+            "stream": False,
+            "max_tokens": 64,
+        },
+        timeout=40.0,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["choices"][0]["message"]["content"] == "response after retry summary"
+
+    stats = get_fake_stats()
+    summary_calls = stats["calls_by_kind"].get("summary", 0)
+    assert 0 <= summary_calls <= 8
+    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
+    assert (
+        "summary_no_progress_abort" in stdout_text
+        or "summary_overflow_forced_split" in stdout_text
+        or "summary_retry_exhausted" in stdout_text
+        or "summary_overflow_chunking" in stdout_text
+    )
+
+@pytest.mark.e2e_fake
 @pytest.mark.e2e_live
 @pytest.mark.parametrize("backend_target", ["fake", "live"], indirect=True)
 def test_e2e_nonstream_roundtrip_and_performance_logs(
