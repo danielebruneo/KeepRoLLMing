@@ -741,7 +741,7 @@ def test_incremental_summary_reuse_from_cache(client, monkeypatch, tmp_path):
     fp = app_mod.conversation_fingerprint(messages, 1)
     entry = app_mod.make_cache_entry(
         fingerprint=fp,
-        start_idx=0,
+        start_idx=1,
         end_idx=1,
         messages=[m for m in messages if m["role"] != "system"],
         summary_text="cached summary",
