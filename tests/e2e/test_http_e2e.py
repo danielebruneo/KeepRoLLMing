@@ -52,7 +52,7 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
 
     messages = []
     for i in range(10):
-        messages.append({"role": "user", "content": f"segmento {i} - " + ("X" * 360))
+        messages.append({"role": "user", "content": f"segmento {i} - " + ("X" * 360)})
         messages.append({"role": "assistant", "content": f"reply {i} - " + ("Y" * 340))
     messages.append({"role": "user", "content": "chiudi il test"})
 
