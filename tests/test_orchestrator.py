@@ -52,12 +52,11 @@ class _FakeStreamCtx:
         return None
 
 
-
-
 def _async_return(value):
     async def _inner(*args, **kwargs):
         return value
     return _inner
+
 
 class _FakeAsyncClient:
     def __init__(self) -> None:
@@ -195,6 +194,7 @@ def test_rolling_summary_trigger_repacked_messages(client, monkeypatch):
     joined = json.dumps(sent_msgs, ensure_ascii=False)
     assert "SOMMARIO-TEST" in joined
 
+
 def test_web_search_payload_can_still_trigger_summary(client, monkeypatch):
     async def _fake_summary(_middle, **kwargs):
         return "WEB-SUMMARY"
@@ -228,6 +228,7 @@ def test_web_search_payload_can_still_trigger_summary(client, monkeypatch):
     joined = json.dumps(sent_msgs, ensure_ascii=False)
     assert "[ARCHIVED_COMPACT_CONTEXT]" in joined
     assert "WEB-SUMMARY" in joined
+
 
 def test_basic_plain_logs_show_relevant_flow(client, monkeypatch, capsys):
     monkeypatch.setattr(app_mod, "LOG_MODE", "BASIC_PLAIN")
@@ -457,7 +458,6 @@ def test_basic_plain_wraps_long_lines(monkeypatch, capsys):
     assert "┌─ REQUEST wraptest" in out
     assert "│   AI:" in out
     assert out.count("│   ") >= 2
-
 
 
 def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(monkeypatch, tmp_path):
@@ -774,3 +774,4 @@ def test_failed_placeholder_summary_is_not_cacheable():
     import keeprollming.rolling_summary as rs
     assert rs.is_summary_cacheable('(Contesto compattato non disponibile.)') is False
     assert rs.is_summary_cacheable('useful summary with enough content to store in cache') is True
+```
