@@ -245,26 +245,7 @@ def render_incremental_summary_prompt(
     try:
         template = path.read_text(encoding="utf-8")
     except Exception:
-        # fallback to default prompt if file not found
-        template = """Sei un assistente che aggiorna un riassunto di contesto per un altro modello.
-
-Obiettivo:
-integrare il riassunto esistente con i nuovi messaggi, preservando fatti, vincoli, decisioni, richieste e TODO ancora aperti.
-
-Regole:
-- non inventare
-- mantieni lingua coerente (preferisci {{LANG_HINT}})
-- sii compatto ma fedele
-- integra il nuovo contenuto nel summary esistente invece di limitarti ad accodarlo
-- restituisci solo il summary aggiornato
-
-=== EXISTING SUMMARY START ===
-{{EXISTING_SUMMARY}}
-=== EXISTING SUMMARY END ===
-
-=== NEW MESSAGES START ===
-{{NEW_MESSAGES}}
-=== NEW MESSAGES END ==="""
+        raise RuntimeError(f"Failed to load incremental prompt template from {path}")
     
     return (
         template
@@ -1129,13 +1110,7 @@ def build_archived_summary_message(summary_text: str) -> Dict[str, Any]:
     try:
         template = path.read_text(encoding="utf-8")
     except Exception:
-        # fallback to default prompt if file not found
-        template = "[ARCHIVED_COMPACT_CONTEXT]\n" + \
-            "The following block is a compressed reconstruction of earlier conversation content.\n" + \
-            "Treat it as authoritative context for continuity, decisions, constraints, facts and pending work.\n" + \
-            "Prefer this block over trying to infer missing older details from the recent tail alone.\n\n" + \
-            "{{SUMMARY_TEXT}}\n" + \
-            "[/ARCHIVED_COMPACT_CONTEXT]"
+        raise RuntimeError(f"Failed to load archived block prompt template from {path}")
     
     archived_block = template.replace("{{SUMMARY_TEXT}}", summary_text.strip())
     return {"role": "system", "content": archived_block}
