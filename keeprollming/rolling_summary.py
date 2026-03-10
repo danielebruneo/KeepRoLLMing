@@ -193,6 +193,19 @@ Transcript:
 
 
 
+def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
+    """Load a summary prompt template from file or fallback to default."""
+    effective_type = (prompt_type or SUMMARY_PROMPT_TYPE or "curated").strip()
+    
+    # Load from file
+    path = Path(SUMMARY_PROMPT_DIR) / f"{effective_type}.txt"
+    try:
+        return path.read_text(encoding="utf-8")
+    except Exception:
+        # fallback to default prompt if file not found
+        return DEFAULT_SUMMARY_PROMPTS.get(effective_type, DEFAULT_SUMMARY_PROMPTS["curated"])
+
+
 def render_summary_prompt(
     transcript: str,
     *,
