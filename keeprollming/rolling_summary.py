@@ -239,26 +239,39 @@ def render_incremental_summary_prompt(
     lang_hint: str = "italiano",
 ) -> str:
     transcript = render_messages_for_summary(new_messages)
-    return f"""Sei un assistente che aggiorna un riassunto di contesto per un altro modello.
+    
+    # Load from file
+    path = Path(SUMMARY_PROMPT_DIR) / "incremental.txt"
+    try:
+        template = path.read_text(encoding="utf-8")
+    except Exception:
+        # fallback to default prompt if file not found
+        template = """Sei un assistente che aggiorna un riassunto di contesto per un altro modello.
 
 Obiettivo:
 integrare il riassunto esistente con i nuovi messaggi, preservando fatti, vincoli, decisioni, richieste e TODO ancora aperti.
 
 Regole:
 - non inventare
-- mantieni lingua coerente (preferisci {lang_hint})
+- mantieni lingua coerente (preferisci {{LANG_HINT}})
 - sii compatto ma fedele
 - integra il nuovo contenuto nel summary esistente invece di limitarti ad accodarlo
 - restituisci solo il summary aggiornato
 
 === EXISTING SUMMARY START ===
-{existing_summary}
+{{EXISTING_SUMMARY}}
 === EXISTING SUMMARY END ===
 
 === NEW MESSAGES START ===
-{transcript}
-=== NEW MESSAGES END ===
-"""
+{{NEW_MESSAGES}}
+=== NEW MESSAGES END ==="""
+    
+    return (
+        template
+        .replace("{{EXISTING_SUMMARY}}", existing_summary)
+        .replace("{{NEW_MESSAGES}}", transcript)
+        .replace("{{LANG_HINT}}", lang_hint)
+    )
 
 
 @dataclass(frozen=True)
@@ -1110,14 +1123,21 @@ def build_repacked_messages(
 
 
 def build_archived_summary_message(summary_text: str) -> Dict[str, Any]:
-    archived_block = (
-        "[ARCHIVED_COMPACT_CONTEXT]\n"
-        "The following block is a compressed reconstruction of earlier conversation content.\n"
-        "Treat it as authoritative context for continuity, decisions, constraints, facts and pending work.\n"
-        "Prefer this block over trying to infer missing older details from the recent tail alone.\n\n"
-        f"{summary_text.strip()}\n"
-        "[/ARCHIVED_COMPACT_CONTEXT]"
-    )
+    
+    # Load from file
+    path = Path(SUMMARY_PROMPT_DIR) / "archived_block.txt"
+    try:
+        template = path.read_text(encoding="utf-8")
+    except Exception:
+        # fallback to default prompt if file not found
+        template = "[ARCHIVED_COMPACT_CONTEXT]\n" + \
+            "The following block is a compressed reconstruction of earlier conversation content.\n" + \
+            "Treat it as authoritative context for continuity, decisions, constraints, facts and pending work.\n" + \
+            "Prefer this block over trying to infer missing older details from the recent tail alone.\n\n" + \
+            "{{SUMMARY_TEXT}}\n" + \
+            "[/ARCHIVED_COMPACT_CONTEXT]"
+    
+    archived_block = template.replace("{{SUMMARY_TEXT}}", summary_text.strip())
     return {"role": "system", "content": archived_block}
 
 
