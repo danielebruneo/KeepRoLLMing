@@ -35,6 +35,19 @@ export BASE_SUMMARY_MODEL="qwen2.5-3b-instruct"
 export DEEP_MAIN_MODEL="qwen3.5-4b-uncensored-hauhaucs-aggressive"
 export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
 
+#BASE_MODEL="qwen/qwen3-vl-30b"
+BASE_MODEL="qwen/qwen3.5-35b-a3b"
+#MINI_MODEL="$BASE_MODEL"
+MINI_MODEL="qwen2.5-coder-3b-instruct"
+export QUICK_MAIN_MODEL="$MINI_MODEL"
+export QUICK_SUMMARY_MODEL="$MINI_MODEL"
+
+export BASE_MAIN_MODEL="$BASE_MODEL"
+export BASE_SUMMARY_MODEL="$MINI_MODEL"
+
+export DEEP_MAIN_MODEL="$BASE_MODEL"
+export DEEP_SUMMARY_MODEL="$MINI_MODEL"
+
 # =========================
 # BACKEND LLM (Lemonade)
 # =========================
@@ -58,9 +71,9 @@ export DEEP_SUMMARY_MODEL="qwen2.5-3b-instruct"
 # =========================
 
 # limite hard del modello (puoi aumentare se il modello lo supporta)
-export DEFAULT_CTX_LEN=4000
-export SUMMARY_MAX_TOKENS=1000
-export SAFETY_MARGIN_TOK=300
+export DEFAULT_CTX_LEN=10000
+export SUMMARY_MAX_TOKENS=3000
+export SAFETY_MARGIN_TOK=3000
 
 export MAX_HEAD=5
 export MAX_TAIL=5
