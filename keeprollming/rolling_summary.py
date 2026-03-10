@@ -191,20 +191,6 @@ Transcript:
 }
 
 
-def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
-    """
-    Load a summary prompt template from:
-      {SUMMARY_PROMPT_DIR}/{prompt_type}.summary_prompt.txt
-    Fallback to embedded defaults.
-    """
-    effective_type = (prompt_type or SUMMARY_PROMPT_TYPE or "curated").strip()
-    prompt_dir = Path(SUMMARY_PROMPT_DIR)
-    prompt_file = prompt_dir / f"{effective_type}.summary_prompt.txt"
-
-    if prompt_file.exists():
-        return prompt_file.read_text(encoding="utf-8")
-
-    return DEFAULT_SUMMARY_PROMPTS.get(effective_type, DEFAULT_SUMMARY_PROMPTS["curated"])
 
 
 def render_summary_prompt(
