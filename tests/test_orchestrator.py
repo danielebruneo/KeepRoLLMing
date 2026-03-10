@@ -708,6 +708,68 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
     assert loaded[0].summary_text == 'valid cached summary text'
 
 
+def test_incremental_summary_reuse_from_cache(client, monkeypatch, tmp_path):
+    # Test that cache_append mode reuses existing summary when possible
+    from keeprollming import app as app_mod
+
+    # Mock the summary functions to track calls
+    calls = {"middle": 0, "incremental": 0}
+
+    async def _fake_summary_middle(_middle, **kwargs):
+        calls["middle"] += 1
+        return "SHORT-SUMMARY"
+
+    async def _fake_summary_incremental(existing_summary, new_messages, **kwargs):
+        calls["incremental"] += 1
+        return existing_summary + "\nAI: merged"
+
+    monkeypatch.setattr(app_mod, "summarize_middle", _fake_summary_middle)
+    monkeypatch.setattr(app_mod, "summarize_incremental", _fake_summary_incremental)
+
+    # Set up cache directory
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
+
+    # Create a cache entry with a summary
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "A" * 1200},
+        {"role": "assistant", "content": "B" * 1200},
+        {"role": "user", "content": "C" * 300},
+    ]
+    fp = app_mod.conversation_fingerprint(messages, 1)
+    entry = app_mod.make_cache_entry(
+        fingerprint=fp,
+        start_idx=0,
+        end_idx=1,
+        messages=[m for m in messages if m["role"] != "system"],
+        summary_text="cached summary",
+        summary_model="sum-model",
+        token_estimate=10,
+        source_mode="test",
+    )
+    app_mod.save_cache_entry(str(tmp_path / "summary_cache"), entry)
+
+    # First request - should generate summary
+    resp1 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
+    assert resp1.status_code == 200, resp1.text
+    assert calls["middle"] == 1
+    assert calls["incremental"] == 0
+
+    # Second request - should reuse cached summary and call incremental
+    resp2 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
+    assert resp2.status_code == 200, resp2.text
+    assert calls["middle"] == 1  # Should not call summarize_middle again
+    assert calls["incremental"] == 1  # Should call summarize_incremental
+
+    fake = _get_fake_upstream()
+    sent_msgs = fake.last_post_json["messages"]
+    joined = json.dumps(sent_msgs, ensure_ascii=False)
+    assert "cached summary" in joined
+    assert "merged" in joined
+
+
 def test_failed_placeholder_summary_is_not_cacheable():
     import keeprollming.rolling_summary as rs
     assert rs.is_summary_cacheable('(Contesto compattato non disponibile.)') is False
