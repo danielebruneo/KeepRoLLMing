@@ -2,10 +2,6 @@
 
 ## Summary Logic Tests
 
-1. **Test context overflow handling with retry logic**
-   - Scenario: Send a request that exceeds the context limit, causing a context overflow error.
-   - Expected behavior: The orchestrator should retry with reduced context and handle the error gracefully.
-
 2. **Test incremental summary reuse from cache**
    - Scenario: Use cache_append mode with existing cached summary to test incremental reuse logic.
    - Expected behavior: When a reusable checkpoint is found, the system should prefer incremental reuse over regenerating middle content.

@@ -578,19 +578,12 @@ def test_e2e_irrecoverable_summary_failure_falls_back_passthrough(
 
 
 @pytest.mark.e2e_fake
-@pytest.mark.parametrize(
-    ("models_mode", "expected_source"),
-    [("v1_only", "/v1/models"), ("api_v0_only", "/api/v0/models")],
-)
-@pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
-def test_e2e_ctx_len_model_endpoint_fallbacks_are_used(
+def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     backend_target,
     orchestrator_server,
     backend_client: httpx.Client,
     configure_fake_backend,
     get_fake_stats,
-    models_mode,
-    expected_source,
 ):
     configure_fake_backend(
         {
