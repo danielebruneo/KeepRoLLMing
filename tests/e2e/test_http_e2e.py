@@ -642,6 +642,7 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     configure_fake_backend,
     get_fake_stats,
 ):
+    models_mode = "summary"
     configure_fake_backend(
         {
             "models_endpoint_mode": models_mode,
