@@ -774,4 +774,3 @@ def test_failed_placeholder_summary_is_not_cacheable():
     import keeprollming.rolling_summary as rs
     assert rs.is_summary_cacheable('(Contesto compattato non disponibile.)') is False
     assert rs.is_summary_cacheable('useful summary with enough content to store in cache') is True
-```
