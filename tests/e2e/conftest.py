@@ -174,8 +174,21 @@ def backend_target(request: pytest.FixtureRequest) -> BackendTarget:
     if mode == "live":
         raw_base = os.getenv("E2E_LIVE_BASE_URL")
         live_model = os.getenv("E2E_LIVE_MODEL")
+        
+        # Enhanced logging for live backend configuration
+        print(f"\n=== E2E LIVE TEST CONFIGURATION ===")
+        print(f"UPSTREAM_BASE_URL environment variable: {raw_base or 'NOT SET'}")
+        print(f"LIVE_MODEL environment variable: {live_model or 'NOT SET'}")
+        print(f"CLIENT_SUMMARY_MODEL environment variable: {os.getenv('E2E_LIVE_CLIENT_SUMMARY_MODEL', 'local/quick')}")
+        print(f"SUMMARY_MODEL environment variable: {os.getenv('E2E_LIVE_SUMMARY_MODEL', 'None')}")
+        print("==================================\n")
+        
         if not raw_base or not live_model:
+            print("SKIPPING LIVE TEST - Required environment variables NOT SET:")
+            print(f"  E2E_LIVE_BASE_URL={raw_base or 'NOT SET'}")
+            print(f"  E2E_LIVE_MODEL={live_model or 'NOT SET'}")
             pytest.skip("Set E2E_LIVE_BASE_URL and E2E_LIVE_MODEL to run live E2E tests")
+
         return BackendTarget(
             mode="live",
             base_url=_normalize_base_url(raw_base),
