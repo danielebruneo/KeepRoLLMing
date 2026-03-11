@@ -29,3 +29,4 @@ performance_logs/
 qwen-code-export-*.md
 session.aider
 session_full.aider
+.qwen/
