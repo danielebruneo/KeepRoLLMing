@@ -32,6 +32,15 @@ Questo progetto è un **proxy/orchestrator FastAPI** che funziona come intermedi
 - Gestisce il caching dei riassunti con fingerprinting basato su messaggi utente (con supporto LibreChat)
 - Implementa log di performance e streaming progress
 
+### Workflow Guidelines
+
+#### Task Management:
+- **CURRENT-TASK.md**: Used to track the current working task during collaboration
+- **TASK-HISTORY.md**: Stores completed task history after moving from CURRENT-TASK.md  
+- **TODO.md**: Contains a list of possible tasks to pick for future work
+
+This workflow ensures that we maintain clear tracking of ongoing work while preserving historical context and providing organized task selection.
+
 ### Considerazioni:
 - Il progetto è **modularizzato** e ben strutturato, adatto per un uso in produzione
 - La logica di rolling summary è robusta e gestisce overflow del contesto con retry e chunking
