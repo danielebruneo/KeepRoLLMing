@@ -12,19 +12,19 @@ Questo progetto è un **proxy/orchestrator FastAPI** che funziona come intermedi
 - **Best-effort token accounting**
 - **Rolling summary logic** che comprime parte del contesto quando necessario
 
-### Architettura:
-- Il codice è diviso in moduli, con un'app principale (`keeprollming/app.py`) che gestisce le richieste e la logica di summarization.
-- `keeprollming/upstream.py` per comunicare con il backend upstream
-- `keeprollming/rolling_summary.py` per generare riassunti del contesto
-- `keeprollming/logger.py` per logging delle richieste e risposte (con diversi livelli di log)
-- `keeprollming/performance.py` per registrare metriche di performance (TTFT, TPS, etc.)
-- `keeprollming/summary_cache.py` per caching dei riassunti
-- `keeprollming/config.py` per configurazione via env
+### Architecture:
+- The code is divided into modules, with the main app (`keeprollming/app.py`) handling requests and summarization logic.
+- `keeprollming/upstream.py` for communicating with upstream backend
+- `keeprollming/rolling_summary.py` for generating context summaries  
+- `keeprollming/logger.py` for logging requests and responses (with various log levels)
+- `keeprollming/performance.py` for recording performance metrics (TTFT, TPS, etc.)
+- `keeprollming/summary_cache.py` for summary caching
+- `keeprollming/config.py` for environment-based configuration
 
-### Test:
-- Usa pytest con test unit/integration/end-to-end.
-- E2E tests mockano il backend upstream (non richiedono un LM Studio live)
-- Supporta due modalità di test: fake backend e live backend.
+### Tests:
+- Uses pytest with unit/integration/end-to-end tests.
+- E2E tests mock the upstream backend (don't require a live LM Studio instance)
+- Supports two test modes: fake backend and live backend.
 
 ### Struttura del codice:
 - Il progetto è ben organizzato in moduli separati
@@ -35,8 +35,8 @@ Questo progetto è un **proxy/orchestrator FastAPI** che funziona come intermedi
 ### Workflow Guidelines
 
 #### Task Management:
-- **CURRENT-TASK.md**: Used to track the current working task during collaboration
-- **TASK-HISTORY.md**: Stores completed task history after moving from CURRENT-TASK.md  
+- **ACTIVE_TASK.md**: Used to track the current working task during collaboration
+- **COMPLETED_TASKS.md**: Stores completed task history after moving from ACTIVE_TASK.md
 - **TODO.md**: Contains a list of possible tasks to pick for future work
 
 This workflow ensures that we maintain clear tracking of ongoing work while preserving historical context and providing organized task selection.

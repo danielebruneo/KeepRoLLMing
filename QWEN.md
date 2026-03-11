@@ -1,6 +1,10 @@
 # Keeprollming Orchestrator
 
-A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
+This project is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
+
+## Overview
+
+For detailed project overview, please refer to [PROJECT.md](./project/PROJECT.md)
 
 ## Features
 
@@ -16,26 +20,7 @@ A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible ba
 
 ## Project Structure
 
-```
-/home/daniele/LLM/orchestrator/
-├── README.md          # Main documentation
-├── keeprollming.py    # Entry point for running the application
-├── keeprollming/      # Main source code directory
-│   ├── app.py         # FastAPI application implementation
-│   ├── config.py      # Configuration management and profile definitions
-│   ├── upstream.py    # Communication with OpenAI-compatible backend
-│   ├── rolling_summary.py  # Logic for summarizing conversation history
-│   ├── summary_cache.py    # Summary caching functionality
-│   ├── token_counter.py    # Token counting utilities
-│   └── logger.py      # Logging and debugging helpers
-├── tests/             # Test directory
-│   ├── test_orchestrator.py  # Unit/integration tests for the orchestrator
-│   ├── test_summary_overflow_regression.py  # Regression tests
-│   └── e2e/           # End-to-end tests
-├── requirements.txt   # Production dependencies
-├── requirements-dev.txt  # Development/test dependencies
-└── run.sh             # Script to start the application
-```
+For detailed project structure information, please refer to [PROJECT.md](./project/PROJECT.md)
 
 ## Running
 
@@ -43,20 +28,14 @@ For running instructions, please refer to [RUNNING.md](./docs/RUNNING.md).
 
 ## Tests
 
-Install dev requirements:
-
-```bash
-pip install -r requirements-dev.txt
-```
-
-Run:
-
-```bash
-pytest
-```
+For test documentation and guidelines, please refer to [TESTING.md](./docs/TESTING.md) or check the existing tests in `tests/` directory.
 
 Notes:
 - Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
+- Some end-to-end tests may fail in parallel execution mode due to test infrastructure issues.
+  To run all tests successfully, use: `pytest --tb=no -n0` or ensure the default configuration handles
+  parallelization properly. The project is configured to automatically exclude problematic tests from
+  parallel execution through custom markers.
 
 ## Configuration
 
