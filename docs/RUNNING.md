@@ -27,5 +27,13 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 
 ## Commands
 
-- Run tests: `pytest`
+- Run tests: `pytest` or better yet, use the dedicated script: `./run-tests.sh`
 - Run server: `uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000`
+
+## Test Environment Notes
+
+Due to compatibility issues with pytest dependencies that were causing warnings and test failures, we recommend using:
+```bash
+./run-tests.sh
+```
+This script creates a clean virtual environment for running tests, ensuring proper dependency resolution.

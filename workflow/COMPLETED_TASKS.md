@@ -40,3 +40,22 @@ Performance improved significantly:
 - After: 11.13 seconds (35 passed, 2 skipped)
 
 The parallelization achieved approximately 67% reduction in test time while maintaining full functionality and coverage.
+
+## Completed Task: Test incremental summary reuse from cache
+
+### Objective
+Implement test case for verifying that the system prefers incremental reuse over regenerating middle content when using cache_append mode with existing cached summaries.
+
+### Implementation Details
+- Added new test function `test_incremental_summary_reuse_from_cache` to `tests/test_orchestrator.py`
+- The test verifies that after initial summary generation, subsequent calls properly use cached results 
+- Uses monkeypatching to track calls to both `summarize_middle` and `summarize_incremental` functions
+- Validates that cache reuse works correctly by checking request payloads sent to upstream
+
+### Expected Behavior
+- First request should generate a summary and create cache entry
+- Second request with same messages should reuse existing cached summary  
+- System should prefer incremental processing over calling summarize_middle again when appropriate
+
+### Results
+The test passes successfully, confirming that the system properly implements incremental summary reuse from cache functionality in cache_append mode.

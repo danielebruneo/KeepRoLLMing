@@ -51,9 +51,15 @@ pytest
 Notes:
 - Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
 - Some end-to-end tests may fail in parallel execution mode due to test infrastructure issues.
-  To run all tests successfully, use: `pytest --tb=no -n0` or ensure the default configuration handles 
+  To run all tests successfully, use: `pytest --tb=no -n0` or ensure the default configuration handles
   parallelization properly. The project is configured to automatically exclude problematic tests from
   parallel execution through custom markers.
+  
+- **Important**: Due to compatibility issues with pytest dependencies, we recommend using the dedicated test script:
+  ```bash
+  ./run-tests.sh
+  ```
+  This ensures a clean virtual environment and proper dependency resolution for consistent test runs.
 
 ## Configuration
 

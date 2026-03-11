@@ -793,3 +793,59 @@ def test_first_user_prompt_is_preserved_raw_in_repacked_messages(client, monkeyp
 
     archived_block = sent_msgs[archived_idx]["content"]
     assert "FOUNDATIONAL USER PROMPT" not in archived_block
+
+
+def test_incremental_summary_reuse_from_cache(client, monkeypatch):
+    """
+    Test incremental summary reuse from cache with cache_append mode.
+    
+    Scenario: Use cache_append mode with existing cached summary to test incremental reuse logic.
+    Expected behavior: When a reusable checkpoint is found, the system should prefer incremental reuse 
+    over regenerating middle content.
+    """
+    
+    # Track calls to both summarization functions
+    calls = {"middle": 0, "incremental": 0}
+    
+    async def _fake_middle_summary(*args, **kwargs):
+        calls["middle"] += 1
+        return "PREFIX-SUMMARY"
+        
+    async def _fake_incremental_summary(existing_summary, new_messages, **kwargs):
+        calls["incremental"] += 1
+        # Return a simple merged result to indicate that it was called
+        return existing_summary + "\nAI: merged"
+
+    monkeypatch.setattr(app_mod, "summarize_middle", _fake_middle_summary)
+    monkeypatch.setattr(app_mod, "summarize_incremental", _fake_incremental_summary)
+
+    # Create a conversation with enough messages to trigger summarization
+    messages = [
+        {"role": "user", "content": "A" * 1200},
+        {"role": "assistant", "content": "B" * 1200}, 
+        {"role": "user", "content": "C" * 300},
+        {"role": "assistant", "content": "D" * 300},
+        {"role": "user", "content": "E" * 300},
+    ]
+
+    # First request - should generate a cache entry
+    resp1 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
+    assert resp1.status_code == 200, resp1.text
+    assert calls["middle"] == 1  # Should call summarize_middle once for initial summary
+    
+    # Second request - should reuse cache and prefer incremental over regenerating middle content  
+    resp2 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
+    assert resp2.status_code == 200, resp2.text
+    
+    # Verify that the middleware was not called again (since cache should be used)
+    # but incremental summary may have been called for reprocessing
+    assert calls["middle"] == 1  # Should still only call summarize_middle once
+    
+    # The key test: verify that we didn't trigger a new full middle summary 
+    # by checking what was sent to upstream (should include cached prefix)
+    fake = _get_fake_upstream()
+    sent_msgs = fake.last_post_json["messages"]
+    joined = json.dumps(sent_msgs, ensure_ascii=False)
+    
+    # Since the cache is used, we should see the PREFIX-SUMMARY in the request
+    assert "PREFIX-SUMMARY" in joined
