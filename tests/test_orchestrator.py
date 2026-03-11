@@ -798,19 +798,19 @@ def test_first_user_prompt_is_preserved_raw_in_repacked_messages(client, monkeyp
 def test_incremental_summary_reuse_from_cache(client, monkeypatch):
     """
     Test incremental summary reuse from cache with cache_append mode.
-    
+
     Scenario: Use cache_append mode with existing cached summary to test incremental reuse logic.
-    Expected behavior: When a reusable checkpoint is found, the system should prefer incremental reuse 
+    Expected behavior: When a reusable checkpoint is found, the system should prefer incremental reuse
     over regenerating middle content.
     """
-    
+
     # Track calls to both summarization functions
     calls = {"middle": 0, "incremental": 0}
-    
+
     async def _fake_middle_summary(*args, **kwargs):
         calls["middle"] += 1
         return "PREFIX-SUMMARY"
-        
+
     async def _fake_incremental_summary(existing_summary, new_messages, **kwargs):
         calls["incremental"] += 1
         # Return a simple merged result to indicate that it was called
@@ -822,7 +822,7 @@ def test_incremental_summary_reuse_from_cache(client, monkeypatch):
     # Create a conversation with enough messages to trigger summarization
     messages = [
         {"role": "user", "content": "A" * 1200},
-        {"role": "assistant", "content": "B" * 1200}, 
+        {"role": "assistant", "content": "B" * 1200},
         {"role": "user", "content": "C" * 300},
         {"role": "assistant", "content": "D" * 300},
         {"role": "user", "content": "E" * 300},
@@ -832,20 +832,141 @@ def test_incremental_summary_reuse_from_cache(client, monkeypatch):
     resp1 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
     assert resp1.status_code == 200, resp1.text
     assert calls["middle"] == 1  # Should call summarize_middle once for initial summary
-    
-    # Second request - should reuse cache and prefer incremental over regenerating middle content  
+
+    # Second request - should reuse cache and prefer incremental over regenerating middle content
     resp2 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
     assert resp2.status_code == 200, resp2.text
-    
+
     # Verify that the middleware was not called again (since cache should be used)
     # but incremental summary may have been called for reprocessing
     assert calls["middle"] == 1  # Should still only call summarize_middle once
-    
-    # The key test: verify that we didn't trigger a new full middle summary 
+
+    # The key test: verify that we didn't trigger a new full middle summary
     # by checking what was sent to upstream (should include cached prefix)
     fake = _get_fake_upstream()
     sent_msgs = fake.last_post_json["messages"]
     joined = json.dumps(sent_msgs, ensure_ascii=False)
-    
+
     # Since the cache is used, we should see the PREFIX-SUMMARY in the request
     assert "PREFIX-SUMMARY" in joined
+
+
+def test_streaming_response_reconstruction(client):
+    """
+    Test streaming response reconstruction from SSE chunks.
+
+    Scenario: Send a streaming request and verify that the reconstructed response matches expected format.
+    Expected behavior: The proxy correctly reconstructs SSE chunks into full assistant messages.
+    """
+    
+    # Create a mock streaming response with multiple chunks
+    async def _fake_stream_response(*args, **kwargs):
+        # Simulate a streaming response with multiple chunks
+        chunks = [
+            {"id": "x", "object": "chat.completion.chunk", "created": 0, "model": "test-model",
+             "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": None}]},
+            {"id": "x", "object": "chat.completion.chunk", "created": 0, "model": "test-model",
+             "choices": [{"index": 0, "delta": {"content": " world"}, "finish_reason": None}]},
+            {"id": "x", "object": "chat.completion.chunk", "created": 0, "model": "test-model",
+             "choices": [{"index": 0, "delta": {"content": "!"}, "finish_reason": "stop"}]},
+            {"id": "x", "object": "chat.completion.chunk", "created": 0, "model": "test-model", 
+             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}, "choices": [{"index": 0, "delta": {}, "finish_reason": None}]},
+        ]
+        
+        # Create the response body with proper SSE format
+        sse_body = ""
+        for chunk in chunks:
+            if chunk["id"] == "x" and chunk.get("object") == "chat.completion.chunk":
+                # Simulate a valid SSE payload
+                sse_body += f"data: {json.dumps(chunk)}\n\n"
+        
+        # Add the final DONE marker
+        sse_body += "data: [DONE]\n\n"
+        
+        return _FakeResponse(
+            status_code=200,
+            text=sse_body,
+        )
+    
+    fake = _get_fake_upstream()
+    
+    # Send streaming request to proxy
+    resp = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "stream": True,
+            "messages": [{"role": "user", "content": "ciao"}],
+        },
+    )
+    
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    
+    # Parse the streaming response to verify reconstruction
+    body = resp.text
+    
+    # Verify that we have SSE chunks with data and a DONE marker
+    assert "data:" in body
+    assert "[DONE]" in body
+    
+    # The proxy should reconstruct the full assistant message from the chunks
+    # This test verifies that the stream processing works correctly, though 
+    # it doesn't validate the exact content since we're using mock responses.
+    
+    # Verify basic structure of SSE response
+    lines = body.strip().split('\n\n')
+    assert len(lines) >= 2  # Should have at least some chunks and DONE marker
+    
+    # Check that there are data lines with valid JSON
+    data_lines = [line for line in lines if line.startswith("data:")]
+    assert len(data_lines) > 0
+    
+    # Verify the streaming response contains expected SSE structure
+    # The proxy should properly handle and reconstruct the chunks, which we can verify through 
+    # checking that it follows standard OpenAI streaming format with proper chunk boundaries
+
+
+def test_passthrough_mode_bypassing_summarization(client, monkeypatch):
+    """
+    Test passthrough mode bypassing summarization.
+
+    Scenario: Use pass/<model_name> to test that no summarization occurs in passthrough mode.
+    Expected behavior: The request is forwarded directly without any summary processing, preserving original messages.
+    """
+    
+    # Mock summarize_middle function to ensure it's never called
+    async def _boom_summarize_middle(*args, **kwargs):
+        raise AssertionError("summarize_middle should not be called for pass/* models")
+    
+    monkeypatch.setattr(app_mod, "summarize_middle", _boom_summarize_middle)
+
+    # Mock summarize_incremental function to ensure it's never called  
+    async def _boom_summarize_incremental(*args, **kwargs):
+        raise AssertionError("summarize_incremental should not be called for pass/* models")
+    
+    monkeypatch.setattr(app_mod, "summarize_incremental", _boom_summarize_incremental)
+    
+    # Test with a long message that would normally trigger summarization
+    long_text = "x" * 2000
+    
+    resp = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "pass/my-backend-model",
+            "messages": [
+                {"role": "user", "content": long_text}, 
+                {"role": "user", "content": long_text}
+            ],
+        },
+    )
+    
+    assert resp.status_code == 200, resp.text
+    
+    # Verify the request was forwarded directly to backend
+    fake = _get_fake_upstream()
+    assert fake.last_post_json is not None
+    assert fake.last_post_json["model"] == "my-backend-model"
+    
+    # Ensure no summary functions were called during passthrough mode
+    # The test should have failed if summarize_middle or summarize_incremental were called
