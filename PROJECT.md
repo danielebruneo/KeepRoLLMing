@@ -54,3 +54,7 @@ Questo progetto è un **proxy/orchestrator FastAPI** che funziona come intermedi
 Questo progetto è **ben strutturato**, con codice pulito, test coverage completo e architettura modularizzata. È adatto a un uso in produzione come proxy/orchestrator per LLM streaming.
 
 Se hai bisogno di ulteriori informazioni o chiarimenti su specifiche parti del codice, posso aiutarti con dettagli.
+
+## Caching Mechanism
+
+For detailed information about how rolling summaries are cached and reused, please refer to [CACHING_MECHANISM.md](./CACHING_MECHANISM.md).

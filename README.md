@@ -121,3 +121,7 @@ This setup ensures that the project is well-structured, with clear documentation
 - Failed / placeholder summaries are skipped for cache save.
 - The default curated summary prompt now asks for compact YAML output to reduce template leakage and make the compressed context more stable across turns.
 - Extra logs were added for cache candidate rejection and incremental reuse (`summary_cache_candidate_rejected`, `summary_incremental_reuse`, `summary_cache_skip_save`).
+
+## Caching Mechanism
+
+For detailed information about how rolling summaries are cached and reused, please refer to [CACHING_MECHANISM.md](./CACHING_MECHANISM.md).
