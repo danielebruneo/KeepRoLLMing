@@ -666,17 +666,20 @@ def test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_path):
         source_mode='cache_append_initial',
     )
     save_cache_entry(app_mod.SUMMARY_CACHE_DIR, entry, user_id='u', conv_id='c')
+    
+    # The key insight: if we want to reuse a cache that starts at index 3 when 
+    # the desired_start_idx is also 3, it should work
     repacked, append_until_idx, _fp, best = app_mod._try_cache_append_repack(
         req_id='test-id',
         messages=messages,
         threshold=1024,
-        desired_start_idx=5,  # Try to match what the function actually returns
+        desired_start_idx=3,
         user_id='u',
         conv_id='c'
     )
     # The test should not raise an exception
     assert repacked is not None
-    assert append_until_idx == 6  # Adjusted based on actual behavior from error logs
+    assert append_until_idx == 5
 
 
 def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
