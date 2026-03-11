@@ -39,22 +39,7 @@ A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible ba
 
 ## Running
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-export UPSTREAM_BASE_URL="http://127.0.0.1:1234"   # LM Studio base (no /v1)
-uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
-```
-
-Then call:
-
-```bash
-curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "content-type: application/json" \
-  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'}'
-```
+For running instructions, please refer to [RUNNING.md](./docs/RUNNING.md).
 
 ## Tests
 
@@ -75,16 +60,7 @@ Notes:
 
 ## Configuration
 
-### Environment Variables
-
-- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1` is accepted, but recommended to provide without `/v1`)
-- `MAIN_MODEL`, `SUMMARY_MODEL`
-- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
-- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
-- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
-- `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
-- `DEFAULT_CTX_LEN` - Default context length when no model info is available
-- `SUMMARY_MAX_TOKENS` - Maximum tokens for summary generation
+For configuration details, please refer to [CONFIGURATION.md](./docs/CONFIGURATION.md).
 
 ## Development Conventions
 
