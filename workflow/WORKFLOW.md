@@ -5,12 +5,12 @@ This document outlines the collaborative workflow and task management convention
 
 ## Task Management Structure
 
-### ACTIVE_TASK.md (CURRENT-TASK.md)
+### ACTIVE_TASK.md 
 - Used to track the current working task during collaboration
 - Contains ongoing work details and progress updates
 - Should be kept updated throughout the active work period
 
-### COMPLETED_TASKS.md (TASK-HISTORY.md) 
+### COMPLETED_TASKS.md
 - Stores completed task history after moving from ACTIVE_TASK.md
 - Provides historical context of project development
 - Serves as reference for past decisions and implementations
@@ -23,8 +23,8 @@ This document outlines the collaborative workflow and task management convention
 ## Collaboration Conventions
 
 1. **Task Tracking**: 
-   - Start new tasks in ACTIVE_TASK.md (CURRENT-TASK.md)
-   - Move completed tasks to COMPLETED_TASKS.md (TASK-HISTORY.md)  
+   - Start new tasks in ACTIVE_TASK.md
+   - Move completed tasks to COMPLETED_TASKS.md  
    - Add new ideas/possibilities to TODO.md
 
 2. **File Organization**:
