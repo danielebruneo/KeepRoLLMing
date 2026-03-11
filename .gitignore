@@ -25,3 +25,7 @@ keeprollming_app_app.stdout.log
 tests_e2e_fake_backend_create_app.stderr.log
 tests_e2e_fake_backend_create_app.stdout.log
 tests.log
+performance_logs/
+qwen-code-export-*.md
+session.aider
+session_full.aider
