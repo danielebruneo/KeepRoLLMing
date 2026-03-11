@@ -1,7 +1,6 @@
 # Keeprollming Orchestrator
 
-A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio)
-and adds **rolling-summary** support to avoid context overflow.
+A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
 
 ## Features
 
@@ -15,7 +14,30 @@ and adds **rolling-summary** support to avoid context overflow.
 - Streaming proxy (SSE) support
 - Best-effort token accounting
 
-## Run
+## Project Structure
+
+```
+/home/daniele/LLM/orchestrator/
+├── README.md          # Main documentation
+├── keeprollming.py    # Entry point for running the application
+├── keeprollming/      # Main source code directory
+│   ├── app.py         # FastAPI application implementation
+│   ├── config.py      # Configuration management and profile definitions
+│   ├── upstream.py    # Communication with OpenAI-compatible backend
+│   ├── rolling_summary.py  # Logic for summarizing conversation history
+│   ├── summary_cache.py    # Summary caching functionality
+│   ├── token_counter.py    # Token counting utilities
+│   └── logger.py      # Logging and debugging helpers
+├── tests/             # Test directory
+│   ├── test_orchestrator.py  # Unit/integration tests for the orchestrator
+│   ├── test_summary_overflow_regression.py  # Regression tests
+│   └── e2e/           # End-to-end tests
+├── requirements.txt   # Production dependencies
+├── requirements-dev.txt  # Development/test dependencies
+└── run.sh             # Script to start the application
+```
+
+## Running
 
 ```bash
 python -m venv .venv
@@ -53,14 +75,18 @@ Notes:
 
 ## Configuration
 
+### Environment Variables
+
 - `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1` is accepted, but recommended to provide without `/v1`)
 - `MAIN_MODEL`, `SUMMARY_MODEL`
 - `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
 - `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
 - `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
 - `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
+- `DEFAULT_CTX_LEN` - Default context length when no model info is available
+- `SUMMARY_MAX_TOKENS` - Maximum tokens for summary generation
 
-## Key components
+### Key Components
 
 1. **FastAPI Application (`keeprollming/app.py`)**:
    - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
@@ -82,39 +108,28 @@ Notes:
 6. **Configuration Management**:
    - Environment variables like `UPSTREAM_BASE_URL`, `MAIN_MODEL`, etc., are used to configure the application.
 
-### Example Usage
+## Key Implementation Details
 
-Here's an example of how you might use the Keeprollming Orchestrator:
+### Rolling Summary Algorithm
+The orchestrator uses a rolling summary approach where it:
+1. Identifies when the conversation history needs summarization based on token count and context length
+2. Uses either classic head/middle/tail or cache-append strategies for summarizing
+3. Maintains an incremental caching system to avoid reprocessing already summarized content
+4. Supports streaming responses through SSE (Server-Sent Events)
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+### Summary Caching 
+- Cache entries are stored in `./summary_cache` directory by default
+- Entries are indexed by conversation fingerprint and range hash
+- When a reusable checkpoint is found, the orchestrator prefers incremental reuse (`existing summary + delta`) instead of regenerating the whole middle from scratch
+- Failed / placeholder summaries are skipped for cache save
 
-export UPSTREAM_BASE_URL="http://127.0.0.1:1234/v1"   # LM Studio base (no /v1)
-uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
-```
+### Profile Management 
+The system supports three profiles:
+- `quick`: Uses less resource-intensive models for faster responses
+- `main`: Default profile with balanced performance and quality  
+- `deep`: Uses larger, more capable models for complex tasks
 
-Then, you can call the API:
-
-```bash
-curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "content-type: application/json" \
-  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'}'
-```
-
-### Testing
-
-To run the tests, install dev requirements and execute:
-
-```bash
-pip install -r requirements-dev.txt
-pytest
-```
-
-This setup ensures that the project is well-structured, with clear documentation and a robust testing framework to maintain code quality.
-
-## Recent summary/cache updates
+## Recent Summary/Cache Updates
 
 - Cache retrieval now matches reusable checkpoints by the current summary start index and validates the saved range hash only on the covered prefix.
 - When a reusable checkpoint is found, the orchestrator prefers incremental reuse (`existing summary + delta`) instead of regenerating the whole middle from scratch.
@@ -122,6 +137,23 @@ This setup ensures that the project is well-structured, with clear documentation
 - The default curated summary prompt now asks for compact YAML output to reduce template leakage and make the compressed context more stable across turns.
 - Extra logs were added for cache candidate rejection and incremental reuse (`summary_cache_candidate_rejected`, `summary_incremental_reuse`, `summary_cache_skip_save`).
 
-### Conclusion
+## Development Conventions
 
-This project provides a robust solution for adding rolling-summary support to an OpenAI-compatible backend using FastAPI. The detailed documentation, clear build instructions, and comprehensive testing framework make it easy to set up and verify the functionality.
+### Testing
+Tests are structured with:
+- Unit/integration tests in `tests/test_orchestrator.py`
+- End-to-end tests in `tests/e2e/`
+- Regression tests for summary overflow scenarios in `tests/test_summary_overflow_regression.py`
+
+### Code Style
+- Uses dataclasses for configuration management
+- Leverages FastAPI for web framework
+- Implements async/await pattern for non-blocking operations
+- Follows Python best practices and PEP8 style guide
+
+### Logging
+The system supports multiple logging levels:
+- INFO: General operational information  
+- WARN: Warnings about issues that don't stop execution
+- ERROR: Errors that cause failures or fallback behavior
+- DEBUG: Detailed debugging information (for development only)

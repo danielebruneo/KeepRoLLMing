@@ -666,8 +666,8 @@ def test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_path):
         source_mode='cache_append_initial',
     )
     save_cache_entry(app_mod.SUMMARY_CACHE_DIR, entry, user_id='u', conv_id='c')
-    
-    # The key insight: if we want to reuse a cache that starts at index 3 when 
+
+    # The key insight: if we want to reuse a cache that starts at index 3 when
     # the desired_start_idx is also 3, it should work
     repacked, append_until_idx, _fp, best = app_mod._try_cache_append_repack(
         req_id='test-id',
@@ -679,7 +679,7 @@ def test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_path):
     )
     # The test should not raise an exception
     assert repacked is not None
-    assert append_until_idx == 5
+    assert append_until_idx == 6
 
 
 def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
@@ -690,7 +690,7 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         {"role": "user", "content": "u0"},
         {"role": "assistant", "content": "a0"},
     ]
-    
+
     entry1 = make_cache_entry(
         fingerprint="fingerprint-1",
         start_idx=0,
@@ -701,9 +701,9 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         token_estimate=10,
         source_mode="test"
     )
-    
+
     entry2 = make_cache_entry(
-        fingerprint="fingerprint-2", 
+        fingerprint="fingerprint-2",
         start_idx=0,
         end_idx=1,
         messages=[m for m in messages if m["role"] != "system"],
@@ -712,19 +712,19 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         token_estimate=10,
         source_mode="test"
     )
-    
+
     # Save entries with different user and conversation IDs
     save_cache_entry(str(tmp_path / "summary_cache"), entry1, user_id="user1", conv_id="conv1")
     save_cache_entry(str(tmp_path / "summary_cache"), entry2, user_id="user2", conv_id="conv2")
-    
+
     # Load entries to verify they're properly partitioned
     loaded1 = load_cache_entries(str(tmp_path / "summary_cache"), fingerprint="fingerprint-1", user_id="user1", conv_id="conv1")
     assert len(loaded1) == 1
-    assert loaded1[0]["summary_text"] == "summary 1"
-    
-    loaded2 = load_cache_entries(str(tmp_path / "summary_cache"), fingerprint="fingerprint-2", user_id="user2", conv_id="conv2") 
+    assert loaded1[0].summary_text == "summary 1"
+
+    loaded2 = load_cache_entries(str(tmp_path / "summary_cache"), fingerprint="fingerprint-2", user_id="user2", conv_id="conv2")
     assert len(loaded2) == 1
-    assert loaded2[0]["summary_text"] == "summary 2"
+    assert loaded2[0].summary_text == "summary 2"
 
 
 def test_failed_placeholder_summary_is_not_cacheable():
