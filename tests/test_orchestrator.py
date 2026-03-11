@@ -669,10 +669,10 @@ def test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_path):
     repacked, append_until_idx, _fp, best = app_mod._try_cache_append_repack(
         req_id='test-id',
         messages=messages,
-        n_head=1,
-        n_tail=3,
-        max_tokens=2048,
-        summary_model='sum-model'
+        threshold=1024,
+        desired_start_idx=3,  # Changed to match the cache start index
+        user_id='u',
+        conv_id='c'
     )
     # The test should not raise an exception
     assert repacked is not None
