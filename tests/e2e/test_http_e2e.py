@@ -474,6 +474,7 @@ def test_e2e_stream_abort_is_reported_cleanly(
 
 
 @pytest.mark.e2e_fake
+@pytest.mark.non_parallelizable
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 def test_e2e_passthrough_large_context_bypasses_summary(
     backend_target,
@@ -520,6 +521,7 @@ def test_e2e_passthrough_large_context_bypasses_summary(
 
 
 @pytest.mark.e2e_fake
+@pytest.mark.non_parallelizable
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 def test_e2e_summary_cache_hit_reuses_previous_summary(
     backend_target,

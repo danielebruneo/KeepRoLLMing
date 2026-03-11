@@ -50,6 +50,10 @@ pytest
 
 Notes:
 - Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
+- Some end-to-end tests may fail in parallel execution mode due to test infrastructure issues.
+  To run all tests successfully, use: `pytest --tb=no -n0` or ensure the default configuration handles 
+  parallelization properly. The project is configured to automatically exclude problematic tests from
+  parallel execution through custom markers.
 
 ## Configuration
 
@@ -113,6 +117,14 @@ pytest
 ```
 
 This setup ensures that the project is well-structured, with clear documentation and a robust testing framework to maintain code quality.
+
+## Live Testing
+
+For end-to-end tests against a real LM Studio backend:
+1. Set up your live backend configuration in `live_backend_config.sh`
+2. Run: `./live-test.sh` 
+
+This will execute the live E2E tests that connect directly to your configured LM Studio instance.
 
 ## Recent summary/cache updates
 

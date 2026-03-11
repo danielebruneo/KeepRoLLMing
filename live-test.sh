@@ -2,9 +2,8 @@
 
 # Script for running live E2E tests against your LM Studio backend
 
-export E2E_LIVE_BASE_URL="http://arkai.local:1234"
-export E2E_LIVE_MODEL="qwen3-coder-30b-a3b-instruct"
-export E2E_LIVE_CLIENT_SUMMARY_MODEL="local/quick"
+# Import the configuration
+source ./live_backend_config.sh
 
 echo "=== Live Test Configuration ==="
 echo "E2E_LIVE_BASE_URL=$E2E_LIVE_BASE_URL"
