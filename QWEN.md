@@ -86,90 +86,22 @@ Notes:
 - `DEFAULT_CTX_LEN` - Default context length when no model info is available
 - `SUMMARY_MAX_TOKENS` - Maximum tokens for summary generation
 
-### Key Components
-
-1. **FastAPI Application (`keeprollming/app.py`)**:
-   - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
-
-2. **Profiles**:
-   - Defined in `keeprollming/config.py` using a dataclass.
-   - Supports different profiles like `local/quick`, `local/main`, and `local/deep`.
-
-3. **Orchestrator Logic**:
-   - Handles token counting, message splitting, and summarization as needed.
-
-4. **Upstream Client (`keeprollming/upstream.py`)**:
-   - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
-
-5. **Testing Framework**:
-   - Uses `pytest` for testing.
-   - Mocks upstream calls in tests to avoid live LM Studio instances.
-
-6. **Configuration Management**:
-   - Environment variables like `UPSTREAM_BASE_URL`, `MAIN_MODEL`, etc., are used to configure the application.
-
-## Key Implementation Details
-
-### Rolling Summary Algorithm
-The orchestrator uses a rolling summary approach where it:
-1. Identifies when the conversation history needs summarization based on token count and context length
-2. Uses either classic head/middle/tail or cache-append strategies for summarizing
-3. Maintains an incremental caching system to avoid reprocessing already summarized content
-4. Supports streaming responses through SSE (Server-Sent Events)
-
-### Summary Caching
-- Cache entries are stored in `./summary_cache` directory by default
-- Entries are indexed by conversation fingerprint and range hash
-- When a reusable checkpoint is found, the orchestrator prefers incremental reuse (`existing summary + delta`) instead of regenerating the whole middle from scratch
-- Failed / placeholder summaries are skipped for cache save
-
-### Profile Management
-The system supports three profiles:
-- `quick`: Uses less resource-intensive models for faster responses
-- `main`: Default profile with balanced performance and quality
-- `deep`: Uses larger, more capable models for complex tasks
-
-## Recent Summary/Cache Updates
-
-- Cache retrieval now matches reusable checkpoints by the current summary start index and validates the saved range hash only on the covered prefix.
-- When a reusable checkpoint is found, the orchestrator prefers incremental reuse (`existing summary + delta`) instead of regenerating the whole middle from scratch.
-- Failed / placeholder summaries are skipped for cache save.
-- The default curated summary prompt now asks for compact YAML output to reduce template leakage and make the compressed context more stable across turns.
-- Extra logs were added for cache candidate rejection and incremental reuse (`summary_cache_candidate_rejected`, `summary_incremental_reuse`, `summary_cache_skip_save`).
-
 ## Development Conventions
 
-### Testing
-Tests are structured with:
-- Unit/integration tests in `tests/test_orchestrator.py`
-- End-to-end tests in `tests/e2e/`
-- Regression tests for summary overflow scenarios in `tests/test_summary_overflow_regression.py`
-
-### Code Style
-- Uses dataclasses for configuration management
-- Leverages FastAPI for web framework
-- Implements async/await pattern for non-blocking operations
-- Follows Python best practices and PEP8 style guide
-
-### Logging
-The system supports multiple logging levels:
-- INFO: General operational information
-- WARN: Warnings about issues that don't stop execution
-- ERROR: Errors that cause failures or fallback behavior
-- DEBUG: Detailed debugging information (for development only)
+The project follows specific conventions and best practices which are documented in [CONVENTIONS.md](./project/CONVENTIONS.md).
 
 ## Workflow Guidelines
 
 For project workflow conventions and task management, please refer to [WORKFLOW.md](./workflow/WORKFLOW.md) which contains detailed guidelines on:
-- Active work tracking via CURRENT-TASK.md
-- Completed tasks archival in TASK-HISTORY.md  
+- Active work tracking via ACTIVE_TASK.md
+- Completed tasks archival in COMPLETED_TASKS.md
 - Future task planning in TODO.md
 - Overall project collaboration conventions
 
 ## Project Guidelines
 
 For project-level documentation and conventions, please refer to [PROJECT.md](./project/PROJECT.md) which contains detailed information about:
-- Overall project overview 
+- Overall project overview
 - Versioning strategy and practices
 - Coding conventions, best practices, etc.
 - Configuration management guidelines
