@@ -715,11 +715,11 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
     save_cache_entry(str(tmp_path / "summary_cache"), entry2, user_id="user2", conv_id="conv2")
     
     # Load entries to verify they're properly partitioned
-    loaded1 = load_cache_entries(str(tmp_path / "summary_cache"), user_id="user1", conv_id="conv1")
+    loaded1 = load_cache_entries(str(tmp_path / "summary_cache"), fingerprint="fingerprint-1", user_id="user1", conv_id="conv1")
     assert len(loaded1) == 1
     assert loaded1[0]["summary_text"] == "summary 1"
     
-    loaded2 = load_cache_entries(str(tmp_path / "summary_cache"), user_id="user2", conv_id="conv2") 
+    loaded2 = load_cache_entries(str(tmp_path / "summary_cache"), fingerprint="fingerprint-2", user_id="user2", conv_id="conv2") 
     assert len(loaded2) == 1
     assert loaded2[0]["summary_text"] == "summary 2"
 
