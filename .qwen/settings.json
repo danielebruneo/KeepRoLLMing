@@ -15,7 +15,7 @@
     // "name": "lmstudio-community/qwen2.5-coder-7b-instruct",
     "enableOpenAILogging": false,
     "openAILoggingDir": "./.qwen/qwen-openai-logs",
-    "sessionTokenLimit": 32000
+    "sessionTokenLimit": 63000
   },
   "$version": 3 
 }

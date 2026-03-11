@@ -1,0 +1,15 @@
+-
+  ts: "2026-03-10T10:52:37Z"
+  req_id: 2e5e78f472bd
+  model: qwen/qwen3-14b
+  stream: true
+  elapsed_ms: 17952.4914
+  ttft_ms: 11073.0652
+  tps: 10.5835
+  completion_tokens: 190
+  prompt_tokens: null
+  total_tokens: null
+  finish_reason: stop
+  completion_tokens_source: estimated_text
+  did_summarize: false
+  passthrough: false

@@ -1,0 +1,9 @@
+/drop
+/add       AIDER.md
+/add       PROJECT.md
+/add       README.md
+/add       TEST.md
+/add       TODO.md
+
+/ask read AIDER.md and follow instructions from there, also read README.md and PROJECT.md to have an overview of the project and the file TODO.md to have an overview on what we are working on currently.
+/tokens

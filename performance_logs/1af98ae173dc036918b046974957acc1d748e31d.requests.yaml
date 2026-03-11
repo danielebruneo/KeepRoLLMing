@@ -1,0 +1,45 @@
+-
+  ts: "2026-03-08T15:14:54Z"
+  req_id: 9fcaa6e4ce9f
+  model: 1af98ae173dc036918b046974957acc1d748e31d
+  stream: true
+  elapsed_ms: 78509.1368
+  ttft_ms: 15532.2677
+  tps: 11.1452
+  completion_tokens: 875
+  prompt_tokens: 2925
+  total_tokens: 3800
+  finish_reason: stop
+  completion_tokens_source: usage
+  did_summarize: true
+  passthrough: false
+-
+  ts: "2026-03-08T15:19:59Z"
+  req_id: 84f6ed9e8ac2
+  model: 1af98ae173dc036918b046974957acc1d748e31d
+  stream: true
+  elapsed_ms: 76109.4555
+  ttft_ms: 15460.6146
+  tps: 11.6149
+  completion_tokens: 884
+  prompt_tokens: 2419
+  total_tokens: 3303
+  finish_reason: stop
+  completion_tokens_source: usage
+  did_summarize: true
+  passthrough: false
+-
+  ts: "2026-03-08T15:21:37Z"
+  req_id: a2a24fc7bc3e
+  model: 1af98ae173dc036918b046974957acc1d748e31d
+  stream: true
+  elapsed_ms: 27631.6725
+  ttft_ms: 23225.7704
+  tps: 2.3162
+  completion_tokens: 64
+  prompt_tokens: 7559
+  total_tokens: 7623
+  finish_reason: stop
+  completion_tokens_source: usage
+  did_summarize: false
+  passthrough: false

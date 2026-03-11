@@ -1,0 +1,12 @@
+{
+  "security": {
+    "auth": {
+      "selectedType": "openai",
+      "apiKey": "dummy",
+      "baseUrl": "http://arkai.local:8000/v1"
+    }
+  },
+  "model": {
+    "name": "openai/qwen2.5-coder-7b-instruct"
+  }
+}
