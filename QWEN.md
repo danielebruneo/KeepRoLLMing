@@ -117,16 +117,16 @@ The orchestrator uses a rolling summary approach where it:
 3. Maintains an incremental caching system to avoid reprocessing already summarized content
 4. Supports streaming responses through SSE (Server-Sent Events)
 
-### Summary Caching 
+### Summary Caching
 - Cache entries are stored in `./summary_cache` directory by default
 - Entries are indexed by conversation fingerprint and range hash
 - When a reusable checkpoint is found, the orchestrator prefers incremental reuse (`existing summary + delta`) instead of regenerating the whole middle from scratch
 - Failed / placeholder summaries are skipped for cache save
 
-### Profile Management 
+### Profile Management
 The system supports three profiles:
 - `quick`: Uses less resource-intensive models for faster responses
-- `main`: Default profile with balanced performance and quality  
+- `main`: Default profile with balanced performance and quality
 - `deep`: Uses larger, more capable models for complex tasks
 
 ## Recent Summary/Cache Updates
@@ -153,7 +153,14 @@ Tests are structured with:
 
 ### Logging
 The system supports multiple logging levels:
-- INFO: General operational information  
+- INFO: General operational information
 - WARN: Warnings about issues that don't stop execution
 - ERROR: Errors that cause failures or fallback behavior
 - DEBUG: Detailed debugging information (for development only)
+
+## Workflow Guidelines
+
+For project workflow and task management conventions, please refer to [PROJECT.md](./PROJECT.md) which contains detailed guidelines on:
+- CURRENT-TASK.md usage for tracking ongoing work
+- TASK-HISTORY.md for storing completed tasks  
+- TODO.md for organized task selection
