@@ -160,7 +160,16 @@ The system supports multiple logging levels:
 
 ## Workflow Guidelines
 
-For project workflow and task management conventions, please refer to [PROJECT.md](./PROJECT.md) which contains detailed guidelines on:
-- CURRENT-TASK.md usage for tracking ongoing work
-- TASK-HISTORY.md for storing completed tasks  
-- TODO.md for organized task selection
+For project workflow conventions and task management, please refer to [WORKFLOW.md](./workflow/WORKFLOW.md) which contains detailed guidelines on:
+- Active work tracking via CURRENT-TASK.md
+- Completed tasks archival in TASK-HISTORY.md  
+- Future task planning in TODO.md
+- Overall project collaboration conventions
+
+## Project Guidelines
+
+For project-level documentation and conventions, please refer to [PROJECT.md](./project/PROJECT.md) which contains detailed information about:
+- Overall project overview 
+- Versioning strategy and practices
+- Coding conventions, best practices, etc.
+- Configuration management guidelines
