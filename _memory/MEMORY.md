@@ -41,3 +41,13 @@ All memory files should include dates when they are created or updated. This hel
 - Created dedicated `set-tests-venv.sh` script to centralize virtual environment creation logic
 - Fixed issue where empty `.test_venv` directories would not be properly initialized
 - All test scripts (`run-tests.sh`, `run-single-test.sh`, `run-parallel-tests.sh`) now use the centralized venv setup
+
+### Curl-based Tests Implementation [2026-03-12]
+- Renamed `test.sh` to `run-curl-tests.sh` for consistency
+- Implemented comprehensive curl-based tests covering all key functionality:
+  - Basic chat completion with local/quick model
+  - Streaming response with local/quick model
+  - Passthrough mode (with expected error for invalid model)
+  - Long prompt with summary functionality
+  - Multiple messages conversation
+- Tests output PASS/FAIL as requested and provide simple verification without requiring pytest or virtual environments
