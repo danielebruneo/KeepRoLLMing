@@ -22,6 +22,13 @@ For detailed project overview, please refer to [PROJECT.md](./project/PROJECT.md
 
 For detailed project structure information, please refer to [PROJECT.md](./project/PROJECT.md)
 
+The project uses the following directory structure:
+- `tasks/` - for collaboration and task management (ACTIVE_TASK.md, COMPLETED_TASKS.md, TODO.md, WORKFLOW.md)
+- `project/` - for project-level guidelines and conventions
+- `docs/` - for technical documentation
+- `memory/` - for important project notes and learnings worth remembering
+- Main code remains in `keeprollming/` and `tests/`
+
 ## Running
 
 For running instructions, please refer to [RUNNING.md](./docs/RUNNING.md).
@@ -47,11 +54,18 @@ The project follows specific conventions and best practices which are documented
 
 ## Workflow Guidelines
 
-For project workflow conventions and task management, please refer to [WORKFLOW.md](./workflow/WORKFLOW.md) which contains detailed guidelines on:
+For project workflow conventions and task management, please refer to [WORKFLOW.md](./tasks/WORKFLOW.md) which contains detailed guidelines on:
 - Active work tracking via ACTIVE_TASK.md
 - Completed tasks archival in COMPLETED_TASKS.md
 - Future task planning in TODO.md
 - Overall project collaboration conventions
+
+## Memory Management
+
+For important project notes and learnings, please refer to [MEMORY.md](./memory/MEMORY.md) which contains:
+- Key insights and references worth remembering for future work
+- Troubleshooting guides and best practices
+- Implementation details that are valuable to preserve
 
 ## Project Guidelines
 

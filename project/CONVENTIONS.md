@@ -41,11 +41,11 @@ This document outlines the coding conventions, best practices, and project guide
 
 ## Project Structure Conventions
 
-### Directory Organization 
-- Code modules organized under `keeprollming/` directory  
+### Directory Organization
+- Code modules organized under `keeprollming/` directory
 - Tests in dedicated `tests/` directory
 - Documentation files in `docs/` directory
-- Workflow artifacts in `workflow/` directory
+- Task management artifacts in `tasks/` directory
 - Project guidelines in `project/` directory
 
 ### Configuration Management
