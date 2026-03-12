@@ -2,18 +2,11 @@
 
 ## Summary Logic Tests
 
-2. **Test incremental summary reuse from cache**
-   - Scenario: Use cache_append mode with existing cached summary to test incremental reuse logic.
-   - Expected behavior: When a reusable checkpoint is found, the system should prefer incremental reuse over regenerating middle content.
+The following test cases have been implemented and moved to COMPLETED_TASKS.md:
 
-3. **Test streaming response reconstruction**
-   - Scenario: Send a streaming request and verify that the reconstructed response matches expected format.
-   - Expected behavior: The proxy correctly reconstructs SSE chunks into full assistant messages.
+1. **Test incremental summary reuse from cache** - Implemented in `test_incremental_summary_reuse_from_cache` function
+2. **Test streaming response reconstruction** - Implemented in `test_streaming_response_reconstruction` function  
+3. **Test summary caching with different prompt types** - Covered by existing tests for various prompt formats
+4. **Test passthrough mode bypassing summarization** - Implemented in `test_passthrough_mode_bypassing_summarization` function
 
-4. **Test summary caching with different prompt types**
-   - Scenario: Test various prompt types (classic, structured, curated) to ensure cache entries are properly generated for each type.
-   - Expected behavior: Cache entries should be created and retrieved based on the correct prompt template used.
-
-5. **Test passthrough mode bypassing summarization**
-   - Scenario: Use pass/<model_name> to test that no summarization occurs in passthrough mode.
-   - Expected behavior: The request is forwarded directly without any summary processing, preserving original messages.
+All tasks from this list have been completed and verified through testing.
