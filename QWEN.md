@@ -4,7 +4,7 @@ This project is a FastAPI proxy/orchestrator that sits in front of an OpenAI-com
 
 ## Overview
 
-For detailed project overview, please refer to [PROJECT.md](./project/PROJECT.md)
+For detailed project overview, please refer to [PROJECT.md](./_project/PROJECT.md)
 
 ## Features
 
@@ -20,22 +20,22 @@ For detailed project overview, please refer to [PROJECT.md](./project/PROJECT.md
 
 ## Project Structure
 
-For detailed project structure information, please refer to [PROJECT.md](./project/PROJECT.md)
+For detailed project structure information, please refer to [PROJECT.md](./_project/PROJECT.md)
 
 The project uses the following directory structure:
-- `tasks/` - for collaboration and task management (ACTIVE_TASK.md, COMPLETED_TASKS.md, TODO.md, WORKFLOW.md)
-- `project/` - for project-level guidelines and conventions
-- `docs/` - for technical documentation
-- `memory/` - for important project notes and learnings worth remembering
+- `_tasks/` - for collaboration and task management (ACTIVE_TASK.md, COMPLETED_TASKS.md, TODO.md, WORKFLOW.md)
+- `_project/` - for project-level guidelines and conventions
+- `_docs/` - for technical documentation
+- `_memory/` - for important project notes and learnings worth remembering
 - Main code remains in `keeprollming/` and `tests/`
 
 ## Running
 
-For running instructions, please refer to [RUNNING.md](./docs/RUNNING.md).
+For running instructions, please refer to [RUNNING.md](./_docs/RUNNING.md).
 
 ## Tests
 
-For test documentation and guidelines, please refer to [TESTING.md](./docs/TESTING.md) or check the existing tests in `tests/` directory.
+For test documentation and guidelines, please refer to [TESTING.md](./_docs/TESTING.md) or check the existing tests in `tests/` directory.
 
 Notes:
 - Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
@@ -46,15 +46,15 @@ Notes:
 
 ## Configuration
 
-For configuration details, please refer to [CONFIGURATION.md](./docs/CONFIGURATION.md).
+For configuration details, please refer to [CONFIGURATION.md](./_docs/CONFIGURATION.md).
 
 ## Development Conventions
 
-The project follows specific conventions and best practices which are documented in [CONVENTIONS.md](./project/CONVENTIONS.md).
+The project follows specific conventions and best practices which are documented in [CONVENTIONS.md](./_project/CONVENTIONS.md).
 
 ## Workflow Guidelines
 
-For project workflow conventions and task management, please refer to [WORKFLOW.md](./tasks/WORKFLOW.md) which contains detailed guidelines on:
+For project workflow conventions and task management, please refer to [WORKFLOW.md](./_tasks/WORKFLOW.md) which contains detailed guidelines on:
 - Active work tracking via ACTIVE_TASK.md
 - Completed tasks archival in COMPLETED_TASKS.md
 - Future task planning in TODO.md
@@ -62,14 +62,14 @@ For project workflow conventions and task management, please refer to [WORKFLOW.
 
 ## Memory Management
 
-For important project notes and learnings, please refer to [MEMORY.md](./memory/MEMORY.md) which contains:
+For important project notes and learnings, please refer to [MEMORY.md](./_memory/MEMORY.md) which contains:
 - Key insights and references worth remembering for future work
 - Troubleshooting guides and best practices
 - Implementation details that are valuable to preserve
 
 ## Project Guidelines
 
-For project-level documentation and conventions, please refer to [PROJECT.md](./project/PROJECT.md) which contains detailed information about:
+For project-level documentation and conventions, please refer to [PROJECT.md](./_project/PROJECT.md) which contains detailed information about:
 - Overall project overview
 - Versioning strategy and practices
 - Coding conventions, best practices, etc.

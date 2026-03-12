@@ -30,7 +30,7 @@ SAFETY_MARGIN_TOK = int(os.getenv("SAFETY_MARGIN_TOK", "128"))
 
 SUMMARY_MODE = os.getenv("SUMMARY_MODE", "cache_append").strip().lower()
 SUMMARY_CACHE_ENABLED = os.getenv("SUMMARY_CACHE_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
-SUMMARY_CACHE_DIR = os.getenv("SUMMARY_CACHE_DIR", "./summary_cache")
+SUMMARY_CACHE_DIR = os.getenv("SUMMARY_CACHE_DIR", "./__summary_cache")
 SUMMARY_CACHE_FINGERPRINT_MSGS = int(os.getenv("SUMMARY_CACHE_FINGERPRINT_MSGS", "1"))
 SUMMARY_MIN_RAW_TAIL = max(1, int(os.getenv("SUMMARY_MIN_RAW_TAIL", "1")))
 SUMMARY_FORCE_CONSOLIDATE = int(os.getenv("SUMMARY_FORCE_CONSOLIDATE", "0"))

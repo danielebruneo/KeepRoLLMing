@@ -1,0 +1,12 @@
+{
+  "fingerprint": "ca580566f6fe67e8efb9b0bd751864569ab86b0855121ee3ecc558b93163361c",
+  "start_idx": 1,
+  "end_idx": 9,
+  "range_hash": "53139a8b18f28330925e49339bbf1273ca74c406c75581a6830a9b5cb87a9316",
+  "summary_text": "```yaml\ncontext: Iran crisis update, US-Israel tensions, Middle East conflict, global security concerns in the Middle East, recent developments in the 2026 Iranian incident, escalation between Iran and Israel, current situation in the region.\ntopic: Global security concerns in the Middle East with focus on the 2026 Iranian incident\ngoal: Provide detailed information on the updated situation, key players, and ongoing actions\n\nfacts:\n- The latest Iranian incident involves over 1,000 casualties from Israeli strikes, reported in 2026.\n- Major combat operations have begun between the U.S. and Israel regarding Iran, starting in 2026.\n- Recent developments include widespread Israeli strikes, increased tensions, and potential military operations.\n\ndecisions:\n- Continue military operations to maintain control of the region, taking into account ongoing escalation in 2026.\n- Declare readiness for invasion by Iran in response, considering the circumstances in 2026.\n\nconstraints:\n- International sanctions against Iran, enforced in 2026.\n- Diplomatic relations between major powers, maintained since 2026.\n\nentities:\n- Iran\n  - role: Country experiencing conflict, experienced escalation in 2026\n- Israel\n  - role: Military power targeting Iran, involved military operations starting in 2026\n- United States\n  - role: Involved military power, continued involvement since 2026\n\nopen_tasks:\n- Determine the next steps in the conflict resolution process, considering the escalation in 2026.\n- Assess the impact of the conflict on regional stability and international relations, taking into account the circumstances in 2026.\n\nstyle_notes:\n- Provide factual and objective information, focusing on recent developments from 2026.\n- Keep the focus on current events and decisions, considering the context of the year 2026.\n```",
+  "summary_model": "qwen2.5-coder-3b-instruct",
+  "created_at": 1773154964.5540693,
+  "message_count": 9,
+  "token_estimate": 3511,
+  "source_mode": "cache_append_consolidated"
+}

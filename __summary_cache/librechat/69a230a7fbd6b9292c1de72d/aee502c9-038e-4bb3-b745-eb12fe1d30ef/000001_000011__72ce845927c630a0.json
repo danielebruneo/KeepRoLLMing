@@ -1,0 +1,12 @@
+{
+  "fingerprint": "ca580566f6fe67e8efb9b0bd751864569ab86b0855121ee3ecc558b93163361c",
+  "start_idx": 1,
+  "end_idx": 11,
+  "range_hash": "72ce845927c630a053e62de08ea239ba22a4312e6348b22370ce17f25fc0a55d",
+  "summary_text": "```yaml\ncontext: \ntopic: Iran-Iraq-Israel conflict, ongoing 2026\ngoal: Provide up-to-date information on the current situation and tensions in the region.\n\nfacts:\n- Iran-US-Israel war intensifying with missile strikes, airstrikes, and escalating tension.\n- New supreme leader Mojtaba Khamenei chosen in Iran following escalating hostilities.\n- Oil prices rising due to supply disruptions.\n\ndecisions:\n- US and Israeli forces are continuing their military operations against Iran.\n- Iran has declared readiness for invasion.\n\nconstraints:\n- Diplomatic negotiations remain stalled.\n- Economic impacts of the conflict are significant.\n\nentities:\n- Iran\n  role: Country involved in a conflict with Israel and the United States.\n- Iraq\n  role: Neighbor potentially affected by the conflict.\n- Israel\n  role: Military power involved in the conflict against Iran.\n- United States\n  role: NATO member, key ally of Israel, involved in the conflict.\n\nopen_tasks:\n- Diplomatic negotiations to stop the ongoing hostilities.\n- International community's response to the crisis.\n- Economic recovery efforts in the region.\n\nstyle_notes:\n- Keep information concise and factual.\n- Avoid speculative language or opinion.\n- Provide a clear overview of current events.\n\nrecent_focus:\n\"US-Israel-Iran War: Latest Updates and Analysis\"\n```",
+  "summary_model": "qwen2.5-coder-3b-instruct",
+  "created_at": 1773156137.081584,
+  "message_count": 11,
+  "token_estimate": 1094,
+  "source_mode": "cache_append_initial"
+}

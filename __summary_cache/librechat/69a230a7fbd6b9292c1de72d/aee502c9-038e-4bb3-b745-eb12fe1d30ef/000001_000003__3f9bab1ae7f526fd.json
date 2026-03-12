@@ -1,0 +1,12 @@
+{
+  "fingerprint": "ca580566f6fe67e8efb9b0bd751864569ab86b0855121ee3ecc558b93163361c",
+  "start_idx": 1,
+  "end_idx": 3,
+  "range_hash": "3f9bab1ae7f526fd28798a328cd08e920c90a65ec7a9e70e4fe0a2b46c40536e",
+  "summary_text": "```yaml\ncontext: Iran crisis update, US-Israel tensions, Middle East conflict\ntopic: Global security concerns in the Middle East\ngoal: Provide detailed information on the current situation, key players, and ongoing actions\n\nfacts:\n- The latest Iranian incident involves over 1,000 casualties from Israeli strikes.\n- Major combat operations have begun between the U.S. and Israel regarding Iran.\n\ndecisions:\n- Continue military operations to maintain control of the region.\n- Declare readiness for invasion by Iran in response.\n\nconstraints:\n- International sanctions against Iran.\n- Diplomatic relations between major powers.\n\nentities:\n- Iran\n  - role: Country experiencing conflict\n- Israel\n  - role: Military power targeting Iran\n- United States\n  - role: Involved military power\n\nopen_tasks:\n- Determine the next steps in the conflict resolution process.\n- Assess the impact of the conflict on regional stability and international relations.\n\nstyle_notes:\n- Provide factual and objective information.\n- Keep the focus on current events and decisions.\n\nrecent_focus:\nLatest developments include widespread Israeli strikes, increased tensions, and potential military operations.\n```",
+  "summary_model": "qwen2.5-coder-3b-instruct",
+  "created_at": 1773154151.5737355,
+  "message_count": 3,
+  "token_estimate": 1052,
+  "source_mode": "cache_append_initial"
+}

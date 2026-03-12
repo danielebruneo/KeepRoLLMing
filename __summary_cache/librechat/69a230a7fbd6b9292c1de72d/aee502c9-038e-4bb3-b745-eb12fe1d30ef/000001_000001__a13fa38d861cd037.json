@@ -1,0 +1,12 @@
+{
+  "fingerprint": "ca580566f6fe67e8efb9b0bd751864569ab86b0855121ee3ecc558b93163361c",
+  "start_idx": 1,
+  "end_idx": 1,
+  "range_hash": "a13fa38d861cd0374baf52a8c2a65ead72ad6aa68f4092c0290a772c6dd950c3",
+  "summary_text": "```yaml\ncontext: notes on the context\n\ntopic: Global conflict in Iran\n\ngoal: To provide factual updates and analysis of the ongoing situation.\n\nfacts:\n- The current global situation is marked by escalating tensions in the Middle East, particularly involving Iran, Israel, and the United States.\n- Recent developments include widespread Israeli strikes on Iranian infrastructure, with reports of over 1,000 casualties from U.S.-Israeli attacks.\n- The United States and Israel have vowed to continue military operations, while Iran has declared readiness for invasion.\n- These actions follow a series of retaliatory measures and heightened diplomatic rhetoric.\n- President Trump confirmed that major combat operations have begun.\n\ndecisions:\n- To provide current updates on the situation in Iran.\n\nconstraints:\n- To avoid repeating the same information from previous searches.\n\nentities:\n  - name: United States\n    role: Military actor\n  - name: Israel\n    role: Military actor\n  - name: Iran\n    role: Conflict participant\n\nopen_tasks:\n- To provide more context about the recent developments in the Middle East.\n- To continue updating the conversation on any new developments.\n\nstyle_notes:\n- To maintain a neutral and informative tone.\n\nrecent_focus:\n\"The latest news and updates on the ongoing conflict in Iran, including recent attacks by Israel and Iranian response.\"\n```",
+  "summary_model": "qwen2.5-coder-3b-instruct",
+  "created_at": 1773153954.290864,
+  "message_count": 1,
+  "token_estimate": 799,
+  "source_mode": "cache_append_initial"
+}

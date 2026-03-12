@@ -77,7 +77,7 @@ export SAFETY_MARGIN_TOK=3000
 
 export MAX_HEAD=5
 export MAX_TAIL=5
-export SUMMARY_PROMPT_DIR=./prompts
+export SUMMARY_PROMPT_DIR=./_prompts
 export SUMMARY_PROMPT_TYPE=curated
 export SUMMARY_TEMPERATURE=0.8
 export SUMMARY_MODE="cache_append"

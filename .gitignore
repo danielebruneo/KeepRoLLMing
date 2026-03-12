@@ -31,3 +31,8 @@ session.aider
 session_full.aider
 .qwen/
 test_env/
+.test_venv/
+performance_logs/
+summary_cache/
+__performance_logs/
+__summary_cache/

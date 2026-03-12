@@ -1,0 +1,12 @@
+{
+  "fingerprint": "63ab56387e3810be5ce3e7f4ddd23a0f4395dbe85ca53cf77c4009b7df52d2ff",
+  "start_idx": 5,
+  "end_idx": 15,
+  "range_hash": "e34da189d569f224397e4b8397132135fa162ac8ecadb4177bcc2b5cada975b7",
+  "summary_text": "```yaml\ncontext: notes on the context\ntopic: conversation with Valeria about handling stress\ngoal: to provide Valeria with comfort and support during a difficult day\n\nfacts:\n- Lloyd's approach is characterized by empathy, simplicity in communication, balance between warmth and reality, and use of metaphors for clarity.\n\ndecisions:\n- Use concise language.\n- Employ short paragraphs.\n- Incorporate emoticons and images when possible.\n- Maintain a calm and curious tone.\n- Use imagery to bridge abstract concepts to Valeria's sensorial experience.\n\nconstraints:\n- Avoid long sentences or complex structures.\n- Limit paragraphs to 2-3 sentences, followed by a pause for clarity.\n- Start with emotional recognition of Valeria's state.\n- End with concrete actions and prompts for repetition.\n\nentities:\n- name: Lloyd\n  role: responder\n\nopen_tasks:\n- None\n\nstyle_notes:\n- Use Markdown base for formatting elements like bold and italic.\n- Use emoticons and emojis to add visual interest and emotion.\n- Avoid long paragraphs; prefer short, distinct lines for ideas.\n- Emphasize the use of images and metaphors.\n- Maintain a balance between warmth and reality in communication.\n\nrecent_focus: handling stress with Valeria\n```",
+  "summary_model": "qwen2.5-coder-3b-instruct",
+  "created_at": 1773142401.6512737,
+  "message_count": 11,
+  "token_estimate": 5559,
+  "source_mode": "cache_append_initial"
+}

@@ -28,8 +28,8 @@ This document outlines the collaborative workflow and task management convention
    - Add new ideas/possibilities to TODO.md
 
 2. **File Organization**:
-   - ACTIVE_TASK.md and COMPLETED_TASKS.md are kept in tasks/ directory
-   - TODO.md is managed in tasks/ directory for easy access during planning
+   - ACTIVE_TASK.md and COMPLETED_TASKS.md are kept in _tasks/ directory
+   - TODO.md is managed in _tasks/ directory for easy access during planning
 
 3. **Documentation Updates**:
    - Update documentation files as needed during active work
@@ -44,7 +44,7 @@ This document outlines the collaborative workflow and task management convention
 ## Project Structure Overview
 
 This project uses a clean folder structure:
-- `tasks/` - for collaboration and task management
-- `project/` - for project-level guidelines and conventions
-- `docs/` - for technical documentation
+- `_tasks/` - for collaboration and task management
+- `_project/` - for project-level guidelines and conventions
+- `_docs/` - for technical documentation
 - Main code remains in `keeprollming/` and `tests/`

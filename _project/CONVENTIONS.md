@@ -44,9 +44,9 @@ This document outlines the coding conventions, best practices, and project guide
 ### Directory Organization
 - Code modules organized under `keeprollming/` directory
 - Tests in dedicated `tests/` directory
-- Documentation files in `docs/` directory
-- Task management artifacts in `tasks/` directory
-- Project guidelines in `project/` directory
+- Documentation files in `_docs/` directory
+- Task management artifacts in `_tasks/` directory
+- Project guidelines in `_project/` directory
 
 ### Configuration Management
 - Use environment variables for configuration as per existing setup

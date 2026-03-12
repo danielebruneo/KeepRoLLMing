@@ -18,7 +18,7 @@ from .token_counter import TokenCounter
 # Summary prompt config
 # ---------------------------------------------------------------------
 
-SUMMARY_PROMPT_DIR = os.getenv("SUMMARY_PROMPT_DIR", "./prompts")
+SUMMARY_PROMPT_DIR = os.getenv("SUMMARY_PROMPT_DIR", "./_prompts")
 SUMMARY_PROMPT_TYPE = os.getenv("SUMMARY_PROMPT_TYPE", "curated")
 SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
 MAX_SUMMARY_BACKEND_ATTEMPTS = int(os.getenv("MAX_SUMMARY_BACKEND_ATTEMPTS", "8"))

@@ -1,0 +1,12 @@
+{
+  "fingerprint": "c8898ae7c11e8067",
+  "start_idx": 1,
+  "end_idx": 3,
+  "range_hash": "4d83475e51658f199b10d8f1966f88290289770cb6aee08ad786a6e89e466df2",
+  "summary_text": "SOMMARIO-TEST",
+  "summary_model": "qwen2.5-3b-instruct",
+  "created_at": 1773082683.0176437,
+  "message_count": 3,
+  "token_estimate": 115,
+  "source_mode": "cache_append_initial"
+}

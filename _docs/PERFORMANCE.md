@@ -25,7 +25,7 @@ This document contains performance metrics, analysis, and optimization details f
 ### Optimization Techniques:
 1. Parallel test execution using pytest-xdist
 2. Strategic non_parallelizable marking for shared resource tests  
-3. Efficient caching mechanisms in summary_cache.py
+3. Efficient caching mechanisms in __summary_cache.py
 
 ## Resource Usage Analysis
 

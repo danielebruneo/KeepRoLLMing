@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
-PERFORMANCE_LOGS_DIR = os.getenv("PERFORMANCE_LOGS_DIR", "./performance_logs")
+PERFORMANCE_LOGS_DIR = os.getenv("PERFORMANCE_LOGS_DIR", "./__performance_logs")
 
 _LOCK = threading.Lock()
 

@@ -70,7 +70,7 @@ The system intelligently adjusts token usage to maintain proper context size whi
 
 ### Environment Variables
 - `SUMMARY_CACHE_ENABLED`: Enable/disable caching (default: true)
-- `SUMMARY_CACHE_DIR`: Cache storage directory path 
+- `SUMMARY_CACHE_DIR`: Cache storage directory path (default: `./__summary_cache`)
 - `SUMMARY_CACHE_FINGERPRINT_MSGS`: Number of messages used for fingerprint generation (default: 1)
 
 ### Logging & Debugging
