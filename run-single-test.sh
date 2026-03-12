@@ -13,13 +13,8 @@ TEST_NAME=$1
 
 echo "Running single test '$TEST_NAME' in clean environment..."
 
-# Create virtual environment if it doesn't exist
-if [ ! -d ".test_venv" ]; then
-    python -m venv .test_venv
-fi
-
-# Activate virtual environment
-source .test_venv/bin/activate
+# Use dedicated venv setup script
+source set-tests-venv.sh
 
 # Install requirements
 pip install -r requirements.txt

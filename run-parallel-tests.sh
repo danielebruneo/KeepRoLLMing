@@ -5,13 +5,8 @@
 
 echo "Setting up test environment for parallel execution..."
 
-# Create virtual environment if it doesn't exist
-if [ ! -d ".test_venv" ]; then
-    python -m venv .test_venv
-fi
-
-# Activate virtual environment
-source .test_venv/bin/activate
+# Use dedicated venv setup script
+source set-tests-venv.sh
 
 # Install requirements
 pip install -r requirements.txt

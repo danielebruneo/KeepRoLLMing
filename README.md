@@ -55,12 +55,19 @@ Notes:
   parallelization properly. The project is configured to automatically exclude problematic tests from
   parallel execution through custom markers.
 
-- **Important**: Due to compatibility issues with pytest dependencies, we recommend using the dedicated test script:
+- **Important**: Due to compatibility issues with pytest dependencies, we recommend using the dedicated test scripts:
   ```bash
-  ./run-tests.sh
+  ./run-tests.sh          # Run all tests in serial mode
+  ./run-single-test.sh    # Run a single test
+  ./run-parallel-tests.sh # Run tests in parallel mode
   ```
-  This ensures a clean virtual environment and proper dependency resolution for consistent test runs.
+  These scripts ensure a clean virtual environment and proper dependency resolution for consistent test runs.
   
+  The venv setup logic is now centralized in:
+  ```bash
+  ./set-tests-venv.sh     # Dedicated script for creating and validating test venv
+  ```
+
 - For individual test runs in reliable environments, use:
   ```bash
   ./run-single-test.sh test_name
