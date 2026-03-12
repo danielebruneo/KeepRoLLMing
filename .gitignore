@@ -30,3 +30,4 @@ qwen-code-export-*.md
 session.aider
 session_full.aider
 .qwen/
+test_env/
