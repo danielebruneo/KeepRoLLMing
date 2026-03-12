@@ -107,10 +107,15 @@ All tests now pass successfully! Previously failing tests have been fixed:
    pip install -r requirements-dev.txt
    ```
 
-3. **Recommended approach for running tests**: Use the `run-tests.sh` script which automatically handles virtual environment setup:
-   ```bash
-   ./run-tests.sh
-   ```
+3. **Recommended approach for running tests**: 
+   - Use the `run-tests.sh` script which automatically handles virtual environment setup:
+     ```bash
+     ./run-tests.sh
+     ```
+   - For individual test execution, use the new `run-single-test.sh` script that provides reliable single test runs in clean environments:
+     ```bash
+     ./run-single-test.sh test_name
+     ```
 
 ### For Test Development:
 

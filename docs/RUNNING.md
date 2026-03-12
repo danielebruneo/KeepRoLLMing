@@ -28,6 +28,7 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 ## Commands
 
 - Run tests: `pytest` or better yet, use the dedicated script: `./run-tests.sh`
+- Run individual test: `./run-single-test.sh test_name` 
 - Run server: `uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000`
 
 ## Test Environment Notes

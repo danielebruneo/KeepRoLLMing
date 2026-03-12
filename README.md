@@ -54,14 +54,20 @@ Notes:
   To run all tests successfully, use: `pytest --tb=no -n0` or ensure the default configuration handles
   parallelization properly. The project is configured to automatically exclude problematic tests from
   parallel execution through custom markers.
-  
+
 - **Important**: Due to compatibility issues with pytest dependencies, we recommend using the dedicated test script:
   ```bash
   ./run-tests.sh
   ```
   This ensures a clean virtual environment and proper dependency resolution for consistent test runs.
+  
+- For individual test runs in reliable environments, use:
+  ```bash
+  ./run-single-test.sh test_name
+  ```
 
 ## Configuration
+
 
 - `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1` is accepted, but recommended to provide without `/v1`)
 - `MAIN_MODEL`, `SUMMARY_MODEL`
