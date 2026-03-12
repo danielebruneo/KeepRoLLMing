@@ -27,6 +27,7 @@ from keeprollming.config import (
     QUICK_SUMMARY_MODEL,
     SUMMARY_MODEL,
     UPSTREAM_BASE_URL,
+    CONFIG
 )
 from keeprollming.logger import LOG_MODE, LOG_MODE_CHOICES, log
 

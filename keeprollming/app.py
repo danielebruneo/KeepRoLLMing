@@ -23,6 +23,7 @@ from .config import (
     SUMMARY_CONSOLIDATE_WHEN_NEEDED,
     UPSTREAM_BASE_URL,
     resolve_profile_and_models,
+    CONFIG
 )
 from .logger import (
     BASIC_SNIP_CHARS,

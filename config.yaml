@@ -1,0 +1,24 @@
+profiles:
+  quick:
+    main_model: qwen2.5-3b-instruct
+    summary_model: qwen2.5-1.5b-instruct
+  main:
+    main_model: qwen2.5-v1-7b-instruct
+    summary_model: qwen2.5-3b-instruct
+  deep:
+    main_model: qwen2.5-27b-instruct
+    summary_model: qwen2.5-7b-instruct
+
+model_aliases:
+  local/quick: quick
+  quick: quick
+  local/main: main
+  main: main
+  local/deep: deep
+  deep: deep
+
+passthrough_prefix: pass/
+default_profile: main
+upstream_base_url: http://127.0.0.1:1234/v1
+main_model: qwen2.5-3b-instruct
+summary_model: qwen2.5-1.5b-instruct
