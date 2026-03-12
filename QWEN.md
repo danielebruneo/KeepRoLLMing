@@ -92,3 +92,6 @@ To use a skill, simply run:
 ```
 skill: "REVIEW-DOC"
 ```
+
+## Qwen Added Memories
+- Tests require the virtual environment to be set up before running them
