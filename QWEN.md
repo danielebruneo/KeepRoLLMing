@@ -27,6 +27,7 @@ The project uses the following directory structure:
 - `_project/` - for project-level guidelines and conventions
 - `_docs/` - for technical documentation
 - `_memory/` - for important project notes and learnings worth remembering
+- `_skills/` - for specialized project skills (REVIEW-DOC.md)
 - Main code remains in `keeprollming/` and `tests/`
 
 ## Running
@@ -74,3 +75,20 @@ For project-level documentation and conventions, please refer to [PROJECT.md](./
 - Versioning strategy and practices
 - Coding conventions, best practices, etc.
 - Configuration management guidelines
+
+## Skills
+
+This project includes specialized skills for working with project documentation. These skills can be invoked using the `skill` command in Qwen Code:
+
+- **REVIEW-DOC**: Reviews all markdown files to ensure they accurately reflect the current status of the project and contain only relevant information. It consolidates knowledge by identifying missing information and moving irrelevant content to appropriate locations.
+
+Skills are designed to help maintain high-quality, accurate documentation by ensuring that:
+- All documentation reflects current implementation status
+- Information is properly organized and consolidated
+- Each document contains only relevant content
+- Missing information is identified and addressed
+
+To use a skill, simply run:
+```
+skill: "REVIEW-DOC"
+```

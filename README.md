@@ -156,3 +156,20 @@ This will execute the live E2E tests that connect directly to your configured LM
 ## Caching Mechanism
 
 For detailed information about how rolling summaries are cached and reused, please refer to [CACHING_MECHANISM.md](./CACHING_MECHANISM.md).
+
+## Skills
+
+This project includes specialized skills for working with project documentation. These skills are located in the project's `.qwen/skills` directory and can be invoked using the `skill` command in Qwen Code:
+
+- **REVIEW-DOC**: Reviews all markdown files to ensure they accurately reflect the current status of the project and contain only relevant information. It consolidates knowledge by identifying missing information and moving irrelevant content to appropriate locations.
+
+Skills are designed to help maintain high-quality, accurate documentation by ensuring that:
+- All documentation reflects current implementation status
+- Information is properly organized and consolidated
+- Each document contains only relevant content
+- Missing information is identified and addressed
+
+To use a skill, simply run:
+```
+skill: "REVIEW-DOC"
+```

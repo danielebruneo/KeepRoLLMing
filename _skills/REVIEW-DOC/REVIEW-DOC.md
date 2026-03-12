@@ -7,7 +7,7 @@ This skill reviews all markdown files in the project to ensure they accurately r
 ## Usage
 
 ```
-skill: "REVIEW-DOC"
+/skills REVIEW-DOC
 ```
 
 ## Functionality
