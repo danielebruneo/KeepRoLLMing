@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "_tasks/ACTIVE_TASK.md",
+                "file": "_tasks/COMPLETED_TASKS.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "ACTIVE_TASK"
+              "title": "COMPLETED_TASKS"
             }
           },
           {
@@ -108,7 +108,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "_tasks/ACTIVE_TASK.md",
+                "file": "_tasks/COMPLETED_TASKS.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Riferimenti a ACTIVE_TASK"
+              "title": "Riferimenti a COMPLETED_TASKS"
             }
           },
           {
@@ -127,12 +127,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "_tasks/ACTIVE_TASK.md",
+                "file": "_tasks/COMPLETED_TASKS.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Collegamenti in uscita da ACTIVE_TASK"
+              "title": "Collegamenti in uscita da COMPLETED_TASKS"
             }
           },
           {
@@ -170,13 +170,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "_tasks/ACTIVE_TASK.md",
+                "file": "_tasks/COMPLETED_TASKS.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Struttura di ACTIVE_TASK"
+              "title": "Struttura di COMPLETED_TASKS"
             }
           }
         ]
@@ -199,6 +199,8 @@
   },
   "active": "5fb989670e011eb5",
   "lastOpenFiles": [
+    "_tasks/TODO.md",
+    "_tasks/ACTIVE_TASK.md",
     "tests/e2e/__pycache__/test_http_e2e.cpython-311-pytest-9.0.2.pyc.3338773",
     "tests/e2e/__pycache__/test_http_e2e.cpython-311-pytest-9.0.2.pyc.3325135",
     "tests/e2e/__pycache__/test_http_e2e.cpython-311-pytest-9.0.2.pyc.3322649",
@@ -211,7 +213,6 @@
     "tests/e2e/sedLo1gKP",
     "tests/e2e/__pycache__/test_http_e2e.cpython-311-pytest-9.0.2.pyc.3313029",
     "tests/e2e/__pycache__/test_http_e2e.cpython-311-pytest-9.0.2.pyc.3313026",
-    "__pycache__/test_fix.cpython-311-pytest-9.0.2.pyc",
     "_docs/TESTING.md",
     "_tasks/WORKFLOW.md"
   ]
