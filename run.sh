@@ -71,15 +71,15 @@ export DEEP_SUMMARY_MODEL="$MINI_MODEL"
 # =========================
 
 # limite hard del modello (puoi aumentare se il modello lo supporta)
-export DEFAULT_CTX_LEN=10000
-export SUMMARY_MAX_TOKENS=3000
-export SAFETY_MARGIN_TOK=3000
+export DEFAULT_CTX_LEN=8000
+export SUMMARY_MAX_TOKENS=1000
+export SAFETY_MARGIN_TOK=1000
 
-export MAX_HEAD=5
-export MAX_TAIL=5
+export MAX_HEAD=3
+export MAX_TAIL=3
 export SUMMARY_PROMPT_DIR=./_prompts
 export SUMMARY_PROMPT_TYPE=curated
-export SUMMARY_TEMPERATURE=0.8
+export SUMMARY_TEMPERATURE=0.3
 export SUMMARY_MODE="cache_append"
 
 

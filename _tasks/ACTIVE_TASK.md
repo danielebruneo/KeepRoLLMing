@@ -1,40 +1,22 @@
-# Fix test isolation and interdependence issues in test suite
+# Active Task: Review and verify implementation of summary functionality fixes
 
 ## Task Description
-Identify and resolve test isolation problems that cause `test_e2e_summary_cache_hit_reuses_previous_summary` to fail when run as part of the full test suite, while passing when run individually.
+Review the changes made to fix test failures, ensure all related tests pass and no regressions were introduced.
 
 ## Current Status
-The test `test_e2e_summary_cache_hit_reuses_previous_summary` passes when run alone but fails when executed in the full test suite. This indicates test isolation issues where tests are interfering with each other's state or resources.
-
-## Analysis
-Based on testing results:
-1. Test passes in isolation: `run-single-test.sh tests/e2e/test_http_e2e.py::test_e2e_summary_cache_hit_reuses_previous_summary[fake]`
-2. Test fails in suite: `run-tests.sh` 
-3. The test is marked as `non_parallelizable` which suggests it has shared state dependencies
-4. Likely causes:
-   - Shared cache directory between tests
-   - Test fixtures that don't properly clean up resources
-   - Test state contamination from previous tests
-
-## Root Cause Investigation
-The issue likely stems from:
-- Cache files being created during one test and not properly cleaned up before the next test
-- Test fixtures using shared resources without proper cleanup mechanisms
-- The `non_parallelizable` marker indicating shared resource dependencies
+The primary failing test has been fixed. Now we need to run comprehensive tests to make sure there are no unintended side effects from our changes.
 
 ## Approach
-1. Investigate cache directory usage in tests
-2. Examine how test fixtures handle cleanup of temporary resources
-3. Check if cache entries from previous tests interfere with current test
-4. Implement proper isolation mechanisms for the cache-dependent test
+1. Run full test suite to verify no regressions  
+2. Confirm all summary-related functionality works as intended
+3. Document the fix clearly for future reference
 
-## Verification
-- Test should pass both when run individually and as part of full test suite
-- Cache directory should be properly isolated between tests
-- No shared state contamination between tests
+## Verification 
+- All existing tests should pass without issues
+- Summary caching and reuse logic functions properly
+- No breaking changes introduced to core system behavior
 
 ## Next Steps
-1. Analyze test fixtures and their resource cleanup
-2. Check how cache directories are managed during testing
-3. Implement proper isolation for cache-dependent tests
-4. Verify all tests pass in both isolated and suite execution modes
+1. Run complete test suite with parallel execution disabled (-n0)
+2. Review any remaining summary-related edge cases
+3. Finalize documentation of the fix for project memory

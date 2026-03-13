@@ -236,10 +236,10 @@ async def chat_completions(req: Request) -> Response:
     conv_id = headers.get("x-librechat-conversation-id", "")
     msg_id = headers.get("x-librechat-message-id", "")
     parent_msg_id = headers.get("x-librechat-parent-message-id", "")
-    
+
     # Se abbiamo gli header, li usiamo per il fingerprint
     has_headers = bool(user_id or conv_id)
-    
+
     if LOG_MODE == "DEBUG":
         log("INFO", "request_received", header=headers, req_id=req_id, body_json=snip_json(payload))
 

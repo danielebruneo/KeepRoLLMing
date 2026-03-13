@@ -174,7 +174,7 @@ def backend_target(request: pytest.FixtureRequest) -> BackendTarget:
     if mode == "live":
         raw_base = os.getenv("E2E_LIVE_BASE_URL")
         live_model = os.getenv("E2E_LIVE_MODEL")
-        
+
         # Enhanced logging for live backend configuration
         print(f"\n=== E2E LIVE TEST CONFIGURATION ===")
         print(f"UPSTREAM_BASE_URL environment variable: {raw_base or 'NOT SET'}")
@@ -182,7 +182,7 @@ def backend_target(request: pytest.FixtureRequest) -> BackendTarget:
         print(f"CLIENT_SUMMARY_MODEL environment variable: {os.getenv('E2E_LIVE_CLIENT_SUMMARY_MODEL', 'local/quick')}")
         print(f"SUMMARY_MODEL environment variable: {os.getenv('E2E_LIVE_SUMMARY_MODEL', 'None')}")
         print("==================================\n")
-        
+
         if not raw_base or not live_model:
             print("SKIPPING LIVE TEST - Required environment variables NOT SET:")
             print(f"  E2E_LIVE_BASE_URL={raw_base or 'NOT SET'}")
@@ -227,6 +227,15 @@ def orchestrator_server(tmp_path: Path, backend_target: BackendTarget):
     )
     perf_dir = tmp_path / "performance_logs"
     cache_dir = tmp_path / "summary_cache"
+    
+    # Ensure that we create a unique cache directory for this specific test
+    # This is to ensure proper isolation even when running in parallel mode
+    # Also clean the cache directory before using it to prevent any cross-contamination
+    if cache_dir.exists():
+        import shutil
+        shutil.rmtree(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    
     server = _spawn_uvicorn(
         "keeprollming.app:app",
         port=port,
