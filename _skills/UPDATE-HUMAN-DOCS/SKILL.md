@@ -14,6 +14,16 @@ Human-facing docs typically include:
 - files under [_docs/](../../_docs/)
 
 ## Rules
-- Do not dump internal task state into human docs.
-- Prefer clear summaries over implementation diaries.
-- Keep architecture, workflow, and usage docs understandable to humans first.
+- Do not dump internal task state into human docs - keep focus on user needs.
+- Prefer clear summaries over implementation diaries - make documentation accessible.
+- Keep architecture, workflow, and usage docs understandable to humans first - prioritize clarity.
+
+## When to Use
+- When updating README or other public documentation
+- When adding usage instructions for users
+- When improving project documentation for external audiences
+
+## Examples
+- Updating README with new features or usage examples
+- Adding configuration details to documentation files
+- Improving installation instructions in public docs

@@ -40,3 +40,6 @@ Ensures users have access to correct information about the project's functionali
 ## Out of scope
 - unrelated cleanups
 - broad redesigns
+
+## Status
+COMPLETED

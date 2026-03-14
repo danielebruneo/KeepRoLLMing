@@ -9,14 +9,24 @@ description: Initializes the internal agent knowledge files by inferring project
 Initialize the internal agent knowledge base from the current repository state.
 
 ## Target files
-- [_agent/MAP.md](../../_agent/MAP.md)
-- [_agent/COMMANDS.md](../../_agent/COMMANDS.md)
-- [_docs/architecture/OVERVIEW.md](../../_docs/architecture/OVERVIEW.md)
-- [_docs/architecture/INVARIANTS.md](../../_docs/architecture/INVARIANTS.md)
-- optional decisions in [_docs/decisions/DECISIONS.md](../../_docs/decisions/DECISIONS.md)
+- [_agent/MAP.md](../../_agent/MAP.md) - Repository structure map
+- [_agent/COMMANDS.md](../../_agent/COMMANDS.md) - Setup, run, and test commands
+- [_docs/architecture/OVERVIEW.md](../../_docs/architecture/OVERVIEW.md) - Architecture overview
+- [_docs/architecture/INVARIANTS.md](../../_docs/architecture/INVARIANTS.md) - Core architecture constraints
+- optional decisions in [_docs/decisions/DECISIONS.md](../../_docs/decisions/DECISIONS.md) - Project design decisions
 
 ## Procedure
-1. Read the README and inspect the repository tree.
-2. Infer the main modules and responsibilities.
-3. Infer setup, run, and test commands if they are visible.
-4. Populate the target files with concise, grounded information.
+1. Read the README and inspect the repository tree - understand what's there.
+2. Infer the main modules and responsibilities - identify core components.
+3. Infer setup, run, and test commands if they are visible - document how to work with project.
+4. Populate the target files with concise, grounded information - make them useful for agents.
+
+## When to Use
+- When starting a new agent session in the repository
+- After major project changes that affect structure or commands
+- When setting up fresh knowledge base after cloning or reset
+
+## Examples
+- Setting up initial repository understanding for new agent
+- Refreshing knowledge base after adding new modules
+- Creating command documentation when setup is changed
