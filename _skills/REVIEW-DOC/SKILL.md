@@ -1,17 +1,16 @@
 ---
 name: REVIEW-DOC
-description: Reviews all markdown files to ensure they accurately reflect the current status of the project and contain only relevant information. It consolidates knowledge by identifying missing information and moving irrelevant content to appropriate locations.
+description: Reviews markdown documentation to keep it accurate, non-redundant, and aligned with the current project state.
 ---
 
 # REVIEW-DOC Skill
 
-## Instructions
-This skill reviews all markdown files in the project to ensure they accurately reflect the current status of the project and contain only relevant information. It consolidates knowledge by identifying missing information and moving irrelevant content to appropriate locations.
+## Goal
+Review repository markdown files and keep them accurate, relevant, and non-duplicative.
 
-## Examples
-To use this skill:
-```
-/skills REVIEW-DOC
-```
-
-The skill will analyze all .md files in the repository, identify outdated or incorrect information, consolidate knowledge across documents, and ensure each document contains only relevant content.
+## Procedure
+1. Inspect key docs under [_docs/](../../_docs/) and [_agent/](../../_agent/).
+2. Identify stale, duplicated, or misleading information.
+3. Preserve durable information and remove task-local noise from human-facing docs.
+4. Keep internal operational docs concise and useful.
+5. Summarize major documentation fixes in [_agent/HANDOFF.md](../../_agent/HANDOFF.md).

@@ -1,3 +1,3 @@
-# REVIEW-DOC
+# INIT-KNOWLEDGE-BASE
 
 Canonical skill file: [SKILL.md](SKILL.md).

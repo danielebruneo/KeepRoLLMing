@@ -1,98 +1,117 @@
+see [AGENTS.md]
 # Keeprollming Orchestrator
 
-This project is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
+A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio)
+and adds **rolling-summary** support to avoid context overflow.
 
-## Overview
+## Project Overview
 
-For detailed project overview, please refer to [PROJECT.md](./_project/PROJECT.md)
+This is a Python-based FastAPI application designed to work as a proxy or orchestrator between clients and OpenAI-compatible language model backends. The primary purpose is to handle long conversations that would otherwise exceed the context window limits of language models, by implementing a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
 
-## Features
-
+Key features include:
 - OpenAI-compatible endpoint: `POST /v1/chat/completions`
-- Profiles:
-  - `local/quick`
-  - `local/main`
-  - `local/deep`
-- Passthrough mode:
-  - `pass/<BACKEND_MODEL_NAME>` (routes directly, **no summarization**)
+- Support for multiple profiles (`local/quick`, `local/main`, `local/deep`) with different model configurations
+- Rolling-summary support to manage context overflow
+- Passthrough mode for direct routing without summarization
 - Streaming proxy (SSE) support
-- Best-effort token accounting
+- Token accounting and context management
 
-## Project Structure
+## Architecture
 
-For detailed project structure information, please refer to [PROJECT.md](./_project/PROJECT.md)
-
-The project uses the following directory structure:
-- `_tasks/` - for collaboration and task management (ACTIVE_TASK.md, COMPLETED_TASKS.md, TODO.md, WORKFLOW.md)
-- `_project/` - for project-level guidelines and conventions
-- `_docs/` - for technical documentation
-- `_memory/` - for important project notes and learnings worth remembering
-- `_skills/` - for specialized project skills (REVIEW-DOC.md)
-- Main code remains in `keeprollming/` and `tests/`
-
-## Running
-
-For running instructions, please refer to [RUNNING.md](./_docs/RUNNING.md).
-
-## Tests
-
-For test documentation and guidelines, please refer to [TESTING.md](./_docs/TESTING.md) or check the existing tests in `tests/` directory.
-
-Notes:
-- Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
-- Some end-to-end tests may fail in parallel execution mode due to test infrastructure issues.
-  To run all tests successfully, use: `pytest --tb=no -n0` or ensure the default configuration handles
-  parallelization properly. The project is configured to automatically exclude problematic tests from
-  parallel execution through custom markers.
+The application is structured around:
+1. **FastAPI Application** (`keeprollming/app.py`) - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
+2. **Configuration Management** (`keeprollming/config.py`) - Uses a dataclass-based system for profiles with different main and summary models.
+3. **Orchestrator Logic** - Handles token counting, message splitting, and summarization as needed.
+4. **Upstream Client** (`keeprollming/upstream.py`) - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
+5. **Rolling Summary Module** (`keeprollming/rolling_summary.py`) - Implements the core logic for handling context overflow and summary generation.
+6. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency.
 
 ## Configuration
 
-For configuration details, please refer to [CONFIGURATION.md](./_docs/CONFIGURATION.md).
+Configuration is managed via:
+- `config.yaml` file with profiles and model aliases
+- Environment variables that override default values
+- Available profiles: 
+  - `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
+  - `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
+  - `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
+
+## Running the Application
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+export UPSTREAM_BASE_URL="http://127.0.0.1:1234"   # LM Studio base (no /v1)
+uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
+```
+
+Then call:
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
+```
+
+## Testing
+
+Install dev requirements:
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run tests using:
+```bash
+pytest
+```
+
+Or use dedicated test scripts for better environment management:
+```bash
+./run-tests.sh          # Run all tests in serial mode
+./run-single-test.sh    # Run a single test
+./run-parallel-tests.sh # Run tests in parallel mode
+```
+
+## Key Environment Variables
+
+- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
+- `MAIN_MODEL`, `SUMMARY_MODEL`
+- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
+- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
+- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
+- `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
+- `SUMMARY_MODE` (default `cache_append`)
+- `SUMMARY_CACHE_ENABLED` (default `true`)
+- `SUMMARY_CACHE_DIR` (default `./__summary_cache`)
 
 ## Development Conventions
 
-The project follows specific conventions and best practices which are documented in [CONVENTIONS.md](./_project/CONVENTIONS.md).
+- Uses pytest for testing with mock upstream calls
+- Tests are unit/integration-ish but don't require a live LM Studio instance
+- Uses FastAPI framework with async/await patterns
+- Follows Python coding standards with proper typing annotations
+- Has comprehensive logging capabilities for debugging
 
-## Workflow Guidelines
+## Usage Examples
 
-For project workflow conventions and task management, please refer to [WORKFLOW.md](./_tasks/WORKFLOW.md) which contains detailed guidelines on:
-- Active work tracking via ACTIVE_TASK.md
-- Completed tasks archival in COMPLETED_TASKS.md
-- Future task planning in TODO.md
-- Overall project collaboration conventions
-
-## Memory Management
-
-For important project notes and learnings, please refer to [MEMORY.md](./_memory/MEMORY.md) which contains:
-- Key insights and references worth remembering for future work
-- Troubleshooting guides and best practices
-- Implementation details that are valuable to preserve
-
-## Project Guidelines
-
-For project-level documentation and conventions, please refer to [PROJECT.md](./_project/PROJECT.md) which contains detailed information about:
-- Overall project overview
-- Versioning strategy and practices
-- Coding conventions, best practices, etc.
-- Configuration management guidelines
-
-## Skills
-
-This project includes specialized skills for working with project documentation. These skills can be invoked using the `skill` command in Qwen Code:
-
-- **REVIEW-DOC**: Reviews all markdown files to ensure they accurately reflect the current status of the project and contain only relevant information. It consolidates knowledge by identifying missing information and moving irrelevant content to appropriate locations.
-
-Skills are designed to help maintain high-quality, accurate documentation by ensuring that:
-- All documentation reflects current implementation status
-- Information is properly organized and consolidated
-- Each document contains only relevant content
-- Missing information is identified and addressed
-
-To use a skill, simply run:
-```
-skill: "REVIEW-DOC"
+### Basic Usage:
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
 ```
 
-## Qwen Added Memories
-- Tests require the virtual environment to be set up before running them
-- The project has been fully tested with both sequential (-n0) and parallel (-n4) test execution modes, all 39 tests now pass correctly. The main issue was fixed by resolving model name mismatch between orchestrator and fake backend recognition for summary calls.
+### Passthrough Mode:
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"pass/gpt-4","messages":[{"role":"user","content":"ciao"}]}'
+```
+
+### Streaming:
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"ciao"}]}'
+```
