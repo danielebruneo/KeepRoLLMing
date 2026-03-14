@@ -39,3 +39,10 @@ This skill uses the structure defined in `_templates/ACTIVE_TASK.template.md` wh
 - Done when criteria
 - Out of scope definition
 - Notes for agent use
+- Creation Timestamp (DD/MM/YYYY HH:MM:SS)
+- Completion Timestamp (DD/MM/YYYY HH:MM:SS)
+
+## DateTime Tracking
+All tasks created using this skill should include:
+- Creation timestamp in DD/MM/YYYY HH:MM:SS format
+- Completion timestamp when task is marked as done (in HANDOFF.md)

@@ -25,3 +25,7 @@ Review existing skills in the project and enhance their documentation to make th
 - Adding concrete usage examples for each skill (e.g., providing specific project-related examples)
 - Making procedural steps more detailed and actionable (e.g., adding specific implementation details)
 - Ensuring consistent format across all skill documents (e.g., uniform structure and style)
+
+## DateTime Tracking
+All skill improvements should include:
+- Timestamp in DD/MM/YYYY HH:MM:SS format for when changes were made

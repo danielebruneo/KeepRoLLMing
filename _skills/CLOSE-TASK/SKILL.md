@@ -33,3 +33,7 @@ This skill leverages the structure defined in `_templates/HANDOFF.template.md` w
 - Files touched list
 - Risks/warnings
 - Suggested commands for verification
+
+## DateTime Tracking
+All handoffs created using this skill should include:
+- Handoff timestamp in DD/MM/YYYY HH:MM:SS format

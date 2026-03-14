@@ -52,3 +52,9 @@ Explain why the task is valuable in 2-4 lines.
 
 ## Notes
 Freeform notes for agent use only.
+
+## Creation Timestamp
+DD/MM/YYYY HH:MM:SS
+
+## Completion Timestamp  
+DD/MM/YYYY HH:MM:SS

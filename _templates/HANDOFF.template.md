@@ -20,3 +20,6 @@ No active handoff yet.
 
 ## Suggested commands
 - Add the exact commands to rerun the latest relevant checks here.
+
+## Handoff Timestamp
+DD/MM/YYYY HH:MM:SS
