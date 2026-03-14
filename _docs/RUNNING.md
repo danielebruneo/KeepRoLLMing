@@ -38,3 +38,6 @@ Due to compatibility issues with pytest dependencies that were causing warnings 
 ./run-tests.sh
 ```
 This script creates a clean virtual environment for running tests, ensuring proper dependency resolution.
+
+## Date Reference
+This document was last reviewed for accuracy: sabato 14 marzo 2026

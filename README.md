@@ -6,6 +6,9 @@ and adds **rolling-summary** support to avoid context overflow.
 ## Features
 
 - OpenAI-compatible endpoint: `POST /v1/chat/completions`
+
+## Date Reference
+This document was last reviewed for accuracy: sabato 14 marzo 2026
 - Profiles:
   - `local/quick`
   - `local/main`

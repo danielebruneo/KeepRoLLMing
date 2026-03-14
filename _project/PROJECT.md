@@ -15,7 +15,7 @@ Questo progetto è un **proxy/orchestrator FastAPI** che funziona come intermedi
 ### Architecture:
 - The code is divided into modules, with the main app (`keeprollming/app.py`) handling requests and summarization logic.
 - `keeprollming/upstream.py` for communicating with upstream backend
-- `keeprollming/rolling_summary.py` for generating context summaries  
+- `keeprollming/rolling_summary.py` for generating context summaries
 - `keeprollming/logger.py` for logging requests and responses (with various log levels)
 - `keeprollming/performance.py` for recording performance metrics (TTFT, TPS, etc.)
 - `keeprollming/summary_cache.py` for summary caching
@@ -66,4 +66,7 @@ Se hai bisogno di ulteriori informazioni o chiarimenti su specifiche parti del c
 
 ## Caching Mechanism
 
-For detailed information about how rolling summaries are cached and reused, please refer to [CACHING_MECHANISM.md](./CACHING_MECHANISM.md).
+The project implements a rolling summary caching mechanism that stores previously generated summaries to avoid redundant computation. For detailed information about how rolling summaries are cached and reused, please refer to the [summary_cache.py module documentation](../keeprollming/summary_cache.py).
+
+## Date Reference
+This document was last reviewed for accuracy: sabato 14 marzo 2026
