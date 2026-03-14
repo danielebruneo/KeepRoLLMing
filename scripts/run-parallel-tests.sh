@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Script to run tests in parallel mode using a clean environment
+# Usage: ./run-parallel-tests.sh [optional_test_name]
+
+echo "Setting up test environment for parallel execution..."
+
+# Use dedicated venv setup script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/set-tests-venv.sh"
+
+# Install requirements
+pip install -r "$SCRIPT_DIR/../requirements.txt"
+pip install -r "$SCRIPT_DIR/../requirements-dev.txt"
+
+# Run tests with parallel execution (using pytest-xdist)
+if [ $# -eq 0 ]; then
+    # Run all tests in parallel mode
+    python -m pytest --tb=no -n auto -v
+else
+    # Run specific test(s) in parallel mode
+    python -m pytest --tb=no -n auto -v "$@"
+fi
+
+echo "Parallel test run completed"

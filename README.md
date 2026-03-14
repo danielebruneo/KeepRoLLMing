@@ -60,20 +60,31 @@ Notes:
 
 - **Important**: Due to compatibility issues with pytest dependencies, we recommend using the dedicated test scripts:
   ```bash
-  ./run-tests.sh          # Run all tests in serial mode
-  ./run-single-test.sh    # Run a single test
-  ./run-parallel-tests.sh # Run tests in parallel mode
+  cd scripts && ./run-tests.sh          # Run all tests in serial mode
+  cd scripts && ./run-single-test.sh    # Run a single test
+  cd scripts && ./run-parallel-tests.sh # Run tests in parallel mode
   ```
   These scripts ensure a clean virtual environment and proper dependency resolution for consistent test runs.
-  
+
   The venv setup logic is now centralized in:
   ```bash
-  ./set-tests-venv.sh     # Dedicated script for creating and validating test venv
+  ./scripts/set-tests-venv.sh     # Dedicated script for creating and validating test venv
+  ```
+  
+  All test scripts can be executed from any directory in the project:
+  ```bash
+  ./scripts/run-tests.sh          # Run all tests in serial mode
+  ./scripts/run-single-test.sh    # Run a single test
+  ./scripts/run-parallel-tests.sh # Run tests in parallel mode
   ```
 
 - For individual test runs in reliable environments, use:
   ```bash
-  ./run-single-test.sh test_name
+  cd scripts && ./run-single-test.sh test_name
+  ```
+  or from any directory in the project:
+  ```bash
+  ./scripts/run-single-test.sh test_name
   ```
 
 ## Configuration
