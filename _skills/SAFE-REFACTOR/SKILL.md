@@ -21,7 +21,7 @@ Improve internal structure without changing intended behavior to maintain stabil
 - When refactoring for clarity while maintaining exact behavior
 
 ## Examples
-- Renaming variables for better clarity
-- Restructuring code blocks for improved readability
-- Simplifying complex conditional logic
-- Improving function signatures without changing behavior
+- Renaming variables for better clarity (e.g., changing `x` to `user_input` in a function)
+- Restructuring code blocks for improved readability (e.g., extracting logic into helper functions)
+- Simplifying complex conditional logic (e.g., replacing nested if statements with early returns)
+- Improving function signatures without changing behavior (e.g., adding type hints or default parameters)

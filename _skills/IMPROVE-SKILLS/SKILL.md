@@ -21,7 +21,7 @@ Review existing skills in the project and enhance their documentation to make th
 - After identifying gaps or ambiguities in existing skill definitions
 
 ## Examples
-- Improving skill descriptions to include when they should be used
-- Adding concrete usage examples for each skill
-- Making procedural steps more detailed and actionable
-- Ensuring consistent format across all skill documents
+- Improving skill descriptions to include when they should be used (e.g., adding clearer "When to Use" sections)
+- Adding concrete usage examples for each skill (e.g., providing specific project-related examples)
+- Making procedural steps more detailed and actionable (e.g., adding specific implementation details)
+- Ensuring consistent format across all skill documents (e.g., uniform structure and style)

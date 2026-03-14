@@ -19,6 +19,6 @@ Populate or refresh [_agent/COMMANDS.md](../../_agent/COMMANDS.md) from the real
 - When ensuring command documentation matches actual environment
 
 ## Examples
-- Updating commands after adding new test scripts
-- Refreshing command list after modifying Makefiles
-- Creating clean command listing from existing project tools
+- Updating commands after adding new test scripts (e.g., adding pytest commands to COMMANDS.md)
+- Refreshing command list after modifying Makefiles (e.g., updating run commands based on new Makefile targets)
+- Creating clean command listing from existing project tools (e.g., extracting npm run commands from package.json)

@@ -27,6 +27,6 @@ Initialize the internal agent knowledge base from the current repository state.
 - When setting up fresh knowledge base after cloning or reset
 
 ## Examples
-- Setting up initial repository understanding for new agent
-- Refreshing knowledge base after adding new modules
-- Creating command documentation when setup is changed
+- Setting up initial repository understanding for new agent (e.g., creating a basic MAP.md with main directories)
+- Refreshing knowledge base after adding new modules (e.g., updating COMMANDS.md with new test scripts)
+- Creating command documentation when setup is changed (e.g., documenting new environment variables or installation steps)

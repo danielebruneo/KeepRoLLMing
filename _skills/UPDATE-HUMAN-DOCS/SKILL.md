@@ -24,6 +24,6 @@ Human-facing docs typically include:
 - When improving project documentation for external audiences
 
 ## Examples
-- Updating README with new features or usage examples
-- Adding configuration details to documentation files
-- Improving installation instructions in public docs
+- Updating README with new features or usage examples (e.g., adding streaming support usage instructions)
+- Adding configuration details to documentation files (e.g., documenting new environment variables)
+- Improving installation instructions in public docs (e.g., updating dependency installation steps)

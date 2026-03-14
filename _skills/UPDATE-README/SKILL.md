@@ -21,6 +21,6 @@ Update [README.md](CATALYST.md) without disturbing stable sections unnecessarily
 - When updating installation or usage instructions
 
 ## Examples
-- Adding new configuration options to README documentation
-- Updating usage examples after feature additions
-- Modifying setup instructions when environment changes
+- Adding new configuration options to README documentation (e.g., adding details about UPSTREAM_BASE_URL)
+- Updating usage examples after feature additions (e.g., adding curl command examples for new streaming support)
+- Modifying setup instructions when environment changes (e.g., updating installation steps for new dependencies)

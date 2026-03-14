@@ -21,6 +21,6 @@ Implement a requested feature in a controlled, test-aware way that maintains pro
 - When the change should be minimal and focused
 
 ## Examples
-- Adding support for a new model profile
-- Implementing streaming response handling
-- Adding configuration options for new parameters
+- Adding support for a new model profile (e.g., adding a new profile in config.yaml)
+- Implementing streaming response handling (e.g., modifying app.py to support SSE responses)
+- Adding configuration options for new parameters (e.g., adding environment variables for new settings)

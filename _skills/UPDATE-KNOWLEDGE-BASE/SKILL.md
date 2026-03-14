@@ -20,6 +20,6 @@ Refresh the internal knowledge files after the project changed.
 - When maintaining consistency between code and documentation
 
 ## Examples
-- Updating MAP after adding new modules to the project
-- Refreshing COMMANDS when new scripts are added
-- Aligning knowledge files with recent code refactoring
+- Updating MAP after adding new modules to the project (e.g., adding new directory entries to MAP.md)
+- Refreshing COMMANDS when new scripts are added (e.g., updating COMMANDS.md with new test or build scripts)
+- Aligning knowledge files with recent code refactoring (e.g., updating MAP.md to reflect new module locations)

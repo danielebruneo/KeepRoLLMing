@@ -22,6 +22,6 @@ Fix a failing test safely and with minimal scope to maintain project stability.
 - When test expectations need adjustment to match actual behavior
 
 ## Examples
-- Fixing parameter passing issues in test functions
-- Correcting model resolution logic that causes test failures
-- Updating test assertions to match current implementation behavior
+- Fixing parameter passing issues in test functions (e.g., updating mock calls to match expected parameters)
+- Correcting model resolution logic that causes test failures (e.g., adjusting profile resolution in config.py)
+- Updating test assertions to match current implementation behavior (e.g., changing expected output format in test cases)

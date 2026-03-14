@@ -21,6 +21,6 @@ Review repository markdown files and keep them accurate, relevant, and non-dupli
 - When cleaning up outdated or redundant content
 
 ## Examples
-- Verifying that README reflects current implementation status
-- Checking that configuration documentation matches actual behavior
-- Removing obsolete sections from architecture docs
+- Verifying that README reflects current implementation status (e.g., checking that usage examples match actual API calls)
+- Checking that configuration documentation matches actual behavior (e.g., confirming environment variables are properly documented)
+- Removing obsolete sections from architecture docs (e.g., deleting outdated module information)

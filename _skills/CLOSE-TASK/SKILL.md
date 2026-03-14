@@ -23,3 +23,13 @@ Close or roll over the active task cleanly with proper documentation of outcomes
 - Closing documentation review task after verifying all files
 - Finalizing code refactoring with proper handoff notes
 - Wrapping up feature implementation with summary of changes made
+
+## Template Reference
+This skill leverages the structure defined in `_templates/HANDOFF.template.md` which includes:
+- Current status field
+- What changed section 
+- What still needs work
+- Best next step guidance
+- Files touched list
+- Risks/warnings
+- Suggested commands for verification
