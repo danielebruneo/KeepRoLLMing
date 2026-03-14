@@ -1,14 +1,12 @@
-see [AGENTS.md]
 # Keeprollming Orchestrator
 
-A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio)
-and adds **rolling-summary** support to avoid context overflow.
+This is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
 
 ## Project Overview
 
-This is a Python-based FastAPI application designed to work as a proxy or orchestrator between clients and OpenAI-compatible language model backends. The primary purpose is to handle long conversations that would otherwise exceed the context window limits of language models, by implementing a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
+The Keeprollming Orchestrator is designed to handle long conversations that would otherwise exceed the context window limits of language models. It implements a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
 
-Key features include:
+### Key Features
 - OpenAI-compatible endpoint: `POST /v1/chat/completions`
 - Support for multiple profiles (`local/quick`, `local/main`, `local/deep`) with different model configurations
 - Rolling-summary support to manage context overflow
@@ -16,9 +14,7 @@ Key features include:
 - Streaming proxy (SSE) support
 - Token accounting and context management
 
-## Architecture
-
-The application is structured around:
+### Architecture
 1. **FastAPI Application** (`keeprollming/app.py`) - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
 2. **Configuration Management** (`keeprollming/config.py`) - Uses a dataclass-based system for profiles with different main and summary models.
 3. **Orchestrator Logic** - Handles token counting, message splitting, and summarization as needed.

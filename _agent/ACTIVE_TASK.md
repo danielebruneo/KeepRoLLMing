@@ -1,17 +1,24 @@
 # Active Task
 
 ## Title
-<single concrete task title>
+Documentation Review Complete
 
 ## Goal
-<what must be achieved>
+Confirm that all project documentation is accurate, complete, and reflects current implementation status
 
 ## Why this matters
-<short context>
+Ensures users have access to correct information about the project's functionality, configuration, and usage
 
 ## Likely files
-- [path/to/file](path/to/file)
-- [path/to/other_file](path/to/other_file)
+- README.md
+- AGENTS.md
+- CATALYST.md
+- _docs/CACHING_MECHANISM.md
+- _docs/CONFIGURATION.md
+- _docs/RUNNING.md
+- _docs/TESTING.md
+- tests/test_orchestrator.py
+- tests/test_summary_overflow_regression.py
 
 ## Constraints
 - Preserve external behavior unless the user asked for a change
