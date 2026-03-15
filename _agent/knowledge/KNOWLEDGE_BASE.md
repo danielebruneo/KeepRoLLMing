@@ -158,3 +158,25 @@ This repository uses a layered bootstrap for agent-assisted development:
 Operational state lives in [_agent/](../_agent/) and specialized procedures live in [_skills/](../_skills/).
 
 Within skill directories, `SKILL.md` is canonical and any `SKILL-<NAME>.md` companion path should be treated as an alias/symlink path to the canonical content.
+
+
+## CATALYST Cognitive Workflow
+
+CATALYST distinguishes between runtime state and durable knowledge:
+- Runtime state lives under `_agent/state/` and should be read first
+- Durable knowledge lives under `_agent/knowledge/` and should be read as needed
+
+The preferred cognitive sequence is:
+1. THINK
+2. PLAN (optional)
+3. WORK
+4. FEEDBACK
+5. LEARN
+6. ADAPT (small, safe, local only)
+7. CLOSE-TASK
+
+### Intent of core cognitive skills
+- THINK: clarify the current objective, check scope, and select the next skill without modifying files
+- PLAN: produce a bounded plan before execution when a task is complex or underspecified
+- LEARN: consolidate lessons and decide whether they should remain as proposals, become TODOs, or justify ADAPT
+- ADAPT: apply a minimal workflow or skill refinement; never broad architectural changes

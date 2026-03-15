@@ -102,3 +102,15 @@ ventions for keeping project tools properly grouped.
 - Lesson: All learning reports in _agent/learning_reports/ directory should be preserved as historical documentation rather than replaced. Each session creates a new timestamped file instead of updating existing ones to maintain complete knowledge base.
 - Relevant files: _agent/learning_reports/
 - Category: Process Pattern
+
+## Topic: THINK before skill selection
+- Date/session: 15/03/2026 17:24:16
+- Lesson: When multiple skills could apply or the next action is unclear, explicitly route through THINK before executing. This reduces premature skill usage and scope drift.
+- Relevant files: _skills/THINK/SKILL.md, _docs/development/WORKFLOW.md
+- Category: Process Pattern
+
+## Topic: ADAPT must stay small and local
+- Date/session: 15/03/2026 17:24:16
+- Lesson: ADAPT is powerful but risky. It should only implement minimal, low-risk changes to CATALYST workflow artifacts or a single skill. Large refactors should remain proposals or TODOs.
+- Relevant files: _skills/ADAPT/SKILL.md, _skills/LEARN/SKILL.md
+- Category: Process Pattern

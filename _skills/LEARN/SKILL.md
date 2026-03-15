@@ -11,13 +11,14 @@ Undergo through a comprehensive learning process that systematically reviews pro
 ## Procedure
 1. **Review Current State**: Examine all existing skills, documentation files, templates, and workflows using [REVIEW-DOC](../REVIEW-DOC/SKILL-REVIEW-DOC.md) and [UPDATE-KNOWLEDGE-BASE](../UPDATE-KNOWLEDGE-BASE/SKILL-UPDATE-KNOWLEDGE-BASE.md)
 2. **Identify Improvement Opportunities**: Scan for inconsistencies, gaps, or areas where integration could be better
-3. **Analyze Patterns**: Look at how components interact with each other in the workflow system using [FEEDBACK](../FEEDBACK/SKILL-FEEDBACK.md) and [IMPROVE-AGENT-WORKFLOW](../IMPROVE-AGENT-WORKFLOW/SKILL-IMPROVE-AGENT-WORKFLOW.md)
+3. **Analyze Patterns**: Use [THINK](../THINK/SKILL-THINK.md) when needed to clarify what kind of issue is present, then look at how components interact using [FEEDBACK](../FEEDBACK/SKILL-FEEDBACK.md) and [IMPROVE-AGENT-WORKFLOW](../IMPROVE-AGENT-WORKFLOW/SKILL-IMPROVE-AGENT-WORKFLOW.md)
 4. **Consolidate Improvements**: Group related enhancements into dedicated skills that make sense for agents to use, leveraging [IMPROVE-SKILLS](../IMPROVE-SKILLS/SKILL-IMPROVE-SKILLS.md) and [IMPROVE-DOC-STRUCTURES](../IMPROVE-DOC-STRUCTURES/SKILL-IMPROVE-DOC-STRUCTURES.md)
 5. **Validate Implementation**: Ensure improvements maintain backward compatibility using [SAFE-REFACTOR](../SAFE-REFACTOR/SKILL-SAFE-REFACTOR.md) and validate with existing tests
 6. **Document Learning**: Record lessons learned from this process for future reference, using [UPDATE-HUMAN-DOCS](../UPDATE-HUMAN-DOCS/SKILL-UPDATE-HUMAN-DOCS.md)
-7. **Generate Final Report**: Produce a detailed report to the user summarizing what was learned, why it matters, how adaptation occurred, and outcomes achieved
-8. **Create Learning Report File**: Generate a comprehensive learning report in _agent/learning_reports/ directory with structured data about improvements identified
-9. **Prepare Commit Message**: Create appropriate commit message for documenting this learning session
+7. **Decide Outcome**: End with an explicit outcome: no action needed, proposal/TODO, recommend [ADAPT](../ADAPT/SKILL-ADAPT.md), or manual review
+8. **Generate Final Report**: Produce a detailed report to the user summarizing what was learned, why it matters, whether adaptation is recommended, and outcomes achieved
+9. **Create Learning Report File**: Generate a comprehensive learning report in _agent/learning_reports/ directory with structured data about improvements identified
+10. **Prepare Commit Message**: Create appropriate commit message for documenting this learning session
 
 ## When to Use
 - When seeking systematic improvement of agent workflow capabilities
@@ -79,3 +80,16 @@ This session reviewed all project components to identify enhancement opportuniti
 - Maintained datetime tracking throughout process (DD/MM/YYYY HH:MM:SS)
 - Consolidated lessons learned from project work
 ```
+
+
+## Outcome policy
+LEARN should not automatically perform broad modifications. It should end in one of these outcomes:
+1. **No action needed**
+2. **Create or update a TODO / proposal**
+3. **Recommend ADAPT** for a small, low-risk CATALYST change
+4. **Recommend manual review** when the issue is architectural or cross-cutting
+
+## Relationship with THINK and ADAPT
+- Use [THINK](../THINK/SKILL-THINK.md) if the correct learning target is unclear.
+- Prefer [ADAPT](../ADAPT/SKILL-ADAPT.md) only when the improvement is local, safe, and scope-appropriate.
+- `LEARN` should not interrupt active KeepRoLLMing work unless the scope explicitly includes CATALYST or META.

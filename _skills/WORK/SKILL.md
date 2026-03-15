@@ -14,20 +14,24 @@ Automate a complete work cycle that checks if an active task is pending, picks u
 - After completing a full learning or feedback cycle where new tasks should be picked up
 
 ## Procedure
-1. **Check Current Task Status**: Examine `_agent/state/ACTIVE_TASK.md` to determine if there's an active task in progress
-2. **Task Decision Logic**: 
-   - If active task exists and is still pending, proceed with implementation
-   - If no active task or current task is completed, pick up the next available task from TODO list  
+1. **Check Runtime State**: Read `_agent/state/SCOPE.md`, `_agent/state/ACTIVE_TASK.md`, and `_agent/state/HANDOFF.md`.
+2. **Task Decision Logic**:
+   - If the request or next step is unclear, call [THINK](../THINK/SKILL-THINK.md) first
+   - If the active task is complex or under-specified, call [PLAN](../PLAN/SKILL-PLAN.md) before implementation
+   - If an active task exists and is still pending, proceed with implementation
+   - If no active task exists or the current task is completed, pick up the next available task from TODO list
 3. **Implement Task**: Execute the work described in ACTIVE_TASK.md until completion criteria are met
-4. **Commit Changes**: Commit all changes made during task execution using appropriate commit message format 
-5. **Close Task**: Update `_agent/state/ACTIVE_TASK.md` to mark task as completed and add final status information  
-6. **Update Handoff**: Modify `_agent/state/HANDOFF.md` with completion record, including files touched, lessons learned
-7. **Update TODO List**: Remove the completed task from `_agent/state/TODOS.md` 
-8. **Generate Summary Report**: Create a brief summary of what was accomplished and why it matters
+4. **Validate**: Check done criteria and run targeted validation or tests when appropriate
+5. **Commit Changes**: Commit changes only when the work is coherent and scoped appropriately
+6. **Close Task**: Update `_agent/state/ACTIVE_TASK.md` to mark task as completed and add final status information
+7. **Update Handoff**: Modify `_agent/state/HANDOFF.md` with completion record, including files touched and lessons learned
+8. **Update TODO List**: Remove or mark the completed task in `_agent/state/TODOS.md` when applicable
+9. **Generate Summary Report**: Create a brief summary of what was accomplished and why it matters
 
 ## Constraints
-- Do not make broad refactorings or changes beyond scope defined in active task
-- Maintain all existing workflow templates and conventions consistently  
+- Do not make broad refactorings or changes beyond scope defined in the active task and `_agent/state/SCOPE.md`
+- Do not silently expand scope from KR to CATALYST or META work
+- Maintain all existing workflow templates and conventions consistently
 - Ensure commit messages follow established patterns for different types of work (task, learn, scripts)
 - Preserve datetime tracking throughout the process (DD/MM/YYYY HH:MM:SS format)
 
@@ -59,3 +63,8 @@ The skill is designed to minimize manual intervention while maintaining quality 
 5. A brief execution summary for future reference
 
 Note: This skill is meant to be called as a single workflow unit, not broken into multiple steps.
+
+## Relationship with THINK and PLAN
+- THINK is the preferred router when the next step is unclear.
+- PLAN should be used before WORK when the task needs decomposition or carries meaningful risk.
+- WORK is the default executor after routing and planning are clear.
