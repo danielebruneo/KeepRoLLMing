@@ -55,14 +55,10 @@
 ## Skills Development
 
 ### Task Management
-- [ ] WORK  
-- [ ] CLOSE-TASK
+- [ ] Implement SKILL_INDEX.md to organize task management skills (WORK, CLOSE-TASK)
 
 ### Reflection
-- [ ] FEEDBACK
-- [ ] LEARN  
-- [ ] DISTILL-LEARNINGS
+- [ ] Implement SKILL_INDEX.md to organize reflection skills (FEEDBACK, LEARN, DISTILL-LEARNINGS)
 
 ### Maintenance
-- [ ] UPDATE-DOCS
-- [ ] REVIEW-DOC
+- [ ] Implement SKILL_INDEX.md to organize maintenance skills (UPDATE-DOCS, REVIEW-DOC)
