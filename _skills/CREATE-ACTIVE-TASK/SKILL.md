@@ -46,3 +46,10 @@ This skill uses the structure defined in `_templates/ACTIVE_TASK.template.md` wh
 All tasks created using this skill should include:
 - Creation timestamp in DD/MM/YYYY HH:MM:SS format
 - Completion timestamp when task is marked as done (in HANDOFF.md)
+
+## Documentation Reference Guidance
+When creating tasks, consider referencing relevant documentation:
+- For configuration changes: CONFIGURATION.md
+- For caching implementation: CACHING_MECHANISM.md  
+- For performance optimization: PERFORMANCE.md
+- For architectural decisions: DECISIONS.md

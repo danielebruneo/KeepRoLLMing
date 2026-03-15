@@ -24,3 +24,10 @@ Review repository markdown files and keep them accurate, relevant, and non-dupli
 - Verifying that README reflects current implementation status (e.g., checking that usage examples match actual API calls)
 - Checking that configuration documentation matches actual behavior (e.g., confirming environment variables are properly documented)
 - Removing obsolete sections from architecture docs (e.g., deleting outdated module information)
+
+## Documentation Reference Guidance
+When reviewing documentation, consider:
+- Architecture decisions in DECISIONS.md when understanding design rationale
+- Configuration details in CONFIGURATION.md when evaluating parameter changes
+- Caching mechanisms in CACHING_MECHANISM.md when assessing performance impact  
+- Performance metrics in PERFORMANCE.md when analyzing optimization opportunities

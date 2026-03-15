@@ -27,3 +27,9 @@ Human-facing docs typically include:
 - Updating README with new features or usage examples (e.g., adding streaming support usage instructions)
 - Adding configuration details to documentation files (e.g., documenting new environment variables)
 - Improving installation instructions in public docs (e.g., updating dependency installation steps)
+
+## Documentation Categorization Guidance
+When updating documentation, distinguish between:
+- User-facing documentation (README.md, RUNNING.md, CONFIGURATION.md) 
+- Technical documentation (CACHING_MECHANISM.md, TESTING.md, PERFORMANCE.md)
+- Architectural documentation (DECISIONS.md, OVERVIEW.md, INVARIANTS.md)
