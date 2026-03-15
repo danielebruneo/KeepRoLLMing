@@ -12,44 +12,28 @@ ARCHIVE_NAME="KeepRoLLMing-${TIMESTAMP}.zip"
 
 echo "Creating project archive: ${ARCHIVE_NAME}"
 
-# Create temporary directory for export
+# Create temporary directory structure in a way that avoids nested zip issues
 TMP_DIR="/tmp/keeprollming_export_${TIMESTAMP}"
 mkdir -p "${TMP_DIR}"
 
-# Copy essential files and directories using find to avoid issues with nested dirs
-find . -maxdepth 1 \( -name "*.md" -o -name "config.yaml" -o -name "requirements.txt" -o -name "requirements-dev.txt" -o -name "pytest.ini" -o -name "MIGRATION_NOTES.md" -o -name "TEST_FIX_SUMMARY.md" -o -name "keeprollming.py" \) -exec cp {} "${TMP_DIR}/" \;
+# Copy all files directly to temp dir without subdirectories
+cp README.md config.yaml requirements.txt requirements-dev.txt pytest.ini MIGRATION_NOTES.md TEST_FIX_SUMMARY.md QWEN.md AGENTS.md CATALYST.md CLAUDE.md keeprollming.py comprehensive_debug.py final_debug_analysis.py token_count_debug.py token_debug.py "${TMP_DIR}/"
 
-# Copy directories, avoiding cache and log files
-mkdir -p "${TMP_DIR}/_agent"
-cp -r _agent/* "${TMP_DIR}/_agent/"
+# Copy all directories to temp dir using rsync with --exclude options
+rsync -av _agent/ "${TMP_DIR}/_agent/"
+rsync -av _docs/ "${TMP_DIR}/_docs/"  
+rsync -av _skills/ "${TMP_DIR}/_skills/"
+rsync -av _templates/ "${TMP_DIR}/_templates/"
+rsync -av _prompts/ "${TMP_DIR}/_prompts/"
+rsync -av scripts/ "${TMP_DIR}/scripts/"
+rsync -av tests/ "${TMP_DIR}/tests/"
+rsync -av keeprollming/ "${TMP_DIR}/keeprollming/"
 
-mkdir -p "${TMP_DIR}/_docs"
-find _docs -type f -not -path "*/.pytest_cache/*" -not -path "*/__pycache__/*" -exec cp {} "${TMP_DIR}/_docs/" \;
+# Create archive directly from the root of temp directory
+cd "${TMP_DIR}"
+zip -r "/home/daniele/LLM/orchestrator/${ARCHIVE_NAME}" .
 
-mkdir -p "${TMP_DIR}/_skills"
-cp -r _skills/* "${TMP_DIR}/_skills/"
-
-mkdir -p "${TMP_DIR}/_templates"
-cp -r _templates/* "${TMP_DIR}/_templates/"
-
-mkdir -p "${TMP_DIR}/_prompts"
-cp -r _prompts/* "${TMP_DIR}/_prompts/"
-
-mkdir -p "${TMP_DIR}/scripts"
-cp -r scripts/* "${TMP_DIR}/scripts/"
-
-mkdir -p "${TMP_DIR}/tests"
-find tests -type f -not -path "*/.pytest_cache/*" -not -path "*/__pycache__/*" -exec cp {} "${TMP_DIR}/tests/" \;
-
-mkdir -p "${TMP_DIR}/keeprollming"
-cp -r keeprollming/* "${TMP_DIR}/keeprollming/"
-
-# Create the zip archive
-cd /tmp
-zip -r "${ARCHIVE_NAME}" "keeprollming_export_${TIMESTAMP}"
-
-# Move to project root and clean up
-mv "${ARCHIVE_NAME}" "/home/daniele/LLM/orchestrator/"
+# Clean up
 rm -rf "${TMP_DIR}"
 
 echo "Archive created successfully: /home/daniele/LLM/orchestrator/${ARCHIVE_NAME}"
