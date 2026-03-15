@@ -99,9 +99,38 @@ Or use dedicated test scripts for better environment management:
 - Follows Python coding standards with proper typing annotations
 - Has comprehensive logging capabilities for debugging
 
-## Troubleshooting
+## Custom Summary Prompts
 
-For common issues and solutions, please refer to the detailed troubleshooting guide: [_docs/TROUBLESHOOTING.md](./_docs/TROUBLESHOOTING.md)
+The orchestrator now supports custom summary prompts. You can provide your own prompt text in the request payload to override the default behavior.
+
+### How it works:
+1. When providing `summary_prompt` field in the request, that text will be used as the summary prompt
+2. If both `summary_prompt_type` and `summary_prompt` are provided:
+   - The value of `summary_prompt_type` is ignored when `summary_prompt` exists
+   - The value of `summary_prompt` becomes the actual prompt content
+3. If only `summary_prompt` is provided, it will be used as a custom prompt (equivalent to setting `summary_prompt_type` to that string)
+
+### Usage Examples:
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{
+    "model":"local/main",
+    "messages":[{"role":"user","content":"Explain quantum computing"}],
+    "summary_prompt": "You are an expert explainer. Please provide a clear and concise explanation of quantum computing based on the conversation transcript."
+  }'
+```
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{
+    "model":"local/main",
+    "messages":[{"role":"user","content":"Explain quantum computing"}],
+    "summary_prompt_type": "custom",
+    "summary_prompt": "You are an expert explainer. Please provide a clear and concise explanation of quantum computing based on the conversation transcript."
+  }'
+```
 
 ## Usage Examples
 

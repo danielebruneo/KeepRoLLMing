@@ -196,7 +196,7 @@ Transcript:
 def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
     """Load a summary prompt template from file or fallback to default."""
     effective_type = (prompt_type or SUMMARY_PROMPT_TYPE or "curated").strip()
-    
+
     # Load from file
     path = Path(SUMMARY_PROMPT_DIR) / f"{effective_type}.txt"
     try:
@@ -206,6 +206,16 @@ def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
         return DEFAULT_SUMMARY_PROMPTS.get(effective_type, DEFAULT_SUMMARY_PROMPTS["curated"])
 
 
+def load_custom_prompt(prompt_text: Optional[str] = None) -> str:
+    """Load custom summary prompt from text."""
+    if prompt_text and isinstance(prompt_text, str):
+        # If we have a custom prompt text, return it directly
+        return prompt_text
+    else:
+        # Return empty string to indicate no custom prompt provided
+        return ""
+
+
 def render_summary_prompt(
     transcript: str,
     *,
@@ -213,6 +223,17 @@ def render_summary_prompt(
     lang_hint: str = "italiano",
 ) -> str:
     template = load_summary_prompt_template(prompt_type=prompt_type)
+    
+    # If we have a custom prompt, use it directly
+    custom_prompt = load_custom_prompt(prompt_type)
+    if custom_prompt and not prompt_type:
+        # We're using a custom prompt text as the default 
+        return (
+            custom_prompt
+            .replace("{{TRANSCRIPT}}", transcript)
+            .replace("{{LANG_HINT}}", lang_hint)
+        )
+
     return (
         template
         .replace("{{TRANSCRIPT}}", transcript)
@@ -806,8 +827,15 @@ async def _summarize_middle_core(
     lang_hint: str = "italiano",
 ) -> str:
     transcript = render_messages_for_summary(middle)
-    sys = get_summary_system_prompt(prompt_type=prompt_type)
-    user = render_summary_prompt(transcript, prompt_type=prompt_type, lang_hint=lang_hint)
+    
+    # If we have a custom prompt provided as the actual text, use it directly
+    if prompt_type and not isinstance(prompt_type, str):
+        sys = get_summary_system_prompt()
+        user = prompt_type  # treat it as direct prompt text
+    else:
+        sys = get_summary_system_prompt(prompt_type=prompt_type)
+        user = render_summary_prompt(transcript, prompt_type=prompt_type, lang_hint=lang_hint)
+        
     body = {
         "model": summary_model,
         "messages": [
@@ -912,13 +940,18 @@ async def _summarize_incremental_core(
     req_id: str,
     summary_model: str,
     *,
+    prompt_type: Optional[str] = None,
     lang_hint: str = "italiano",
 ) -> str:
-    sys = (
-        "Sei un assistente che aggiorna un riassunto di contesto per un altro modello. "
-        "Non inventare nulla. Mantieni il risultato compatto e fedele."
-    )
-    user = render_incremental_summary_prompt(existing_summary, new_messages, lang_hint=lang_hint)
+    
+    # If we have a custom prompt provided as the actual text, use it directly
+    if prompt_type and not isinstance(prompt_type, str):
+        sys = "Sei un assistente che aggiorna un riassunto di contesto per un altro modello. Non inventare nulla. Mantieni il risultato compatto e fedele."
+        user = render_incremental_summary_prompt(existing_summary, new_messages, lang_hint=lang_hint)
+    else:
+        sys = "Sei un assistente che aggiorna un riassunto di contesto per un altro modello. Non inventare nulla. Mantieni il risultato compatto e fedele."
+        user = render_incremental_summary_prompt(existing_summary, new_messages, lang_hint=lang_hint)
+        
     body = {
         "model": summary_model,
         "messages": [
@@ -929,6 +962,7 @@ async def _summarize_incremental_core(
         "max_tokens": SUMMARY_MAX_TOKENS,
         "stream": False,
     }
+    
     log("INFO", "summary_req", req_id=req_id, summary_model=summary_model, summary_prompt_type="incremental", middle_count=len(new_messages), transcript_chars=len(user), body_json=snip_json(body))
     t0 = time.time()
     data = await _request_summary_completion(body)
@@ -950,6 +984,7 @@ async def summarize_incremental(
     req_id: str,
     summary_model: str,
     *,
+    prompt_type: Optional[str] = None,
     lang_hint: str = "italiano",
     _attempt: int = 0,
 ) -> str:
@@ -960,7 +995,7 @@ async def summarize_incremental(
     should_prechunk, est_tokens, threshold = await _should_prechunk_summary_call(
         new_messages,
         summary_model=summary_model,
-        prompt_type=None,
+        prompt_type=prompt_type,
         lang_hint=lang_hint,
         incremental_existing_summary=existing_summary,
     )
@@ -980,7 +1015,7 @@ async def summarize_incremental(
         return current
 
     try:
-        return await _summarize_incremental_core(existing_summary, new_messages, req_id, summary_model, lang_hint=lang_hint)
+        return await _summarize_incremental_core(existing_summary, new_messages, req_id, summary_model, prompt_type=prompt_type, lang_hint=lang_hint)
     except Exception as err:
         summary_ctx = await get_ctx_len_for_model(summary_model)
         retry_reason = "overflow" if _is_context_overflow_error(err) else "http_retry" if _should_retry_with_reduced_context(err) else "fatal"

@@ -247,6 +247,9 @@ async def chat_completions(req: Request) -> Response:
     req_id = os.urandom(6).hex()
     payload = await req.json()
     headers = dict(req.headers)
+    
+    # Track start time for metrics
+    t_start = time.perf_counter()
 
     # Controllare se ci sono gli header necessari per il caching
     user_id = headers.get("x-librechat-user-id", "")
@@ -262,6 +265,14 @@ async def chat_completions(req: Request) -> Response:
 
     client_model = payload.get("model", MAIN_MODEL)
     profile, upstream_model, summary_model, is_passthrough = resolve_profile_and_models(client_model)
+
+    # Check for custom prompt in request
+    custom_prompt_type = payload.get("summary_prompt_type")
+    custom_prompt_text = payload.get("summary_prompt")
+
+    # If we have a custom prompt text, use it directly as the prompt type
+    if custom_prompt_text and isinstance(custom_prompt_text, str):
+        custom_prompt_type = custom_prompt_text
 
     messages = payload.get("messages")
     if not isinstance(messages, list):
@@ -337,7 +348,7 @@ async def chat_completions(req: Request) -> Response:
                         tail_n = plan.tail_n
                         n = len(non_system)
                         middle = non_system[head_n : n - tail_n] if (head_n + tail_n) < n else []
-                        summary_text = await summarize_middle(middle, req_id=req_id, summary_model=summary_model)
+                        summary_text = await summarize_middle(middle, req_id=req_id, summary_model=summary_model, prompt_type=custom_prompt_type, lang_hint=custom_prompt_text or "italiano")
                         repacked_messages, _middle_used = build_repacked_messages(
                             messages,
                             summary_text=summary_text,
@@ -377,6 +388,7 @@ async def chat_completions(req: Request) -> Response:
                                 new_messages,
                                 req_id=req_id,
                                 summary_model=summary_model,
+                                prompt_type=custom_prompt_type
                             )
                             end_idx = desired_end_idx
                             repacked_messages = build_messages_from_summary_prefix(
@@ -412,7 +424,7 @@ async def chat_completions(req: Request) -> Response:
                 tail_n = plan.tail_n
                 n = len(non_system)
                 middle = non_system[head_n : n - tail_n] if (head_n + tail_n) < n else []
-                summary_text = await summarize_middle(middle, req_id=req_id, summary_model=summary_model)
+                summary_text = await summarize_middle(middle, req_id=req_id, summary_model=summary_model, prompt_type=custom_prompt_type, lang_hint=custom_prompt_text or "italiano")
                 repacked_messages, _middle_used = build_repacked_messages(
                     messages,
                     summary_text=summary_text,
