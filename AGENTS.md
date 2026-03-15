@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Purpose
-CATALYST is the canonical workflow layer for agent-assisted development in this repository.
+[CATALYST](CATALYST.md) is the canonical workflow layer for agent-assisted development in this repository.
 It keeps task scope, memory, documentation, and self-improvement aligned.
 
 If you arrived here through [QWEN.md](QWEN.md), continue with the CATALYST workflow below.

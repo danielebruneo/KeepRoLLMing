@@ -4,7 +4,7 @@ This is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible 
 
 ## Agent-assisted development
 
-This repository uses **CATALYST** as its agent-assisted development workflow.
+This repository uses **[CATALYST](CATALYST.md)** as its agent-assisted development workflow.
 
 - [QWEN.md](QWEN.md) is the Qwen-specific bootstrap entrypoint.
 - [AGENTS.md](AGENTS.md) is the canonical workflow specification for coding agents.

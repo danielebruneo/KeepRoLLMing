@@ -1,7 +1,7 @@
 # Qwen Agent Bootstrap
 
 <!-- CATALYST-BOOTSTRAP:START -->
-This repository uses the **CATALYST** workflow for agent-assisted development.
+This repository uses the **[CATALYST](CATALYST.md)** workflow for agent-assisted development.
 
 Before starting substantial work, read these files in order:
 1. [AGENTS.md](AGENTS.md)
