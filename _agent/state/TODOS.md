@@ -54,11 +54,4 @@
 
 ## Skills Development
 
-### Task Management
-- [ ] Implement SKILL_INDEX.md to organize task management skills (WORK, CLOSE-TASK)
-
-### Reflection
-- [ ] Implement SKILL_INDEX.md to organize reflection skills (FEEDBACK, LEARN, DISTILL-LEARNINGS)
-
-### Maintenance
-- [ ] Implement SKILL_INDEX.md to organize maintenance skills (UPDATE-DOCS, REVIEW-DOC)
+- [ ] Create SKILL_INDEX.md to organize agent skills by category (task management, reflection, maintenance)
