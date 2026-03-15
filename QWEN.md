@@ -2,6 +2,12 @@
 
 This is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
 
+## Agent Working Patterns
+
+When working with skills in CATALYST projects, be aware that some files like SKILL-FEEDBACK.md are symlinks to SKILL.md. Only edit the actual content file (SKILL.md) as both links point to the same content. Always run 'ls -la' first to check for symlink relationships before making any modifications.
+
+This pattern was encountered during an improvement of the FEEDBACK skill where I initially confused the files and needed to understand that they are functionally identical.
+
 ## Project Overview
 
 The Keeprollming Orchestrator is designed to handle long conversations that would otherwise exceed the context window limits of language models. It implements a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
@@ -111,3 +117,6 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "content-type: application/json" \
   -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"ciao"}]}'
 ```
+
+## Qwen Added Memories
+- When working with skills in CATALYST projects, be aware that some files like SKILL-FEEDBACK.md are symlinks to SKILL.md. Only edit the actual content file (SKILL.md) as both links point to the same content. Always run 'ls -la' first to check for symlink relationships before making any modifications.

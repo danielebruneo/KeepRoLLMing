@@ -8,6 +8,9 @@ description: Analyzes conversation patterns with user, system feedback, agent re
 ## Goal
 Analyze user interactions, system feedback, agent reasoning processes, and overall workflow effectiveness to propose improvements that enhance the agent's learning capabilities and future performance without modifying project code or documentation directly.
 
+## Purpose Clarification
+This skill is designed for **meta-cognitive reflection** - the agent analyzes its own execution process to identify patterns of success vs. challenges in handling tasks, interactions with users, and integration of different skills. It focuses exclusively on improving the agent's capabilities rather than making changes to project code or documentation. It should not analyse only the FEEDBACK skill but look at all the elements that emerged from recent conversation.
+
 ## Procedure
 1. **Conversation Analysis**: Review the interaction history with user for patterns and insights about what worked well vs. what could be improved
 2. **System Feedback Assessment**: Evaluate the execution process, examining how system responses were received and interpreted by the agent
