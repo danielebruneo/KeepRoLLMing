@@ -1,36 +1,47 @@
 # Active Task
 
 ## Title
-Documentation Review Complete
+Implement Comprehensive Agent Documentation Improvements
 
 ## Goal
-Confirm that all project documentation is accurate, complete, and reflects current implementation status
+Enhance all agent-related documentation files and improve integration between skills, templates, and project documentation to create a more structured and usable workflow system.
 
 ## Why this matters
-Ensures users have access to correct information about the project's functionality, configuration, and usage
+Improves the clarity and consistency of project documentation, making it easier for agents to navigate and use all components effectively. Ensures better template utilization for consistent formatting and enhances cross-referencing between documentation elements.
 
 ## Likely files
-- README.md
-- AGENTS.md
-- CATALYST.md
-- _docs/CACHING_MECHANISM.md
-- _docs/CONFIGURATION.md
-- _docs/RUNNING.md
-- _docs/TESTING.md
-- tests/test_orchestrator.py
-- tests/test_summary_overflow_regression.py
+- _agent/MEMORY.md
+- _agent/KNOWLEDGE_BASE.md  
+- _agent/CONSTRAINTS.md
+- _agent/DONE_CRITERIA.md
+- _docs/architecture/INVARIANTS.md
+- _docs/architecture/OVERVIEW.md
+- _docs/decisions/DECISIONS.md
+- _docs/development/STYLE.md
+- _docs/development/WORKFLOW.md
+- _skills/* (all existing skills)
+- _templates/* (all templates)
 
 ## Constraints
-- Preserve external behavior unless the user asked for a change
-- Prefer the smallest safe fix
+- Preserve external behavior unless task says otherwise
+- Keep patch minimal
 - Avoid unrelated refactors
+- Prefer targeted tests first
 
-## Steps
-1. Reproduce or inspect the issue
-2. Identify the most likely files
-3. Apply the smallest sensible change
-4. Run targeted validation
-5. Update [_agent/HANDOFF.md](HANDOFF.md)
+## Proposed approach
+1. Review current agent documentation structure and usage patterns
+2. Identify specific areas for improvement in template utilization 
+3. Update documentation files with better structured formats
+4. Enhance skills to explicitly reference templates and documentation components
+5. Improve cross-referencing between all documentation elements
+6. Standardize formatting and integration across all files
+7. Test updated workflow with existing functionality
+
+## Test plan
+- Run targeted validation of updated documentation files
+- Verify that template-based workflows still work correctly
+- Ensure no breaking changes to existing functionality
+- Check that skills properly reference relevant documentation components
 
 ## Done when
 - Required behavior is present
@@ -38,8 +49,12 @@ Ensures users have access to correct information about the project's functionali
 - No unrelated files were changed without reason
 
 ## Out of scope
-- unrelated cleanups
-- broad redesigns
+- Major functional changes to the orchestrator itself
+- Broad architectural redesigns
+- Changes that would break existing workflows
 
-## Status
-COMPLETED
+## Creation Timestamp
+15/03/2026 10:21:59
+
+## Completion Timestamp  
+DD/MM/YYYY HH:MM:SS

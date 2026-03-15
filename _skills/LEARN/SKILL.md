@@ -15,6 +15,7 @@ Implement a comprehensive learning process that systematically reviews project c
 4. **Consolidate Improvements**: Group related enhancements into dedicated skills that make sense for agents to use, leveraging [IMPROVE-SKILLS](../IMPROVE-SKILLS/SKILL.md) and [IMPROVE-DOC-STRUCTURES](../IMPROVE-DOC-STRUCTURES/SKILL.md)
 5. **Validate Implementation**: Ensure improvements maintain backward compatibility using [SAFE-REFACTOR](../SAFE-REFACTOR/SKILL.md) and validate with existing tests
 6. **Document Learning**: Record lessons learned from this process for future reference, using [UPDATE-HUMAN-DOCS](../UPDATE-HUMAN-DOCS/SKILL.md)
+7. **Generate Final Report**: Produce a detailed report to the user summarizing what was learned, why it matters, how adaptation occurred, and outcomes achieved
 
 ## When to Use
 - When seeking systematic improvement of agent workflow capabilities
