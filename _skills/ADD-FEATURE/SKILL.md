@@ -9,7 +9,7 @@ description: Implements a requested feature in a controlled, test-aware way with
 Implement a requested feature in a controlled, test-aware way that maintains project stability.
 
 ## Procedure
-1. Create or refresh [_agent/ACTIVE_TASK.md](../../_agent/ACTIVE_TASK.md) with a clear, focused task definition.
+1. Create or refresh [_agent/ACTIVE_TASK.md](../../_agent/ACTIVE_TASK.md) with a clear, focused task definition using [ACTIVE_TASK.template.md](../../_templates/ACTIVE_TASK.template.md).
 2. Identify the minimal set of modules involved - avoid touching unrelated code.
 3. Implement the feature with minimal collateral change - focus on core functionality only.
 4. Add or update tests if appropriate - ensure test coverage for new functionality.
@@ -24,3 +24,10 @@ Implement a requested feature in a controlled, test-aware way that maintains pro
 - Adding support for a new model profile (e.g., adding a new profile in config.yaml)
 - Implementing streaming response handling (e.g., modifying app.py to support SSE responses)
 - Adding configuration options for new parameters (e.g., adding environment variables for new settings)
+
+## Template Reference
+This skill follows the [ACTIVE_TASK.template.md](../../_templates/ACTIVE_TASK.template.md) template format. All active tasks created by this skill should reference this template.
+
+## Documentation Cross-reference
+- [_agent/KNOWLEDGE_BASE.md](../../_agent/KNOWLEDGE_BASE.md): Project knowledge base
+- [_docs/architecture/OVERVIEW.md](../../_docs/architecture/OVERVIEW.md): Architecture overview

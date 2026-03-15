@@ -31,6 +31,14 @@ Initialize the internal agent knowledge base from the current repository state.
 - Refreshing knowledge base after adding new modules (e.g., updating COMMANDS.md with new test scripts)
 - Creating command documentation when setup is changed (e.g., documenting new environment variables or installation steps)
 
+## Template Reference
+This skill follows the [ACTIVE_TASK.template.md](../../_templates/ACTIVE_TASK.template.md) template format for consistency in documentation structure.
+
+## Documentation Cross-reference
+- [_agent/KNOWLEDGE_BASE.md](../../_agent/KNOWLEDGE_BASE.md): Project knowledge base
+- [_docs/architecture/OVERVIEW.md](../../_docs/architecture/OVERVIEW.md): Architecture overview
+- [_docs/decisions/DECISIONS.md](../../_docs/decisions/DECISIONS.md): Design decisions
+
 ## Knowledge Base Enhancement
 This skill now includes enhanced functionality for:
 - Template-based workflow system integration

@@ -24,3 +24,10 @@ Populate [_agent/MAP.md](../../_agent/MAP.md) with a concise navigation map of t
 - Creating initial repository map when starting work
 - Updating the map after adding new modules or file
 - Refreshing the map when restructuring project directories
+
+## Template Reference
+This skill follows the [ACTIVE_TASK.template.md](../../_templates/ACTIVE_TASK.template.md) template format for consistency in documentation structure.
+
+## Documentation Cross-reference
+- [_agent/KNOWLEDGE_BASE.md](../../_agent/KNOWLEDGE_BASE.md): Project knowledge base
+- [_docs/architecture/OVERVIEW.md](../../_docs/architecture/OVERVIEW.md): Architecture overview

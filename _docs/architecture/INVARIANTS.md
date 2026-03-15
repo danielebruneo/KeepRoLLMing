@@ -12,3 +12,7 @@ These are the rules that should remain true unless the user explicitly decides t
 
 ## Project-specific invariants
 Add project-specific invariants here once the knowledge base is initialized.
+
+## Documentation Standards
+- Maintain consistent formatting across all files
+- Include explicit cross-references to related components

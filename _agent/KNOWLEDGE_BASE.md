@@ -120,3 +120,15 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 - Uses safety margin tokens to avoid hitting exact context limits
 - Dynamically calculates maximum output tokens based on available context
 - Handles context overflow errors by chunking and retrying
+
+## Cross-referencing
+
+- [_docs/architecture/OVERVIEW.md](../_docs/architecture/OVERVIEW.md): Architecture overview
+- [_docs/decisions/DECISIONS.md](../_docs/decisions/DECISIONS.md): Design decisions
+- [_docs/development/STYLE.md](../_docs/development/STYLE.md): Coding conventions
+- [_docs/development/WORKFLOW.md](../_docs/development/WORKFLOW.md): Development workflow
+
+## Related Skills
+
+- [ADD-FEATURE](../_skills/ADD-FEATURE/SKILL.md)
+- [BUILD-REPO-MAP](../_skills/BUILD-REPO-MAP/SKILL.md)

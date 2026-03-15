@@ -16,3 +16,9 @@ This file is for human contributors.
 - Minimal patches
 - Tests before broad cleanup
 - Decisions documented when durable
+
+## Template Compliance
+All documentation and task files should:
+1. Follow the [ACTIVE_TASK.template.md](../_templates/ACTIVE_TASK.template.md) format
+2. Include cross-references to related components
+3. Maintain consistent structure throughout project

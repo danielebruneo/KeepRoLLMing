@@ -22,3 +22,8 @@
 ## Runtime discipline
 - Follow runtime tool schemas as provided by the environment.
 - Do not redefine tool contracts inside repository docs.
+
+## Template Discipline
+- All new documentation files should follow established template formats for consistency.
+- Reference relevant templates in each documentation file (e.g., [ACTIVE_TASK.template.md](../_templates/ACTIVE_TASK.template.md)).
+- Ensure cross-referencing between related documentation elements and skills.

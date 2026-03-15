@@ -34,5 +34,10 @@ A concise description of how work moves through the system.
 How the system degrades gracefully.
 
 ### Links
-- `_docs/architecture/INVARIANTS.md`
-- `_docs/decisions/DECISIONS.md`
+- [_docs/architecture/INVARIANTS.md](../architecture/INVARIANTS.md)
+- [_docs/decisions/DECISIONS.md](../decisions/DECISIONS.md)
+
+## Cross-referencing
+This overview document is referenced by:
+- [_agent/KNOWLEDGE_BASE.md](../../_agent/KNOWLEDGE_BASE.md) - Knowledge base
+- [_skills/ADD-FEATURE/SKILL.md](../../_skills/ADD-FEATURE/SKILL.md) - Feature implementation skill

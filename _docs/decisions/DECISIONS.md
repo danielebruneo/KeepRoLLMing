@@ -43,3 +43,8 @@
 ### 3. Error Recovery Strategy
 **Decision**: Fallback to passthrough mode when summary generation fails.
 **Rationale**: Maintains application availability even when summary logic fails, preventing complete service interruption.
+
+## Cross-referencing
+This decisions document is referenced by:
+- [_agent/KNOWLEDGE_BASE.md](../../_agent/KNOWLEDGE_BASE.md) - Knowledge base
+- [_docs/architecture/OVERVIEW.md](../architecture/OVERVIEW.md) - Architecture overview
