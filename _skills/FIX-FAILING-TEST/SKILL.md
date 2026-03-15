@@ -14,7 +14,7 @@ Fix a failing test safely and with minimal scope to maintain project stability.
 3. Decide whether code or test expectations are wrong - determine what should be changed.
 4. Change the smallest relevant area - avoid broad modifications that could introduce new issues.
 5. Re-run targeted validation - verify fix works without breaking other tests.
-6. Update [_agent/HANDOFF.md](../../_agent/HANDOFF.md) with clear summary of fix applied.
+6. Update [_agent/state/HANDOFF.md](../../_agent/state/HANDOFF.md) with clear summary of fix applied.
 
 ## When to Use
 - When a test is failing and needs fixing

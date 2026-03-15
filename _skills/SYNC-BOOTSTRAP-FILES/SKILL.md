@@ -25,8 +25,8 @@ Keep the bootstrap files aligned so runner-specific entrypoints, canonical workf
 3. Verify that `AGENTS.md` still describes the bootstrap model and reading order correctly.
 4. Verify that `README.md` still contains a short agent-assisted development section that points to QWEN and AGENTS.
 5. If drift exists, update the smallest set of files needed to restore alignment.
-6. Record any non-obvious lesson in [_agent/MEMORY.md](../../_agent/MEMORY.md).
-7. If the bootstrap model itself changed, update [_agent/KNOWLEDGE_BASE.md](../../_agent/KNOWLEDGE_BASE.md) and relevant docs.
+6. Record any non-obvious lesson in [_agent/knowledge/MEMORY.md](../../_agent/knowledge/MEMORY.md).
+7. If the bootstrap model itself changed, update [_agent/knowledge/KNOWLEDGE_BASE.md](../../_agent/knowledge/KNOWLEDGE_BASE.md) and relevant docs.
 
 ## Constraints
 - Keep `QWEN.md` short; do not move the full workflow into it.

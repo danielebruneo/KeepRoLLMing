@@ -14,15 +14,15 @@ Automate a complete work cycle that checks if an active task is pending, picks u
 - After completing a full learning or feedback cycle where new tasks should be picked up
 
 ## Procedure
-1. **Check Current Task Status**: Examine `_agent/ACTIVE_TASK.md` to determine if there's an active task in progress
+1. **Check Current Task Status**: Examine `_agent/state/ACTIVE_TASK.md` to determine if there's an active task in progress
 2. **Task Decision Logic**: 
    - If active task exists and is still pending, proceed with implementation
    - If no active task or current task is completed, pick up the next available task from TODO list  
 3. **Implement Task**: Execute the work described in ACTIVE_TASK.md until completion criteria are met
 4. **Commit Changes**: Commit all changes made during task execution using appropriate commit message format 
-5. **Close Task**: Update `_agent/ACTIVE_TASK.md` to mark task as completed and add final status information  
-6. **Update Handoff**: Modify `_agent/HANDOFF.md` with completion record, including files touched, lessons learned
-7. **Update TODO List**: Remove the completed task from `_agent/TODOS.md` 
+5. **Close Task**: Update `_agent/state/ACTIVE_TASK.md` to mark task as completed and add final status information  
+6. **Update Handoff**: Modify `_agent/state/HANDOFF.md` with completion record, including files touched, lessons learned
+7. **Update TODO List**: Remove the completed task from `_agent/state/TODOS.md` 
 8. **Generate Summary Report**: Create a brief summary of what was accomplished and why it matters
 
 ## Constraints

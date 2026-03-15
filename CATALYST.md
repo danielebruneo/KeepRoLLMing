@@ -30,7 +30,7 @@ CATALYST follows a repeating loop:
 3. consolidate
 4. prune
 
-That loop is reflected in the agent state files under [_agent/](_agent/) and in the self-improvement skills under [_skills/](_skills/).
+That loop is reflected in the agent state files under [_agent/state/](_agent/state/) and in the self-improvement skills under [_skills/](_skills/).
 
 ## Canonical principles
 
@@ -44,6 +44,6 @@ That loop is reflected in the agent state files under [_agent/](_agent/) and in 
 - [QWEN.md](QWEN.md)
 - [AGENTS.md](AGENTS.md)
 - [README.md](README.md)
-- [_agent/KNOWLEDGE_BASE.md](_agent/KNOWLEDGE_BASE.md)
+- [_agent/knowledge/KNOWLEDGE_BASE.md](_agent/knowledge/KNOWLEDGE_BASE.md)
 - [_docs/development/CONSOLIDATION_POLICY.md](_docs/development/CONSOLIDATION_POLICY.md)
 - [_skills/SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md](_skills/SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md)

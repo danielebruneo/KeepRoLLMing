@@ -10,7 +10,7 @@ description: Convert raw feedback, handoff notes, and repeated observations into
 Turn raw observations into stable, compact lessons that are worth keeping.
 
 ## Procedure
-1. Gather candidate inputs from [_agent/HANDOFF.md](../../_agent/HANDOFF.md), [_agent/MEMORY.md](../../_agent/MEMORY.md), [_agent/TODOS.md](../../_agent/TODOS.md), [_agent/COMPLETED_TASKS.md](../../_agent/COMPLETED_TASKS.md), and recent FEEDBACK output.
+1. Gather candidate inputs from [_agent/state/HANDOFF.md](../../_agent/state/HANDOFF.md), [_agent/knowledge/MEMORY.md](../../_agent/knowledge/MEMORY.md), [_agent/state/TODOS.md](../../_agent/state/TODOS.md), [_agent/state/COMPLETED_TASKS.md](../../_agent/state/COMPLETED_TASKS.md), and recent FEEDBACK output.
 2. Remove one-off noise and session-only chatter.
 3. Group repeated patterns.
 4. For each surviving lesson, decide its destination:

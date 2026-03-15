@@ -17,7 +17,7 @@ Turn actionable findings from [FEEDBACK](../FEEDBACK/SKILL-FEEDBACK.md) into sma
 1. Read the relevant FEEDBACK output and restate the proposed improvement.
 2. Identify the smallest set of files involved.
 3. Apply the minimal change needed.
-4. Update [_agent/HANDOFF.md](../../_agent/HANDOFF.md) and, if needed, [_agent/MEMORY.md](../../_agent/MEMORY.md).
+4. Update [_agent/state/HANDOFF.md](../../_agent/state/HANDOFF.md) and, if needed, [_agent/knowledge/MEMORY.md](../../_agent/knowledge/MEMORY.md).
 5. If bootstrap files were involved, run [SYNC-BOOTSTRAP-FILES](../SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md).
 
 ## Constraints

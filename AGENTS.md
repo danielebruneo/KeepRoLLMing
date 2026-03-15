@@ -16,12 +16,12 @@ Do not remove CATALYST references from [QWEN.md](QWEN.md) or the agent-assistanc
 
 ## Reading order
 When starting work in this repository, read in this order:
-1. [_agent/ACTIVE_TASK.md](_agent/ACTIVE_TASK.md)
-2. [_agent/HANDOFF.md](_agent/HANDOFF.md)
-3. [_agent/CONSTRAINTS.md](_agent/CONSTRAINTS.md)
-4. [_agent/DONE_CRITERIA.md](_agent/DONE_CRITERIA.md)
-5. [_agent/KNOWLEDGE_BASE.md](_agent/KNOWLEDGE_BASE.md)
-6. [_agent/MAP.md](_agent/MAP.md)
+1. [_agent/state/ACTIVE_TASK.md](_agent/state/ACTIVE_TASK.md)
+2. [_agent/state/HANDOFF.md](_agent/state/HANDOFF.md)
+3. [_agent/knowledge/CONSTRAINTS.md](_agent/knowledge/CONSTRAINTS.md)
+4. [_agent/knowledge/DONE_CRITERIA.md](_agent/knowledge/DONE_CRITERIA.md)
+5. [_agent/knowledge/KNOWLEDGE_BASE.md](_agent/knowledge/KNOWLEDGE_BASE.md)
+6. [_agent/knowledge/MAP.md](_agent/knowledge/MAP.md)
 7. [_agent/COMMANDS.md](_agent/COMMANDS.md)
 8. Relevant docs under [_docs/](_docs/)
 

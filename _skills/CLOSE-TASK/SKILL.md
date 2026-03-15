@@ -10,15 +10,15 @@ Close or roll over the active task cleanly with proper documentation of outcomes
 
 ## Procedure
 1. Confirm what was completed and what was not - review the actual work done vs planned.
-2. Summarize changes in [_agent/HANDOFF.md](../../_agent/HANDOFF.md) with clear, actionable summary.
-3. Add reusable lessons to [_agent/MEMORY.md](../../_agent/MEMORY.md) when warranted - note insights that could help future work.
-4. Clear or replace (do not delete) [_agent/ACTIVE_TASK.md](../../_agent/ACTIVE_TASK.md) for the next task - prepare for new work.
-5. Add completed task summary to [_agent/COMPLETED_TASKS.md](../../_agent/COMPLETED_TASKS.md) file with:
+2. Summarize changes in [_agent/state/HANDOFF.md](../../_agent/state/HANDOFF.md) with clear, actionable summary.
+3. Add reusable lessons to [_agent/knowledge/MEMORY.md](../../_agent/knowledge/MEMORY.md) when warranted - note insights that could help future work.
+4. Clear or replace (do not delete) [_agent/state/ACTIVE_TASK.md](../../_agent/state/ACTIVE_TASK.md) for the next task - prepare for new work.
+5. Add completed task summary to [_agent/state/COMPLETED_TASKS.md](../../_agent/state/COMPLETED_TASKS.md) file with:
    - Task title and description
    - Completion date
    - Key outcomes achieved
    - Lessons learned
-6. Update [_agent/TODOS.md](../../_agent/TODOS.md) to mark the completed task as finished
+6. Update [_agent/state/TODOS.md](../../_agent/state/TODOS.md) to mark the completed task as finished
 
 ## When to Use
 - When completing a task and ready to move on to new work
