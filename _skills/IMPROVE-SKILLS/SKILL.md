@@ -26,14 +26,27 @@ Review existing skills in the project and enhance their documentation to make th
 - Making procedural steps more detailed and actionable (e.g., adding specific implementation details)
 - Ensuring consistent format across all skill documents (e.g., uniform structure and style)
 
+## Skill Integration
+This skill works best when integrated with other system skills:
+- **LEARN**: Can leverage this skill during systematic learning processes for improving skill documentation  
+- **REVIEW-DOC**: Should reference this skill when reviewing how well skill documentation aligns with project needs
+- **UPDATE-KNOWLEDGE-BASE**: Integrates with knowledge base updates to maintain consistency of all skills
+
+## Modular Design Principles
+This skill follows modular design principles:
+- Focuses on enhancing only the skill documentation rather than re-implementing functionality 
+- Maintains clear separation between what each skill does vs. what it references  
+- Promotes reuse of existing system capabilities through proper integration
+- Ensures comprehensive coverage without duplicating efforts
+
 ## DateTime Tracking
 All skill improvements should include:
 - Timestamp in DD/MM/YYYY HH:MM:SS format for when changes were made
 
-## Knowledge Base Integration  
+## Knowledge Base Integration
 This skill now encompasses improved workflow integration including:
 - Template-based system enhancement
-- DateTime tracking implementation across all project files 
+- DateTime tracking implementation across all project files
 - Documentation reference guidance for agents
 - Consistent formatting and cross-referencing patterns
 - Updated knowledge base file structure (MAP, COMMANDS, etc.)
