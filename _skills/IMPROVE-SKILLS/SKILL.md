@@ -50,3 +50,9 @@ This skill now encompasses improved workflow integration including:
 - Documentation reference guidance for agents
 - Consistent formatting and cross-referencing patterns
 - Updated knowledge base file structure (MAP, COMMANDS, etc.)
+
+## New Symlink System 
+The project now implements a symlink system where each skill has a named symlink with the prefix "SKILL-" to make them more discoverable in tools like Obsidian graph views. This approach:
+- Provides consistent naming across all skills
+- Makes it easier for agents to identify and reference skills by their semantic names
+- Reinforces the meaning of skills through file naming conventions

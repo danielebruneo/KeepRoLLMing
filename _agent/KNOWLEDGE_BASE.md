@@ -130,5 +130,5 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 
 ## Related Skills
 
-- [ADD-FEATURE](../_skills/ADD-FEATURE/SKILL.md)
-- [BUILD-REPO-MAP](../_skills/BUILD-REPO-MAP/SKILL.md)
+- [ADD-FEATURE](../_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md)
+- [BUILD-REPO-MAP](../_skills/BUILD-REPO-MAP/SKILL-BUILD-REPO-MAP.md)

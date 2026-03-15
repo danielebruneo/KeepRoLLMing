@@ -40,4 +40,4 @@ How the system degrades gracefully.
 ## Cross-referencing
 This overview document is referenced by:
 - [_agent/KNOWLEDGE_BASE.md](../../_agent/KNOWLEDGE_BASE.md) - Knowledge base
-- [_skills/ADD-FEATURE/SKILL.md](../../_skills/ADD-FEATURE/SKILL.md) - Feature implementation skill
+- [_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md](../../_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md) - Feature implementation skill

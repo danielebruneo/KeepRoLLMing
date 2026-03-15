@@ -23,7 +23,7 @@ Use CATALYST when you want coding agents to behave more predictably inside a pro
 1. Review [AGENTS.md](AGENTS.md)
 2. Adapt [_agent/COMMANDS.md](_agent/COMMANDS.md)
 3. Build [_agent/MAP.md](_agent/MAP.md)
-4. Initialize internal docs with [INIT-KNOWLEDGE-BASE](_skills/INIT-KNOWLEDGE-BASE/SKILL.md)
+4. Initialize internal docs with [INIT-KNOWLEDGE-BASE](_skills/INIT-KNOWLEDGE-BASE/SKILL-INIT-KNOWLEDGE-BASE.md)
 5. Start using [_agent/ACTIVE_TASK.md](_agent/ACTIVE_TASK.md) and [_agent/HANDOFF.md](_agent/HANDOFF.md)
 
 ## Notes
