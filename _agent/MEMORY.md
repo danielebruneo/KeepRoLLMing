@@ -46,3 +46,9 @@ This file follows the [MEMORY.template.md](../_templates/MEMORY.template.md) for
 - Lesson: Repository documentation should not redefine runtime tool schemas. When local docs tried to document tool parameters, agent behavior regressed. Keep workflow guidance in repo docs, and leave tool contracts to the runtime.
 - Relevant files: AGENTS.md, QWEN.md
 - Category: System Pattern
+
+## Topic: Script organization best practices
+- Date/session: 15/03/2026 15:47:00
+- Lesson: All script files should be placed in the dedicated scripts/ directory for proper organization and maintainability. This follows CATALYST's established conventions for keeping project tools properly grouped.
+- Relevant files: scripts/export_catalyst.sh, scripts/export_project.sh  
+- Category: Process Pattern
