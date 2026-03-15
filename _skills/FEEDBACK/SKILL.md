@@ -11,6 +11,13 @@ Analyze user interactions, system feedback, agent reasoning processes, and overa
 ## Purpose Clarification
 This skill is designed for **meta-cognitive reflection** - the agent analyzes its own execution process to identify patterns of success vs. challenges in handling tasks, interactions with users, and integration of different skills. It focuses exclusively on improving the agent's capabilities rather than making changes to project code or documentation. It should not analyse only the FEEDBACK skill but look at all the elements that emerged from recent conversation.
 
+## Analysis Framework
+When executing this skill, use these structured approaches:
+1. **Technical Pattern Analysis**: Identify technical challenges in execution (file handling, symlink recognition, tool usage)
+2. **Communication Pattern Analysis**: Evaluate how well user intent was understood and responded to  
+3. **Skill Integration Analysis**: Assess when different skills worked well together vs. when they conflicted or were misapplied
+4. **Workflow Efficiency Analysis**: Identify bottlenecks in the overall process
+
 ## Procedure
 1. **Conversation Analysis**: Review the interaction history with user for patterns and insights about what worked well vs. what could be improved
 2. **System Feedback Assessment**: Evaluate the execution process, examining how system responses were received and interpreted by the agent
