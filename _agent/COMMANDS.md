@@ -36,6 +36,9 @@ pip install -r requirements-dev.txt
 
 # Run curl-based tests
 ./run-curl-tests.sh
+
+# Cleanup legacy agent documentation files
+./cleanup_legacy_agent_docs.sh
 ```
 
 ## Environment Configuration

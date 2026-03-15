@@ -44,6 +44,9 @@ It is NOT responsible for:
    - Implements logging functionality with different modes (DEBUG, MEDIUM, BASIC).
    - Supports detailed logging for debugging and monitoring purposes.
 
+8. **Performance Tracking (`keeprollming/performance.py`)**
+   - Implements performance measurement utilities for tracking request processing time and resource usage.
+
 ## Request / Data Flow
 1. Client sends a request to `/v1/chat/completions` endpoint
 2. Application parses the request payload and extracts model, messages, stream flag
