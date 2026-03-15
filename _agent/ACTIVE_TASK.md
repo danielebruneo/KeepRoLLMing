@@ -1,7 +1,7 @@
 # ACTIVE TASK
 
 ## Status
-[ ] In progress
+[✔] Completed
 
 ## Title
 Add troubleshooting guide for common issues  
@@ -65,3 +65,13 @@ A troubleshooting guide is essential for helping users resolve issues they may f
 - Use the same template format as other documentation sections to maintain consistency
 - Pay attention to proper datetime tracking and cross-referencing patterns
 - Consider how this relates to current knowledge base improvements around API documentation approaches
+
+## Completion Summary
+Task completed successfully on 15/03/2026 15:47:00. Added comprehensive troubleshooting guide including:
+- New _docs/TROUBLESHOOTING.md file with detailed sections for common issues  
+- Updated README.md with reference to the new guide
+- Proper documentation structure following established templates
+
+Files touched during completion:
+- _docs/TROUBLESHOOTING.md  
+- README.md
