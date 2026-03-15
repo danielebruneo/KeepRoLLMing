@@ -5,7 +5,7 @@
 ### Documentation
 - [x] Add comprehensive API documentation for all endpoints
 - [ ] Create usage examples for streaming responses
-- [ ] Document caching behavior in detail
+- [x] Document caching behavior in detail
 - [ ] Add troubleshooting guide for common issues
 
 ### Features
