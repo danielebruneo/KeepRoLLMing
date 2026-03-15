@@ -1,0 +1,87 @@
+# Keeprollming Orchestrator - Repository Map
+
+## Project Purpose
+A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
+
+## Boundary
+This project is responsible for:
+- Handling incoming requests through the `/v1/chat/completions` endpoint
+- Managing conversation history to prevent context overflow by applying rolling summaries
+- Providing passthrough mode for direct routing without summarization
+- Supporting streaming proxy (SSE) responses
+- Token accounting and context management
+
+It is NOT responsible for:
+- Model inference itself (delegates to upstream backend)
+- User authentication or access control
+- Storage of conversation history beyond runtime memory
+- Database operations or persistence mechanisms
+
+## Main Components
+1. **FastAPI Application (`keeprollming/app.py`)**
+   - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
+
+2. **Configuration Management (`keeprollming/config.py`)**
+   - Uses a dataclass-based system for profiles with different main and summary models.
+   - Supports multiple profiles: `local/quick`, `local/main`, `local/deep` with different model configurations.
+
+3. **Orchestrator Logic (`keeprollming/rolling_summary.py`)**
+   - Handles token counting, message splitting, and summarization as needed.
+   - Implements the rolling summary mechanism to manage context overflow.
+
+4. **Upstream Client (`keeprollming/upstream.py`)**
+   - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
+   - Fetches context length information from the upstream model.
+
+5. **Summary Cache (`keeprollming/summary_cache.py`)**
+   - Provides caching mechanisms to reuse previously generated summaries for efficiency.
+   - Handles fingerprinting, loading and saving of cache entries.
+
+6. **Token Counter (`keeprollming/token_counter.py`)**
+   - Provides token estimation capabilities for messages and text content.
+
+7. **Logging (`keeprollming/logger.py`)**
+   - Implements logging functionality with different modes (DEBUG, MEDIUM, BASIC).
+   - Supports detailed logging for debugging and monitoring purposes.
+
+8. **Performance Tracking (`keeprollming/performance.py`)**
+   - Implements performance measurement utilities for tracking request processing time and resource usage.
+
+## Request / Data Flow
+1. Client sends a request to `/v1/chat/completions` endpoint
+2. Application parses the request payload and extracts model, messages, stream flag
+3. Model resolution: determines profile or passthrough mode based on client model
+4. Message splitting: separates system messages from regular messages
+5. Summarization decision: evaluates whether context exceeds threshold using token counting
+6. If summarization needed:
+   - Cache lookup for existing summary (if enabled)
+   - If cache miss, generate new summary from middle portion of conversation
+   - If cache hit, potentially reuse cached summary with incremental updates
+7. Request repacking: combines head messages, summary, and tail messages into new prompt
+8. Context adjustment: calculates max tokens for upstream request based on estimated prompt length
+9. Forward to upstream backend via HTTP client
+10. Receive response from upstream backend
+11. If streaming, reconstruct the full assistant reply from SSE events
+12. Return final response to client
+
+## Failure / Fallback Philosophy
+- When summarization fails, the system falls back to passthrough mode (direct routing)
+- Context overflow errors are handled gracefully by retrying with reduced context
+- Cache operations fail soft - if cache is unavailable or corrupted, continue without it
+- Logging does not break core request serving - logging failures are ignored
+- If upstream backend fails, the system attempts graceful degradation or error propagation
+
+## Links
+- `_docs/architecture/OVERVIEW.md`
+- `_docs/architecture/INVARIANTS.md`
+- `_docs/decisions/DECISIONS.md`
+
+## Repository Structure
+- `keeprollming/` - Core application modules (app.py, config.py, rolling_summary.py, etc.)
+- `tests/` - Unit and integration tests
+- `scripts/` - Utility scripts for testing and setup
+- `config.yaml` - Configuration file
+- `requirements.txt` - Production dependencies
+- `requirements-dev.txt` - Development dependencies
+- `_docs/` - Documentation directory
+- `_prompts/` - Summary prompt templates
