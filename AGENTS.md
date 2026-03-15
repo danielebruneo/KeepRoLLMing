@@ -44,6 +44,7 @@ Use the matching skill whenever applicable:
 - [REVIEW-DOC](_skills/REVIEW-DOC/SKILL-REVIEW-DOC.md)
 - [CLOSE-TASK](_skills/CLOSE-TASK/SKILL-CLOSE-TASK.md)
 - [SYNC-COMMANDS](_skills/SYNC-COMMANDS/SKILL-SYNC-COMMANDS.md)
+- [FEEDBACK](_skills/FEEDBACK/SKILL-FEEDBACK.md) - Analyzes workflows for learning improvements (not direct code changes)
 
 ## Conflict resolution
 If instructions conflict, use this order:

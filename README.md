@@ -1,24 +1,38 @@
 # Keeprollming Orchestrator
 
-A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio)
-and adds **rolling-summary** support to avoid context overflow.
+This is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
 
-## Features
+## Project Overview
 
+The Keeprollming Orchestrator is designed to handle long conversations that would otherwise exceed the context window limits of language models. It implements a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
+
+### Key Features
 - OpenAI-compatible endpoint: `POST /v1/chat/completions`
-
-## Date Reference
-This document was last reviewed for accuracy: sabato 14 marzo 2026
-- Profiles:
-  - `local/quick`
-  - `local/main`
-  - `local/deep`
-- Passthrough mode:
-  - `pass/<BACKEND_MODEL_NAME>` (routes directly, **no summarization**)
+- Support for multiple profiles (`local/quick`, `local/main`, `local/deep`) with different model configurations
+- Rolling-summary support to manage context overflow
+- Passthrough mode for direct routing without summarization
 - Streaming proxy (SSE) support
-- Best-effort token accounting
+- Token accounting and context management
 
-## Run
+### Architecture
+1. **FastAPI Application** (`keeprollming/app.py`) - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
+2. **Configuration Management** (`keeprollming/config.py`) - Uses a dataclass-based system for profiles with different main and summary models.
+3. **Orchestrator Logic** - Handles token counting, message splitting, and summarization as needed.
+4. **Upstream Client** (`keeprollming/upstream.py`) - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
+5. **Rolling Summary Module** (`keeprollming/rolling_summary.py`) - Implements the core logic for handling context overflow and summary generation.
+6. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency.
+
+## Configuration
+
+Configuration is managed via:
+- `config.yaml` file with profiles and model aliases
+- Environment variables that override default values
+- Available profiles: 
+  - `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
+  - `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
+  - `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
+
+## Running the Application
 
 ```bash
 python -m venv .venv
@@ -30,160 +44,82 @@ uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
 ```
 
 Then call:
-
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "content-type: application/json" \
   -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
 ```
 
-## Tests
+## Testing
 
 Install dev requirements:
-
 ```bash
 pip install -r requirements-dev.txt
 ```
 
-Run:
-
+Run tests using:
 ```bash
 pytest
 ```
 
-Notes:
-- Tests are **unit/integration-ish** but do not require a live LM Studio instance: upstream calls are mocked.
-- Some end-to-end tests may fail in parallel execution mode due to test infrastructure issues.
-  To run all tests successfully, use: `pytest --tb=no -n0` or ensure the default configuration handles
-  parallelization properly. The project is configured to automatically exclude problematic tests from
-  parallel execution through custom markers.
+Or use dedicated test scripts for better environment management:
+```bash
+./run-tests.sh          # Run all tests in serial mode
+./run-single-test.sh    # Run a single test
+./run-parallel-tests.sh # Run tests in parallel mode
+```
 
-- **Important**: Due to compatibility issues with pytest dependencies, we recommend using the dedicated test scripts:
-  ```bash
-  cd scripts && ./run-tests.sh          # Run all tests in serial mode
-  cd scripts && ./run-single-test.sh    # Run a single test
-  cd scripts && ./run-parallel-tests.sh # Run tests in parallel mode
-  ```
-  These scripts ensure a clean virtual environment and proper dependency resolution for consistent test runs.
+## Key Environment Variables
 
-  The venv setup logic is now centralized in:
-  ```bash
-  ./scripts/set-tests-venv.sh     # Dedicated script for creating and validating test venv
-  ```
-  
-  All test scripts can be executed from any directory in the project:
-  ```bash
-  ./scripts/run-tests.sh          # Run all tests in serial mode
-  ./scripts/run-single-test.sh    # Run a single test
-  ./scripts/run-parallel-tests.sh # Run tests in parallel mode
-  ```
-
-- For individual test runs in reliable environments, use:
-  ```bash
-  cd scripts && ./run-single-test.sh test_name
-  ```
-  or from any directory in the project:
-  ```bash
-  ./scripts/run-single-test.sh test_name
-  ```
-
-## Configuration
-
-
-- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1` is accepted, but recommended to provide without `/v1`)
+- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
 - `MAIN_MODEL`, `SUMMARY_MODEL`
 - `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
 - `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
 - `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
 - `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
+- `SUMMARY_MODE` (default `cache_append`)
+- `SUMMARY_CACHE_ENABLED` (default `true`)
+- `SUMMARY_CACHE_DIR` (default `./__summary_cache`)
 
-## Key components
+## Development Conventions
 
-1. **FastAPI Application (`keeprollming/app.py`)**:
-   - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
+- Uses pytest for testing with mock upstream calls
+- Tests are unit/integration-ish but don't require a live LM Studio instance
+- Uses FastAPI framework with async/await patterns
+- Follows Python coding standards with proper typing annotations
+- Has comprehensive logging capabilities for debugging
 
-2. **Profiles**:
-   - Defined in `keeprollming/config.py` using a dataclass.
-   - Supports different profiles like `local/quick`, `local/main`, and `local/deep`.
+## Usage Examples
 
-3. **Orchestrator Logic**:
-   - Handles token counting, message splitting, and summarization as needed.
-
-4. **Upstream Client (`keeprollming/upstream.py`)**:
-   - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
-
-5. **Testing Framework**:
-   - Uses `pytest` for testing.
-   - Mocks upstream calls in tests to avoid live LM Studio instances.
-
-6. **Configuration Management**:
-   - Environment variables like `UPSTREAM_BASE_URL`, `MAIN_MODEL`, etc., are used to configure the application.
-
-### Example Usage
-
-Here's an example of how you might use the Keeprollming Orchestrator:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-export UPSTREAM_BASE_URL="http://127.0.0.1:1234/v1"   # LM Studio base (no /v1)
-uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
-```
-
-Then, you can call the API:
-
+### Basic Usage:
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "content-type: application/json" \
   -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
 ```
 
-### Testing
-
-To run the tests, install dev requirements and execute:
-
+### Passthrough Mode:
 ```bash
-pip install -r requirements-dev.txt
-pytest
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"pass/gpt-4","messages":[{"role":"user","content":"ciao"}]}'
 ```
 
-This setup ensures that the project is well-structured, with clear documentation and a robust testing framework to maintain code quality.
-
-## Live Testing
-
-For end-to-end tests against a real LM Studio backend:
-1. Set up your live backend configuration in `live_backend_config.sh`
-2. Run: `./live-test.sh` 
-
-This will execute the live E2E tests that connect directly to your configured LM Studio instance.
-
-## Recent summary/cache updates
-
-- Cache retrieval now matches reusable checkpoints by the current summary start index and validates the saved range hash only on the covered prefix.
-- When a reusable checkpoint is found, the orchestrator prefers incremental reuse (`existing summary + delta`) instead of regenerating the whole middle from scratch.
-- Failed / placeholder summaries are skipped for cache save.
-- The default curated summary prompt now asks for compact YAML output to reduce template leakage and make the compressed context more stable across turns.
-- Extra logs were added for cache candidate rejection and incremental reuse (`summary_cache_candidate_rejected`, `summary_incremental_reuse`, `summary_cache_skip_save`).
-
-## Caching Mechanism
-
-For detailed information about how rolling summaries are cached and reused, please refer to [CACHING_MECHANISM.md](./CACHING_MECHANISM.md).
-
-## Skills
-
-This project includes specialized skills for working with project documentation. These skills are located in the project's `.qwen/skills` directory and can be invoked using the `skill` command in Qwen Code:
-
-- **REVIEW-DOC**: Reviews all markdown files to ensure they accurately reflect the current status of the project and contain only relevant information. It consolidates knowledge by identifying missing information and moving irrelevant content to appropriate locations.
-
-Skills are designed to help maintain high-quality, accurate documentation by ensuring that:
-- All documentation reflects current implementation status
-- Information is properly organized and consolidated
-- Each document contains only relevant content
-- Missing information is identified and addressed
-
-To use a skill, simply run:
+### Streaming:
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"ciao"}]}'
 ```
-skill: "REVIEW-DOC"
-```
+
+## Agent System
+
+This project uses a CATALYST agent system. The key skills include:
+- **FEEDBACK**: Analyzes conversation patterns with user, system feedback, and workflow effectiveness to propose improvements for future interactions.
+  - This skill specifically focuses on improving the agent's learning capabilities rather than modifying project code or documentation directly.
+
+### Key Agent Skills
+- `CREATE-ACTIVE-TASK`: Creates new tasks based on user requests
+- `UPDATE-HUMAN-DOCS`: Updates human-facing project documentation without mixing it with internal operational notes  
+- `IMPROVE-SKILLS`: Reviews and enhances existing skills to improve clarity, usability, and actionable guidance
+- `FEEDBACK`: Analyzes workflows for learning improvements (not direct code changes)
