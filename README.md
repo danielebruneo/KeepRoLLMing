@@ -73,6 +73,10 @@ Or use dedicated test scripts for better environment management:
 
 Complete documentation for the orchestrator's API endpoints is available at: [_docs/API_DOCUMENTATION.md](./_docs/API_DOCUMENTATION.md)
 
+## Template Approach
+
+Documentation generation follows standardized templates defined in `_templates/` to ensure consistent formatting and structure. This approach improves maintainability and readability.
+
 ## Key Environment Variables
 
 - `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
