@@ -121,3 +121,13 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "content-type: application/json" \
   -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"ciao"}]}'
 ```
+
+### Streaming with Detailed Response Format:
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"explain quantum computing in simple terms"}]}'
+```
+
+This streaming response will return multiple `data:` events, each containing a partial completion until the final chunk with `finish_reason` set to `"stop"`.
+

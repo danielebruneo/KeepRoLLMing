@@ -46,7 +46,7 @@ POST
   - Profile aliases: `"local/quick"`, `"local/main"`, `"local/deep"`
   - Passthrough mode: `"pass/<upstream_model_name>"` (e.g., `"pass/gpt-4"`)
   - Direct upstream model name (fallback)
-  
+
 #### Optional Fields:
 - `messages`: Array of message objects with role and content
 - `stream`: Boolean indicating if response should be streamed (SSE format)
@@ -86,6 +86,31 @@ POST
 #### Streaming Response:
 A Server-Sent Events (SSE) response with multiple `data:` events, each containing a partial completion.
 
+### Streaming Responses
+
+When the `stream` parameter is set to `true`, the API returns a streaming response using Server-Sent Events (SSE). Each event contains a partial completion in the format:
+
+```json
+{
+  "id": "string",
+  "object": "chat.completion.chunk",
+  "created": integer,
+  "model": "string",
+  "choices": [
+    {
+      "index": integer,
+      "delta": {
+        "role": "assistant",
+        "content": "partial string content"
+      },
+      "finish_reason": null
+    }
+  ]
+}
+```
+
+The streaming response continues until the final completion is returned with `finish_reason` set to `"stop"`.
+
 ### Usage Examples
 
 #### Basic usage with local/main profile:
@@ -114,7 +139,7 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 The following headers are supported for caching purposes:
 
 - `x-librechat-user-id`: User identifier for caching
-- `x-librechat-conversation-id`: Conversation identifier for caching  
+- `x-librechat-conversation-id`: Conversation identifier for caching
 - `x-librechat-message-id`: Message identifier for caching
 - `x-librechat-parent-message-id`: Parent message identifier for caching
 
@@ -146,7 +171,7 @@ The orchestrator supports the following configuration through environment variab
 The orchestrator provides several features:
 
 1. **Rolling Summary**: Automatically summarizes conversation history when context limits are exceeded
-2. **Caching Support**: Reuses previously generated summaries for efficiency  
+2. **Caching Support**: Reuses previously generated summaries for efficiency
 3. **Passthrough Mode**: Direct routing without summarization for specific models
 4. **Streaming Proxy**: Supports Server-Sent Events (SSE) streaming responses
 5. **Token Accounting**: Tracks and manages token usage across requests
@@ -155,14 +180,14 @@ The orchestrator provides several features:
 
 Available profiles with their model configurations:
 
-- `local/quick`: 
-  - Main Model: qwen2.5-3b-instruct  
+- `local/quick`:
+  - Main Model: qwen2.5-3b-instruct
   - Summary Model: qwen2.5-1.5b-instruct
 - `local/main`:
   - Main Model: qwen2.5-v1-7b-instruct
   - Summary Model: qwen2.5-3b-instruct
-- `local/deep`: 
-  - Main Model: qwen2.5-27b-instruct  
+- `local/deep`:
+  - Main Model: qwen2.5-27b-instruct
   - Summary Model: qwen2.5-7b-instruct
 
 ### Error Handling
