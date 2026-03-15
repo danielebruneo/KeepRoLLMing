@@ -35,10 +35,10 @@
 - [ ] Optimize token counting algorithms
 
 ### Architecture
-- [ ] Consider moving to a more modular design for easier testing
-- [ ] Evaluate potential for plugin architecture for different models
-- [ ] Review error handling patterns
-- [ ] Assess logging improvements needed
+- [x] Consider moving to a more modular design for easier testing
+- [x] Evaluate potential for plugin architecture for different models
+- [x] Review error handling patterns
+- [x] Assess logging improvements needed
 
 ## Long-term Goals
 

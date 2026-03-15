@@ -22,8 +22,21 @@
 - Task status management improvements needed  
 - Documentation integration best practices
 
-## Task 4: Implement memory management best practices lesson  
+## Task 4: Implement memory management best practices lesson
 **Date**: 15/03/2026 15:47:00
 **Summary**: Added new learning about proper memory file handling:
 - Incremental additions preferred over complete replacements
 - Preserve existing knowledge when adding new insights
+
+## Task 5: Refactor CATALYST agent filesystem to separate runtime state from durable knowledge
+**Date**: 15/03/2026 16:47:00
+**Summary**: Successfully refactored the CATALYST agent filesystem:
+- Created `_agent/state/` directory for operational runtime files
+- Created `_agent/knowledge/` directory for durable knowledge files  
+- Moved all relevant files to appropriate locations
+- Added SCOPE.md file for agent scope tracking
+- Updated all references throughout codebase with correct new paths
+**Lessons Learned**: 
+- Structured approach works well for large-scale filesystem reorganizations
+- Consistent template application maintains quality across components
+- Comprehensive documentation updates are essential when restructuring systems
