@@ -18,6 +18,7 @@ Close or roll over the active task cleanly with proper documentation of outcomes
    - Completion date
    - Key outcomes achieved
    - Lessons learned
+6. Update [_agent/TODOS.md](../../_agent/TODOS.md) to mark the completed task as finished
 
 ## When to Use
 - When completing a task and ready to move on to new work
