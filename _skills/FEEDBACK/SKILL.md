@@ -6,10 +6,10 @@ description: Analyzes conversation patterns with user, system feedback, agent re
 # FEEDBACK Skill
 
 ## Goal
-Analyze user interactions, system feedback, agent reasoning processes, and overall workflow effectiveness to propose improvements that enhance the agent's learning capabilities and future performance without modifying project code or documentation directly.
+Analyze user interactions, system feedback, agent reasoning processes, and overall workflow effectiveness to propose improvements that enhance the agent's learning capabilities and future performance. FEEDBACK itself does not modify files, but it may recommend a concrete next step that changes CATALYST when scope allows.
 
 ## Purpose Clarification
-This skill is designed for **meta-cognitive reflection** - the agent analyzes its own execution process to identify patterns of success vs. challenges in handling tasks, interactions with users, and integration of different skills. It focuses exclusively on improving the agent's capabilities rather than making changes to project code or documentation. It should not analyse only the FEEDBACK skill but look at all the elements that emerged from recent conversation.
+This skill is designed for **meta-cognitive reflection** - the agent analyzes its own execution process to identify patterns of success vs. challenges in handling tasks, interactions with users, and integration of different skills. It focuses on improving the agent's capabilities and workflow quality. It should distinguish between: (a) lessons that only belong in memory, and (b) small, scope-appropriate CATALYST changes that should be implemented through ADAPT or another specific skill. It should not analyse only the FEEDBACK skill but look at all the elements that emerged from recent conversation.
 
 ## Analysis Framework
 When executing this skill, use these structured approaches:
@@ -73,3 +73,38 @@ This skill references [DECISION.template.md](../_templates/DECISION.template.md)
 - [_agent/knowledge/MEMORY.md](../_agent/knowledge/MEMORY.md): Reusable lessons database for agent improvement
 - [_docs/decisions/DECISIONS.md](../_docs/decisions/DECISIONS.md): Architectural decisions documentation (for reference only)
 - [_templates/DECISION.template.md](../_templates/DECISION.template.md): Decision template format (for reference only)
+
+## Outcome requirements
+FEEDBACK should end with an explicit recommended outcome. Prefer exactly one primary outcome unless a short ordered sequence is clearly necessary.
+
+Possible outcomes:
+1. **No action needed**
+2. **Create or update a TODO / proposal**
+3. **Invoke THINK** when the right improvement path is still unclear
+4. **Recommend LEARN** for broader consolidation
+5. **Recommend ADAPT** for a small, local CATALYST improvement
+6. **Recommend another specific skill** when the target is clearly bounded
+
+## Scope interpretation
+- If current scope is `KR`, FEEDBACK should not recommend direct CATALYST changes unless the user explicitly asks for them.
+- If current scope is `CATALYST` or `META`, FEEDBACK may recommend small CATALYST changes as long as they are local, low-risk, and clearly connected to the friction analyzed.
+- FEEDBACK should not confuse “agent capability improvement” with “not a repository change” when the repository itself contains the CATALYST workflow and skills.
+
+## Output format
+### Friction analyzed
+What went wrong or what remained confusing.
+
+### Root cause
+Why it happened.
+
+### Scope check
+Whether the current scope allows a CATALYST change.
+
+### Recommended outcome
+Exactly one of the outcomes above.
+
+### Why this outcome
+Short justification.
+
+### Minimal target
+If ADAPT or another skill is recommended, name the smallest file or files likely involved.

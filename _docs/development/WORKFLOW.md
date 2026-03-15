@@ -32,5 +32,7 @@ All documentation and task files should:
 ## Cognitive routing
 - THINK first when multiple skills could apply.
 - PLAN before WORK when the task needs decomposition.
+- FEEDBACK should end in an explicit outcome: no action, proposal/TODO, invoke THINK, invoke LEARN, or recommend ADAPT.
 - LEARN should end in an explicit outcome: no action, proposal/TODO, or ADAPT recommendation.
+- ADAPT may change CATALYST skills, workflow docs, or knowledge files when the current scope is CATALYST or META.
 - ADAPT must not interrupt active KeepRoLLMing product work unless the scope explicitly includes CATALYST or META.

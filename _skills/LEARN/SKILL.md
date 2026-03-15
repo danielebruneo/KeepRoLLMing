@@ -15,7 +15,7 @@ Undergo through a comprehensive learning process that systematically reviews pro
 4. **Consolidate Improvements**: Group related enhancements into dedicated skills that make sense for agents to use, leveraging [IMPROVE-SKILLS](../IMPROVE-SKILLS/SKILL-IMPROVE-SKILLS.md) and [IMPROVE-DOC-STRUCTURES](../IMPROVE-DOC-STRUCTURES/SKILL-IMPROVE-DOC-STRUCTURES.md)
 5. **Validate Implementation**: Ensure improvements maintain backward compatibility using [SAFE-REFACTOR](../SAFE-REFACTOR/SKILL-SAFE-REFACTOR.md) and validate with existing tests
 6. **Document Learning**: Record lessons learned from this process for future reference, using [UPDATE-HUMAN-DOCS](../UPDATE-HUMAN-DOCS/SKILL-UPDATE-HUMAN-DOCS.md)
-7. **Decide Outcome**: End with an explicit outcome: no action needed, proposal/TODO, recommend [ADAPT](../ADAPT/SKILL-ADAPT.md), or manual review
+7. **Decide Outcome**: End with an explicit outcome: no action needed, proposal/TODO, invoke [THINK](../THINK/SKILL-THINK.md), recommend [ADAPT](../ADAPT/SKILL-ADAPT.md), or manual review
 8. **Generate Final Report**: Produce a detailed report to the user summarizing what was learned, why it matters, whether adaptation is recommended, and outcomes achieved
 9. **Create Learning Report File**: Generate a comprehensive learning report in _agent/learning_reports/ directory with structured data about improvements identified
 10. **Prepare Commit Message**: Create appropriate commit message for documenting this learning session
@@ -86,10 +86,12 @@ This session reviewed all project components to identify enhancement opportuniti
 LEARN should not automatically perform broad modifications. It should end in one of these outcomes:
 1. **No action needed**
 2. **Create or update a TODO / proposal**
-3. **Recommend ADAPT** for a small, low-risk CATALYST change
-4. **Recommend manual review** when the issue is architectural or cross-cutting
+3. **Invoke THINK** when the correct adaptation path is still unclear
+4. **Recommend ADAPT** for a small, low-risk CATALYST change
+5. **Recommend manual review** when the issue is architectural or cross-cutting
 
 ## Relationship with THINK and ADAPT
 - Use [THINK](../THINK/SKILL-THINK.md) if the correct learning target is unclear.
 - Prefer [ADAPT](../ADAPT/SKILL-ADAPT.md) only when the improvement is local, safe, and scope-appropriate.
+- When the current scope is `CATALYST` or `META`, repository-side changes to CATALYST skills and workflow docs count as valid learning outcomes.
 - `LEARN` should not interrupt active KeepRoLLMing work unless the scope explicitly includes CATALYST or META.

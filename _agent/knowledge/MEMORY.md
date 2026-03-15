@@ -114,3 +114,10 @@ ventions for keeping project tools properly grouped.
 - Lesson: ADAPT is powerful but risky. It should only implement minimal, low-risk changes to CATALYST workflow artifacts or a single skill. Large refactors should remain proposals or TODOs.
 - Relevant files: _skills/ADAPT/SKILL.md, _skills/LEARN/SKILL.md
 - Category: Process Pattern
+
+
+## Topic: Scope-allowed CATALYST adaptation
+- Date/session: 15/03/2026 20:44:21
+- Lesson: When current scope is `CATALYST` or `META`, improvements to CATALYST skills, workflow docs, and knowledge files are valid repository changes. Do not misclassify them as “only agent capability improvements” with no actionable file target. In those cases prefer FEEDBACK -> THINK -> ADAPT with a minimal target.
+- Relevant files: _skills/FEEDBACK/SKILL.md, _skills/THINK/SKILL.md, _skills/ADAPT/SKILL.md, AGENTS.md
+- Category: Process Pattern

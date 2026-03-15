@@ -38,6 +38,8 @@ When starting work in this repository, read in this order:
 - Determine and respect the current scope in [_agent/state/SCOPE.md](_agent/state/SCOPE.md) before major actions.
 - Do not mix KeepRoLLMing product changes and CATALYST workflow changes in the same patch unless the active task explicitly requires both.
 - Treat `SKILL.md` as canonical in every skill directory. If a `SKILL-<NAME>.md` path exists, treat it as an alias/symlink path.
+- When the current scope is `CATALYST` or `META`, improvements to CATALYST skills, workflow docs, and knowledge files are allowed if they are small and local.
+- When recent friction suggests a concrete workflow improvement, prefer FEEDBACK -> THINK -> ADAPT over drifting into unrelated KeepRoLLMing product work.
 
 ## Runtime boundary
 - Use the tools provided by the runtime according to their actual schema.
@@ -83,7 +85,7 @@ Use this decision sequence when the next action is unclear:
 5. [LEARN](_skills/LEARN/SKILL-LEARN.md) for broader reinforcement and consolidation
 6. [ADAPT](_skills/ADAPT/SKILL-ADAPT.md) only for small, low-risk workflow improvements derived from learning
 
-THINK does not modify files. PLAN should produce a bounded execution plan. ADAPT must remain small, local, and reversible.
+THINK does not modify files. PLAN should produce a bounded execution plan. FEEDBACK should end with an explicit recommended outcome. ADAPT must remain small, local, reversible, and scoped to CATALYST or META work only.
 
 ## Conflict resolution
 If instructions conflict, use this order:

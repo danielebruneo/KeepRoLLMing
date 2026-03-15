@@ -46,7 +46,7 @@ The runtime state lives under [_agent/state/](_agent/state/), durable knowledge 
 - Repository docs should guide workflow, not redefine runtime tool schemas.
 - `SKILL.md` is canonical inside each skill directory; any `SKILL-<NAME>.md` companion is an alias path/symlink to the same content.
 - Self-improvement should favor consolidation over accumulation.
-- THINK is the cognitive router; WORK is the default executor; LEARN is the reinforcement entrypoint; ADAPT is for small, safe self-modification only.
+- THINK is the cognitive router; WORK is the default executor; FEEDBACK analyzes recent friction and should recommend a concrete next step; LEARN is the reinforcement entrypoint; ADAPT is for small, safe self-modification only.
 - Bootstrap files should be kept synchronized with dedicated maintenance rather than ad-hoc edits.
 
 ## Related files
@@ -64,6 +64,6 @@ The runtime state lives under [_agent/state/](_agent/state/), durable knowledge 
 - [THINK](_skills/THINK/SKILL-THINK.md): clarify objective, scope, and next skill without changing files
 - [PLAN](_skills/PLAN/SKILL-PLAN.md): create a bounded execution plan for non-trivial work
 - [WORK](_skills/WORK/SKILL-WORK.md): execute the active task through completion
-- [FEEDBACK](_skills/FEEDBACK/SKILL-FEEDBACK.md): analyze recent friction and interaction patterns
+- [FEEDBACK](_skills/FEEDBACK/SKILL-FEEDBACK.md): analyze recent friction and produce an explicit recommended outcome
 - [LEARN](_skills/LEARN/SKILL-LEARN.md): distill broader lessons and decide whether adaptation is warranted
-- [ADAPT](_skills/ADAPT/SKILL-ADAPT.md): apply a minimal, low-risk workflow improvement
+- [ADAPT](_skills/ADAPT/SKILL-ADAPT.md): apply a minimal, low-risk workflow improvement to CATALYST itself when scope allows

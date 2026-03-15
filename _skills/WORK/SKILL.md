@@ -40,6 +40,7 @@ This skill integrates with other CATALYST skills:
 - **PICKUP-TASK**: For selecting new tasks when no active task exists
 - **LEARN**: When learning opportunities emerge during work execution  
 - **FEEDBACK**: For analysis of workflow patterns and potential improvements
+- **ADAPT**: For small, scope-appropriate fixes to CATALYST workflow artifacts discovered during work
 - **UPDATE-KNOWLEDGE-BASE**: To maintain updated understanding after completing work
 
 ## Template Reference

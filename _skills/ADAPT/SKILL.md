@@ -6,7 +6,7 @@ description: Apply a small, safe, local improvement to the CATALYST workflow aft
 # ADAPT Skill
 
 ## Goal
-Implement a minimal, low-risk improvement to CATALYST when a repeated friction point or clear lesson justifies a concrete workflow change.
+Implement a minimal, low-risk improvement to CATALYST when a repeated friction point or clear lesson justifies a concrete workflow change. ADAPT is allowed to change repository files when those files are part of the CATALYST workflow itself and current scope permits it.
 
 ## When to Use
 Use ADAPT only when:
@@ -37,9 +37,10 @@ In those cases, create a TODO or proposal instead.
 ## Preferred targets
 - one `SKILL.md` file
 - `AGENTS.md`
-- `_agent/knowledge/CONSTRAINTS.md`
-- `_agent/knowledge/DONE_CRITERIA.md`
+- `CATALYST.md`
+- one file under `_agent/knowledge/`
 - one workflow doc under `_docs/development/`
+- one file under `_agent/state/` only when the change is purely about CATALYST state handling
 
 ## Output format
 ### Adaptation target
@@ -53,3 +54,4 @@ In those cases, create a TODO or proposal instead.
 - Avoid broad rewrites.
 - Do not touch README unless explicitly required by another skill.
 - Do not mix CATALYST adaptation with unrelated product work.
+- If the issue is that FEEDBACK or LEARN failed to translate scope-allowed CATALYST improvements into concrete repository changes, ADAPT may fix the relevant skill or workflow documentation directly.

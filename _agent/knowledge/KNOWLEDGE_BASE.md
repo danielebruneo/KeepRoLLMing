@@ -180,3 +180,10 @@ The preferred cognitive sequence is:
 - PLAN: produce a bounded plan before execution when a task is complex or underspecified
 - LEARN: consolidate lessons and decide whether they should remain as proposals, become TODOs, or justify ADAPT
 - ADAPT: apply a minimal workflow or skill refinement; never broad architectural changes
+
+
+## CATALYST cognitive routing
+- [THINK](../../_skills/THINK/SKILL-THINK.md) is the cognitive router and should be preferred before premature skill use when the next step is unclear.
+- [FEEDBACK](../../_skills/FEEDBACK/SKILL-FEEDBACK.md) analyzes recent friction and should recommend an explicit outcome.
+- [LEARN](../../_skills/LEARN/SKILL-LEARN.md) handles broader consolidation and may recommend THINK or ADAPT.
+- [ADAPT](../../_skills/ADAPT/SKILL-ADAPT.md) is allowed to change CATALYST repository artifacts when the current scope is `CATALYST` or `META`, as long as the change is small, local, and low-risk.

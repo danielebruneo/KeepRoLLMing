@@ -17,20 +17,22 @@ THINK does not modify files. It produces reasoning and a recommended next action
 - Before starting a new task
 - After an error or correction from the user
 - Before invoking LEARN or FEEDBACK when the correct next step is unclear
+- Before deciding whether a recent FEEDBACK result should lead to ADAPT
 
 ## Procedure
 1. Restate the current situation in one short paragraph.
 2. Read `_agent/state/SCOPE.md` and identify the active work domain.
 3. Check whether there is an active task in `_agent/state/ACTIVE_TASK.md`.
-4. Classify the needed action as one of:
+4. If recent FEEDBACK or LEARN output exists, read its recommended outcome before deciding.
+5. Classify the needed action as one of:
    - execution
    - debugging
    - documentation
    - reflection
    - learning
    - adaptation
-5. Decide whether a plan is needed before acting.
-6. Recommend exactly one next step unless a brief ordered sequence is clearly necessary.
+6. Decide whether a plan is needed before acting.
+7. Recommend exactly one next step unless a brief ordered sequence is clearly necessary.
 
 ## Output format
 ### Analysis
@@ -56,4 +58,5 @@ Name the recommended skill and why.
 - Do not modify files.
 - Do not silently expand scope.
 - Prefer one clear recommendation over many vague options.
+- If FEEDBACK or LEARN already recommends a clear next step and scope allows it, prefer following that recommendation instead of re-exploring unrelated options.
 - If scope and requested action conflict, call out the conflict explicitly.
