@@ -28,3 +28,9 @@ This file follows the [MEMORY.template.md](../_templates/MEMORY.template.md) for
 - Lesson: Identify bottlenecks in task execution by analyzing time spent on different activities. Look for patterns where the same tasks are performed repeatedly with similar inefficiencies.
 - Relevant files: _skills/FEEDBACK/SKILL-FEEDBACK.md, _agent/HANDOFF.md
 - Category: Process Pattern
+
+## Topic: Comprehensive API documentation approach
+- Date/session: 15/03/2026 14:30:00
+- Lesson: When documenting API endpoints, it's important to cover all parameters including optional ones, response formats for both streaming and non-streaming modes, usage examples with different profiles, and environment variables that affect behavior. The documentation should be comprehensive enough for developers to understand how to use the system effectively.
+- Relevant files: _docs/API_DOCUMENTATION.md, README.md
+- Category: Documentation Pattern

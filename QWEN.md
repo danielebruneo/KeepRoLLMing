@@ -120,3 +120,4 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 
 ## Qwen Added Memories
 - When working with skills in CATALYST projects, be aware that some files like SKILL-FEEDBACK.md are symlinks to SKILL.md. Only edit the actual content file (SKILL.md) as both links point to the same content. Always run 'ls -la' first to check for symlink relationships before making any modifications.
+- When documenting API endpoints, it's important to cover all parameters including optional ones, response formats for both streaming and non-streaming modes, usage examples with different profiles, and environment variables that affect behavior. The documentation should be comprehensive enough for developers to understand how to use the system effectively.

@@ -27,7 +27,7 @@ The Keeprollming Orchestrator is designed to handle long conversations that woul
 Configuration is managed via:
 - `config.yaml` file with profiles and model aliases
 - Environment variables that override default values
-- Available profiles: 
+- Available profiles:
   - `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
   - `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
   - `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
@@ -68,6 +68,10 @@ Or use dedicated test scripts for better environment management:
 ./run-single-test.sh    # Run a single test
 ./run-parallel-tests.sh # Run tests in parallel mode
 ```
+
+## API Documentation
+
+Complete documentation for the orchestrator's API endpoints is available at: [_docs/API_DOCUMENTATION.md](./_docs/API_DOCUMENTATION.md)
 
 ## Key Environment Variables
 
@@ -120,6 +124,6 @@ This project uses a CATALYST agent system. The key skills include:
 
 ### Key Agent Skills
 - `CREATE-ACTIVE-TASK`: Creates new tasks based on user requests
-- `UPDATE-HUMAN-DOCS`: Updates human-facing project documentation without mixing it with internal operational notes  
+- `UPDATE-HUMAN-DOCS`: Updates human-facing project documentation without mixing it with internal operational notes
 - `IMPROVE-SKILLS`: Reviews and enhances existing skills to improve clarity, usability, and actionable guidance
 - `FEEDBACK`: Analyzes workflows for learning improvements (not direct code changes)
