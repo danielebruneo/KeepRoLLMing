@@ -1,30 +1,49 @@
 # CATALYST
 
-**Coding Agent That Actually Listens To Your Shit Thoroughly**
+CATALYST is the agent-assisted development environment incubated inside KeepRoLLMing.
+It is repository-side infrastructure for keeping coding agents aligned on task scope, memory, documentation, and self-improvement.
 
-CATALYST is a repository-side boilerplate for coding agents. It gives the agent:
-- a stable task file
-- a handoff file for session continuity
-- a repository map
-- memory for non-obvious lessons
-- skills/playbooks for recurring work patterns
-- separate internal docs vs public docs
+## Bootstrap architecture
 
-## What CATALYST is for
-Use CATALYST when you want coding agents to behave more predictably inside a project, without coupling the project to a specific model or runtime.
+CATALYST uses a three-layer bootstrap model:
 
-## Core folders
-- [_agent/](_agent/) internal operational state for the agent
-- [_docs/](_docs/) project and architecture docs
-- [_skills/](_skills/) reusable procedures/playbooks
-- [_templates/](_templates/) templates used by skills
+1. [QWEN.md](QWEN.md)
+   - runner-specific bootstrap entrypoint for Qwen Code
+   - should remain short and durable
+   - may be regenerated, but must preserve the canonical CATALYST bootstrap block
 
-## Recommended adoption sequence
-1. Review [AGENTS.md](AGENTS.md)
-2. Adapt [_agent/COMMANDS.md](_agent/COMMANDS.md)
-3. Build [_agent/MAP.md](_agent/MAP.md)
-4. Initialize internal docs with [INIT-KNOWLEDGE-BASE](_skills/INIT-KNOWLEDGE-BASE/SKILL-INIT-KNOWLEDGE-BASE.md)
-5. Start using [_agent/ACTIVE_TASK.md](_agent/ACTIVE_TASK.md) and [_agent/HANDOFF.md](_agent/HANDOFF.md)
+2. [AGENTS.md](AGENTS.md)
+   - canonical workflow specification
+   - defines reading order, operating rules, boundaries, and skill usage
 
-## Notes
-CATALYST intentionally does **not** document runtime tool schemas. Those belong to the agent environment, not the repository.
+3. [README.md](README.md)
+   - human/public overview
+   - should include a short section that points agent runners toward QWEN and AGENTS
+
+This redundancy is intentional: it keeps CATALYST discoverable even if one bootstrap file drifts.
+
+## Operational loop
+
+CATALYST follows a repeating loop:
+1. capture
+2. distill
+3. consolidate
+4. prune
+
+That loop is reflected in the agent state files under [_agent/](_agent/) and in the self-improvement skills under [_skills/](_skills/).
+
+## Canonical principles
+
+- Repository docs should guide workflow, not redefine runtime tool schemas.
+- `SKILL.md` is canonical inside each skill directory; any `SKILL-<NAME>.md` companion is an alias path/symlink to the same content.
+- Self-improvement should favor consolidation over accumulation.
+- Bootstrap files should be kept synchronized with dedicated maintenance rather than ad-hoc edits.
+
+## Related files
+
+- [QWEN.md](QWEN.md)
+- [AGENTS.md](AGENTS.md)
+- [README.md](README.md)
+- [_agent/KNOWLEDGE_BASE.md](_agent/KNOWLEDGE_BASE.md)
+- [_docs/development/CONSOLIDATION_POLICY.md](_docs/development/CONSOLIDATION_POLICY.md)
+- [_skills/SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md](_skills/SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md)

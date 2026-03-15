@@ -1,9 +1,18 @@
 # AGENTS.md
 
 ## Purpose
-[CATALYST] is a lightweight repository-side control layer for coding agents.
-It helps the agent keep context, task scope, memory, and documentation aligned.
-You are a CATALYST Agent. Follow this guidelines.
+CATALYST is the canonical workflow layer for agent-assisted development in this repository.
+It keeps task scope, memory, documentation, and self-improvement aligned.
+
+If you arrived here through [QWEN.md](QWEN.md), continue with the CATALYST workflow below.
+
+## Canonical bootstrap sources
+Use these files with distinct roles:
+- [QWEN.md](QWEN.md): runner-specific bootstrap entrypoint for Qwen Code
+- [AGENTS.md](AGENTS.md): canonical agent workflow and operating rules
+- [README.md](README.md): human/public project overview and contributor-facing guidance
+
+Do not remove CATALYST references from [QWEN.md](QWEN.md) or the agent-assistance section from [README.md](README.md) without explicit intent.
 
 ## Reading order
 When starting work in this repository, read in this order:
@@ -11,9 +20,10 @@ When starting work in this repository, read in this order:
 2. [_agent/HANDOFF.md](_agent/HANDOFF.md)
 3. [_agent/CONSTRAINTS.md](_agent/CONSTRAINTS.md)
 4. [_agent/DONE_CRITERIA.md](_agent/DONE_CRITERIA.md)
-5. [_agent/MAP.md](_agent/MAP.md)
-6. [_agent/COMMANDS.md](_agent/COMMANDS.md)
-7. Relevant docs under [_docs/](_docs/)
+5. [_agent/KNOWLEDGE_BASE.md](_agent/KNOWLEDGE_BASE.md)
+6. [_agent/MAP.md](_agent/MAP.md)
+7. [_agent/COMMANDS.md](_agent/COMMANDS.md)
+8. Relevant docs under [_docs/](_docs/)
 
 ## Operating rules
 - Work only on the active task unless the user explicitly changes priority.
@@ -24,11 +34,20 @@ When starting work in this repository, read in this order:
 - Run the smallest relevant test set first, then broader tests if needed.
 - Update [_agent/HANDOFF.md](_agent/HANDOFF.md) before ending the session.
 - Add non-obvious lessons to [_agent/MEMORY.md](_agent/MEMORY.md).
+- Treat `SKILL.md` as canonical in every skill directory. If a `SKILL-<NAME>.md` path exists, treat it as an alias/symlink path.
 
 ## Runtime boundary
 - Use the tools provided by the runtime according to their actual schema.
 - Do not infer or redefine tool APIs inside repository documentation.
 - Prefer runtime-provided tool contracts over repository-local assumptions.
+
+## Bootstrap maintenance
+CATALYST uses bootstrap redundancy:
+- [QWEN.md](QWEN.md) should remain a thin runner-specific loader.
+- [AGENTS.md](AGENTS.md) is the canonical workflow specification.
+- [README.md](README.md) should include a short agent-assisted development section for humans and agents that pass through it.
+
+When bootstrap files drift or are regenerated, use [SYNC-BOOTSTRAP-FILES](_skills/SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md).
 
 ## Skill usage
 Use the matching skill whenever applicable:
@@ -38,13 +57,16 @@ Use the matching skill whenever applicable:
 - [UPDATE-KNOWLEDGE-BASE](_skills/UPDATE-KNOWLEDGE-BASE/SKILL-UPDATE-KNOWLEDGE-BASE.md)
 - [UPDATE-HUMAN-DOCS](_skills/UPDATE-HUMAN-DOCS/SKILL-UPDATE-HUMAN-DOCS.md)
 - [UPDATE-README](_skills/UPDATE-README/SKILL-UPDATE-README.md)
+- [SYNC-BOOTSTRAP-FILES](_skills/SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md)
 - [FIX-FAILING-TEST](_skills/FIX-FAILING-TEST/SKILL-FIX-FAILING-TEST.md)
 - [ADD-FEATURE](_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md)
 - [SAFE-REFACTOR](_skills/SAFE-REFACTOR/SKILL-SAFE-REFACTOR.md)
 - [REVIEW-DOC](_skills/REVIEW-DOC/SKILL-REVIEW-DOC.md)
+- [FEEDBACK](_skills/FEEDBACK/SKILL-FEEDBACK.md)
+- [IMPLEMENT-FEEDBACK](_skills/IMPLEMENT-FEEDBACK/SKILL-IMPLEMENT-FEEDBACK.md)
+- [LEARN](_skills/LEARN/SKILL-LEARN.md)
 - [CLOSE-TASK](_skills/CLOSE-TASK/SKILL-CLOSE-TASK.md)
 - [SYNC-COMMANDS](_skills/SYNC-COMMANDS/SKILL-SYNC-COMMANDS.md)
-- [FEEDBACK](_skills/FEEDBACK/SKILL-FEEDBACK.md) - Analyzes workflows for learning improvements (not direct code changes)
 
 ## Conflict resolution
 If instructions conflict, use this order:

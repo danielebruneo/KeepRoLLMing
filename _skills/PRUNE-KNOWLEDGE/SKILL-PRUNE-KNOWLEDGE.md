@@ -1,0 +1,1 @@
+_skills/PRUNE-KNOWLEDGE/SKILL.md

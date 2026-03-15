@@ -34,3 +34,15 @@ This file follows the [MEMORY.template.md](../_templates/MEMORY.template.md) for
 - Lesson: When documenting API endpoints, it's important to cover all parameters including optional ones, response formats for both streaming and non-streaming modes, usage examples with different profiles, and environment variables that affect behavior. The documentation should be comprehensive enough for developers to understand how to use the system effectively.
 - Relevant files: _docs/API_DOCUMENTATION.md, README.md
 - Category: Documentation Pattern
+
+## Topic: Bootstrap redundancy for agent entrypoints
+- Date/session: 15/03/2026 14:50:00
+- Lesson: Treat QWEN.md as the runner-specific bootstrap loader, AGENTS.md as the canonical workflow, and README.md as human-facing redundancy. Keeping all three aligned makes CATALYST more resilient when runner-specific files are regenerated.
+- Relevant files: QWEN.md, AGENTS.md, README.md
+- Category: System Pattern
+
+## Topic: Runtime boundary for tool schemas
+- Date/session: 15/03/2026 14:52:00
+- Lesson: Repository documentation should not redefine runtime tool schemas. When local docs tried to document tool parameters, agent behavior regressed. Keep workflow guidance in repo docs, and leave tool contracts to the runtime.
+- Relevant files: AGENTS.md, QWEN.md
+- Category: System Pattern

@@ -132,3 +132,14 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 
 - [ADD-FEATURE](../_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md)
 - [BUILD-REPO-MAP](../_skills/BUILD-REPO-MAP/SKILL-BUILD-REPO-MAP.md)
+
+## CATALYST bootstrap model
+
+This repository uses a layered bootstrap for agent-assisted development:
+- [QWEN.md](../QWEN.md): Qwen-specific loader
+- [AGENTS.md](../AGENTS.md): canonical workflow and rules
+- [README.md](../README.md): human-facing overview with a short agent-assistance section
+
+Operational state lives in [_agent/](../_agent/) and specialized procedures live in [_skills/](../_skills/).
+
+Within skill directories, `SKILL.md` is canonical and any `SKILL-<NAME>.md` companion path should be treated as an alias/symlink path to the canonical content.

@@ -51,3 +51,12 @@ When executing this skill:
 - Template-based workflows are consistently applied across all components (ACTIVE_TASK.template.md, HANDOFF.template.md)
 - DateTime tracking is properly implemented in all relevant files 
 - Cross-referencing between components is clear and logical
+
+## Orchestration policy
+`LEARN` is the high-level entry point for self-improvement. It should:
+- use [FEEDBACK](../FEEDBACK/SKILL-FEEDBACK.md) for recent, local friction
+- use [IMPLEMENT-FEEDBACK](../IMPLEMENT-FEEDBACK/SKILL-IMPLEMENT-FEEDBACK.md) only for bounded, concrete improvements
+- use [SYNC-BOOTSTRAP-FILES](../SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md) when bootstrap drift is detected
+- prefer consolidation and pruning over adding more documentation by default
+
+When running as periodic maintenance, `LEARN` should leave the repository in a more compact and better-aligned state.

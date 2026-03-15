@@ -1,0 +1,1 @@
+_skills/CONSOLIDATE-DOCS/SKILL.md

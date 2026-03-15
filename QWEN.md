@@ -1,123 +1,35 @@
-# Keeprollming Orchestrator
+# Qwen Agent Bootstrap
 
-This is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
+<!-- CATALYST-BOOTSTRAP:START -->
+This repository uses the **CATALYST** workflow for agent-assisted development.
 
-## Agent Working Patterns
+Before starting substantial work, read these files in order:
+1. [AGENTS.md](AGENTS.md)
+2. [_agent/ACTIVE_TASK.md](_agent/ACTIVE_TASK.md)
+3. [_agent/HANDOFF.md](_agent/HANDOFF.md)
+4. [_agent/CONSTRAINTS.md](_agent/CONSTRAINTS.md)
+5. [_agent/DONE_CRITERIA.md](_agent/DONE_CRITERIA.md)
+6. [_agent/KNOWLEDGE_BASE.md](_agent/KNOWLEDGE_BASE.md)
+7. [_agent/MAP.md](_agent/MAP.md)
+8. [_agent/COMMANDS.md](_agent/COMMANDS.md)
 
-When working with skills in CATALYST projects, be aware that some files like SKILL-FEEDBACK.md are symlinks to SKILL.md. Only edit the actual content file (SKILL.md) as both links point to the same content. Always run 'ls -la' first to check for symlink relationships before making any modifications.
+Use [README.md](README.md) for the human/public project overview.
 
-This pattern was encountered during an improvement of the FEEDBACK skill where I initially confused the files and needed to understand that they are functionally identical.
+The block between `CATALYST-BOOTSTRAP:START` and `CATALYST-BOOTSTRAP:END` is canonical bootstrap logic and must be preserved when updating this file.
+<!-- CATALYST-BOOTSTRAP:END -->
 
-## Project Overview
+## Project Snapshot
 
-The Keeprollming Orchestrator is designed to handle long conversations that would otherwise exceed the context window limits of language models. It implements a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
+KeepRoLLMing is a FastAPI proxy/orchestrator in front of an OpenAI-compatible backend (for example LM Studio).
+Its main value is rolling-summary support to avoid context overflow while preserving recent conversational state.
 
-### Key Features
-- OpenAI-compatible endpoint: `POST /v1/chat/completions`
-- Support for multiple profiles (`local/quick`, `local/main`, `local/deep`) with different model configurations
-- Rolling-summary support to manage context overflow
-- Passthrough mode for direct routing without summarization
-- Streaming proxy (SSE) support
-- Token accounting and context management
+### Core Areas
+- HTTP entrypoint and orchestration: `keeprollming/app.py`
+- Configuration and profile resolution: `keeprollming/config.py`
+- Rolling summary logic: `keeprollming/rolling_summary.py`
+- Summary cache: `keeprollming/summary_cache.py`
+- Upstream transport: `keeprollming/upstream.py`
 
-### Architecture
-1. **FastAPI Application** (`keeprollming/app.py`) - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
-2. **Configuration Management** (`keeprollming/config.py`) - Uses a dataclass-based system for profiles with different main and summary models.
-3. **Orchestrator Logic** - Handles token counting, message splitting, and summarization as needed.
-4. **Upstream Client** (`keeprollming/upstream.py`) - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
-5. **Rolling Summary Module** (`keeprollming/rolling_summary.py`) - Implements the core logic for handling context overflow and summary generation.
-6. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency.
-
-## Configuration
-
-Configuration is managed via:
-- `config.yaml` file with profiles and model aliases
-- Environment variables that override default values
-- Available profiles: 
-  - `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
-  - `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
-  - `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
-
-## Running the Application
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-export UPSTREAM_BASE_URL="http://127.0.0.1:1234"   # LM Studio base (no /v1)
-uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
-```
-
-Then call:
-```bash
-curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "content-type: application/json" \
-  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
-```
-
-## Testing
-
-Install dev requirements:
-```bash
-pip install -r requirements-dev.txt
-```
-
-Run tests using:
-```bash
-pytest
-```
-
-Or use dedicated test scripts for better environment management:
-```bash
-./run-tests.sh          # Run all tests in serial mode
-./run-single-test.sh    # Run a single test
-./run-parallel-tests.sh # Run tests in parallel mode
-```
-
-## Key Environment Variables
-
-- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
-- `MAIN_MODEL`, `SUMMARY_MODEL`
-- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
-- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
-- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
-- `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
-- `SUMMARY_MODE` (default `cache_append`)
-- `SUMMARY_CACHE_ENABLED` (default `true`)
-- `SUMMARY_CACHE_DIR` (default `./__summary_cache`)
-
-## Development Conventions
-
-- Uses pytest for testing with mock upstream calls
-- Tests are unit/integration-ish but don't require a live LM Studio instance
-- Uses FastAPI framework with async/await patterns
-- Follows Python coding standards with proper typing annotations
-- Has comprehensive logging capabilities for debugging
-
-## Usage Examples
-
-### Basic Usage:
-```bash
-curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "content-type: application/json" \
-  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
-```
-
-### Passthrough Mode:
-```bash
-curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "content-type: application/json" \
-  -d '{"model":"pass/gpt-4","messages":[{"role":"user","content":"ciao"}]}'
-```
-
-### Streaming:
-```bash
-curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "content-type: application/json" \
-  -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"ciao"}]}'
-```
-
-## Qwen Added Memories
-- When working with skills in CATALYST projects, be aware that some files like SKILL-FEEDBACK.md are symlinks to SKILL.md. Only edit the actual content file (SKILL.md) as both links point to the same content. Always run 'ls -la' first to check for symlink relationships before making any modifications.
-- When documenting API endpoints, it's important to cover all parameters including optional ones, response formats for both streaming and non-streaming modes, usage examples with different profiles, and environment variables that affect behavior. The documentation should be comprehensive enough for developers to understand how to use the system effectively.
+### Agent Notes
+- In CATALYST skill directories, `SKILL.md` is the canonical file. Any `SKILL-<NAME>.md` companion should be treated as an alias/symlink path to the canonical content. Prefer editing `SKILL.md`.
+- Do not redefine runtime tool schemas in repository docs. Follow the runtime's actual tool contract.

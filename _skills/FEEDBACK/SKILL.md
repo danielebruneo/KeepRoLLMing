@@ -91,3 +91,11 @@ The skill outputs improvements that enhance:
 - Communication effectiveness with users
 
 Note: This skill does not directly modify project files or code. Its purpose is exclusively to improve the agent's knowledge base, learning capabilities, and future performance patterns.
+
+## Possible outcomes
+This skill may end in one of three ways:
+1. analysis only
+2. a concrete implementation proposal
+3. a recommendation to execute a follow-up skill such as [IMPLEMENT-FEEDBACK](../IMPLEMENT-FEEDBACK/SKILL-IMPLEMENT-FEEDBACK.md), [SYNC-BOOTSTRAP-FILES](../SYNC-BOOTSTRAP-FILES/SKILL-SYNC-BOOTSTRAP-FILES.md), or [LEARN](../LEARN/SKILL-LEARN.md)
+
+When the issue is clearly actionable and low-risk, prefer producing an implementation-ready proposal rather than only reflection.

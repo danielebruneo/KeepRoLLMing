@@ -2,6 +2,16 @@
 
 This is a FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
 
+## Agent-assisted development
+
+This repository uses **CATALYST** as its agent-assisted development workflow.
+
+- [QWEN.md](QWEN.md) is the Qwen-specific bootstrap entrypoint.
+- [AGENTS.md](AGENTS.md) is the canonical workflow specification for coding agents.
+- [_agent/](_agent/) contains operational state such as the active task, handoff, knowledge base, and repo map.
+
+If an agent runner passes through this README, it should continue into [QWEN.md](QWEN.md) and then [AGENTS.md](AGENTS.md) before making substantial changes.
+
 ## Project Overview
 
 The Keeprollming Orchestrator is designed to handle long conversations that would otherwise exceed the context window limits of language models. It implements a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
@@ -27,7 +37,7 @@ The Keeprollming Orchestrator is designed to handle long conversations that woul
 Configuration is managed via:
 - `config.yaml` file with profiles and model aliases
 - Environment variables that override default values
-- Available profiles:
+- Available profiles: 
   - `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
   - `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
   - `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
@@ -68,14 +78,6 @@ Or use dedicated test scripts for better environment management:
 ./run-single-test.sh    # Run a single test
 ./run-parallel-tests.sh # Run tests in parallel mode
 ```
-
-## API Documentation
-
-Complete documentation for the orchestrator's API endpoints is available at: [_docs/API_DOCUMENTATION.md](./_docs/API_DOCUMENTATION.md)
-
-## Template Approach
-
-Documentation generation follows standardized templates defined in `_templates/` to ensure consistent formatting and structure. This approach improves maintainability and readability.
 
 ## Key Environment Variables
 
@@ -119,15 +121,3 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "content-type: application/json" \
   -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"ciao"}]}'
 ```
-
-## Agent System
-
-This project uses a CATALYST agent system. The key skills include:
-- **FEEDBACK**: Analyzes conversation patterns with user, system feedback, and workflow effectiveness to propose improvements for future interactions.
-  - This skill specifically focuses on improving the agent's learning capabilities rather than modifying project code or documentation directly.
-
-### Key Agent Skills
-- `CREATE-ACTIVE-TASK`: Creates new tasks based on user requests
-- `UPDATE-HUMAN-DOCS`: Updates human-facing project documentation without mixing it with internal operational notes
-- `IMPROVE-SKILLS`: Reviews and enhances existing skills to improve clarity, usability, and actionable guidance
-- `FEEDBACK`: Analyzes workflows for learning improvements (not direct code changes)
