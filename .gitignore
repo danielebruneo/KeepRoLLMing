@@ -37,3 +37,4 @@ summary_cache/
 __performance_logs/
 __summary_cache/
 .obsidian/
+*.zip

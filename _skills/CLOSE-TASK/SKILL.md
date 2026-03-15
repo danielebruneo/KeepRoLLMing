@@ -13,6 +13,11 @@ Close or roll over the active task cleanly with proper documentation of outcomes
 2. Summarize changes in [_agent/HANDOFF.md](../../_agent/HANDOFF.md) with clear, actionable summary.
 3. Add reusable lessons to [_agent/MEMORY.md](../../_agent/MEMORY.md) when warranted - note insights that could help future work.
 4. Clear or replace (do not delete) [_agent/ACTIVE_TASK.md](../../_agent/ACTIVE_TASK.md) for the next task - prepare for new work.
+5. Add completed task summary to [_agent/COMPLETED_TASKS.md](../../_agent/COMPLETED_TASKS.md) file with:
+   - Task title and description
+   - Completion date
+   - Key outcomes achieved
+   - Lessons learned
 
 ## When to Use
 - When completing a task and ready to move on to new work
@@ -27,7 +32,7 @@ Close or roll over the active task cleanly with proper documentation of outcomes
 ## Template Reference
 This skill leverages the structure defined in `_templates/HANDOFF.template.md` which includes:
 - Current status field
-- What changed section 
+- What changed section
 - What still needs work
 - Best next step guidance
 - Files touched list
@@ -37,3 +42,6 @@ This skill leverages the structure defined in `_templates/HANDOFF.template.md` w
 ## DateTime Tracking
 All handoffs created using this skill should include:
 - Handoff timestamp in DD/MM/YYYY HH:MM:SS format
+
+## Integration Notes
+This skill now automatically integrates with the COMPLETED_TASKS.md file to ensure all completed tasks are properly tracked.
