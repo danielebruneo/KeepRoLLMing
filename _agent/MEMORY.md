@@ -86,7 +86,13 @@ ventions for keeping project tools properly grouped.
 - Date/session: 15/03/2026 15:47:00
 - Lesson: Several improvement opportunities identified for future work:
   - Template Standardization: Create a more formal template validation process to check all new documentation against established formats before committing.
-  - Task Status Logic: Enhance the WORK skill decision logic to better detect task completion status versus ongoing work.  
+  - Task Status Logic: Enhance the WORK skill decision logic to better detect task completion status versus ongoing work.
   - Automated Lesson Capture: Implement systematic capture of lessons learned from completed tasks into agent memory without manual intervention.
 - Relevant files: _agent/MEMORY.md, _skills/WORK/SKILL.md
+- Category: Process Pattern
+
+## Topic: Memory management best practices from feedback analysis  
+- Date/session: 15/03/2026 15:47:00
+- Lesson: When updating agent memory files like _agent/MEMORY.md, always prefer incremental additions over complete file replacements to preserve existing knowledge. Use append or update methods instead of write_file to overwrite entire contents.
+- Relevant files: _agent/MEMORY.md
 - Category: Process Pattern
