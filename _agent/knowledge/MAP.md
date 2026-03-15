@@ -20,14 +20,17 @@ It is NOT responsible for:
 ## Main Components
 1. **FastAPI Application (`keeprollming/app.py`)**
    - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
+   - Implements request routing with passthrough mode support.
 
 2. **Configuration Management (`keeprollming/config.py`)**
    - Uses a dataclass-based system for profiles with different main and summary models.
    - Supports multiple profiles: `local/quick`, `local/main`, `local/deep` with different model configurations.
+   - Provides environment variable override capabilities.
 
 3. **Orchestrator Logic (`keeprollming/rolling_summary.py`)**
    - Handles token counting, message splitting, and summarization as needed.
    - Implements the rolling summary mechanism to manage context overflow.
+   - Supports various summary prompt types (classic, structured, curated).
 
 4. **Upstream Client (`keeprollming/upstream.py`)**
    - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
@@ -36,16 +39,20 @@ It is NOT responsible for:
 5. **Summary Cache (`keeprollming/summary_cache.py`)**
    - Provides caching mechanisms to reuse previously generated summaries for efficiency.
    - Handles fingerprinting, loading and saving of cache entries.
+   - Supports incremental summary consolidation.
 
 6. **Token Counter (`keeprollming/token_counter.py`)**
    - Provides token estimation capabilities for messages and text content.
+   - Fallback to character-based counting when tiktoken is not available.
 
 7. **Logging (`keeprollming/logger.py`)**
    - Implements logging functionality with different modes (DEBUG, MEDIUM, BASIC).
    - Supports detailed logging for debugging and monitoring purposes.
+   - Includes streaming response handling capabilities.
 
 8. **Performance Tracking (`keeprollming/performance.py`)**
    - Implements performance measurement utilities for tracking request processing time and resource usage.
+   - Records metrics like TPS (tokens per second) and TTFT (time to first token).
 
 ## Request / Data Flow
 1. Client sends a request to `/v1/chat/completions` endpoint
@@ -71,6 +78,16 @@ It is NOT responsible for:
 - Logging does not break core request serving - logging failures are ignored
 - If upstream backend fails, the system attempts graceful degradation or error propagation
 
+## Key Configuration Parameters
+- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
+- `MAIN_MODEL`, `SUMMARY_MODEL`
+- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
+- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
+- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
+- `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
+- `DEFAULT_CTX_LEN` - Default context length when no model info is available
+- `SUMMARY_MAX_TOKENS` - Maximum tokens for summary generation
+
 ## Links
 - `_docs/architecture/OVERVIEW.md`
 - `_docs/architecture/INVARIANTS.md`
@@ -85,3 +102,10 @@ It is NOT responsible for:
 - `requirements-dev.txt` - Development dependencies
 - `_docs/` - Documentation directory
 - `_prompts/` - Summary prompt templates
+
+## Key Environment Variables
+- `LOG_MODE` (DEBUG, MEDIUM, BASIC, BASIC_PLAIN) - Logging verbosity level
+- `SUMMARY_MODE` (cache_append, classic) - Summary strategy choice
+- `SUMMARY_CACHE_ENABLED` (true/false) - Toggle cache usage
+- `SUMMARY_CACHE_DIR` - Cache storage directory path
+- `LOG_PAYLOAD_MAX_CHARS` - Maximum characters for logging large payloads

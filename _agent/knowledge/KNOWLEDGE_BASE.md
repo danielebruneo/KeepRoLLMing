@@ -37,9 +37,14 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 - `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
 - `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
 - `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
-- `SUMMARY_MODE` (default `cache_append`)
-- `SUMMARY_CACHE_ENABLED` (default `true`)
-- `SUMMARY_CACHE_DIR` (default `./__summary_cache`)
+- `DEFAULT_CTX_LEN` - Default context length when no model info is available
+- `SUMMARY_MAX_TOKENS` - Maximum tokens for summary generation
+- `SAFETY_MARGIN_TOK` - Safety margin to avoid exact context limits
+- `SUMMARY_MODE` (default `cache_append`) - Summary strategy choice
+- `SUMMARY_CACHE_ENABLED` (default `true`) - Toggle cache usage
+- `SUMMARY_CACHE_DIR` (default `./__summary_cache`) - Cache storage directory path
+- `SUMMARY_CACHE_FINGERPRINT_MSGS` - Number of messages to include in fingerprint calculation
+- `LOG_MODE` (DEBUG, MEDIUM, BASIC, BASIC_PLAIN) - Logging verbosity level
 
 ## How It Works
 
@@ -60,6 +65,7 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 - Uses fingerprint-based caching to reuse previously generated summaries
 - Supports incremental reuse for efficient updates
 - Maintains cache entries with range hashes for validation
+- Implements both full and partial cache entry matching strategies
 
 ## Testing
 
@@ -75,6 +81,8 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 4. Summary cache hit/miss scenarios
 5. Incremental summary consolidation
 6. Context overflow handling with chunking
+7. Performance metrics recording
+8. Logging behavior under various modes
 
 ## Code Structure
 
@@ -86,6 +94,7 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 - `keeprollming/upstream.py` - Upstream client communication
 - `keeprollming/token_counter.py` - Token counting utilities
 - `keeprollming/logger.py` - Logging functionality
+- `keeprollming/performance.py` - Performance tracking utilities
 
 ## Usage Examples
 
@@ -120,6 +129,12 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 - Uses safety margin tokens to avoid hitting exact context limits
 - Dynamically calculates maximum output tokens based on available context
 - Handles context overflow errors by chunking and retrying
+- Implements fallback mechanism for upstream model info retrieval
+
+### Logging Configuration
+- Supports multiple logging modes: DEBUG, MEDIUM, BASIC, BASIC_PLAIN
+- Provides detailed logging for debugging purposes
+- Includes streaming response handling capabilities
 
 ## Cross-referencing
 
