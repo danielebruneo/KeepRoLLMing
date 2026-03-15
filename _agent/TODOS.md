@@ -6,7 +6,7 @@
 - [x] Add comprehensive API documentation for all endpoints
 - [ ] Create usage examples for streaming responses
 - [x] Document caching behavior in detail
-- [ ] Add troubleshooting guide for common issues
+- [x] Add troubleshooting guide for common issues
 
 ### Features
 - [ ] Implement support for custom summary prompts
