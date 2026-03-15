@@ -96,3 +96,9 @@ ventions for keeping project tools properly grouped.
 - Lesson: When updating agent memory files like _agent/MEMORY.md, always prefer incremental additions over complete file replacements to preserve existing knowledge. Use append or update methods instead of write_file to overwrite entire contents.
 - Relevant files: _agent/MEMORY.md
 - Category: Process Pattern
+
+## Topic: Learning report handling patterns  
+- Date/session: 15/03/2026 16:38:44
+- Lesson: All learning reports in _agent/learning_reports/ directory should be preserved as historical documentation rather than replaced. Each session creates a new timestamped file instead of updating existing ones to maintain complete knowledge base.
+- Relevant files: _agent/learning_reports/
+- Category: Process Pattern
