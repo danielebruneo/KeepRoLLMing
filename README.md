@@ -99,6 +99,10 @@ Or use dedicated test scripts for better environment management:
 - Follows Python coding standards with proper typing annotations
 - Has comprehensive logging capabilities for debugging
 
+## Troubleshooting
+
+For common issues and solutions, please refer to the detailed troubleshooting guide: [_docs/TROUBLESHOOTING.md](./_docs/TROUBLESHOOTING.md)
+
 ## Usage Examples
 
 ### Basic Usage:

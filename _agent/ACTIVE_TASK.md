@@ -1,74 +1,67 @@
 # ACTIVE TASK
 
 ## Status
-[✔] Completed
+[ ] In progress
 
 ## Title
-Complete comprehensive API documentation for streaming responses
+Add troubleshooting guide for common issues  
 
-## User Request
-Document usage examples and behavior details for streaming responses in the KeepRoLLMing orchestrator.
+## User Request 
+Create a comprehensive troubleshooting guide that addresses common problems users might encounter with the KeepRoLLMing orchestrator.
 
-## Goal
-Add detailed documentation covering streaming response formats, parameters, use cases and environment variables that affect streaming behavior.
+## Goal  
+Develop detailed documentation covering typical error scenarios, common misconfigurations, and solution approaches for using the orchestrator effectively.
 
 ## Why this matters
-Streaming responses are an important feature of the API that needs clear documentation to help developers understand how to properly handle stream output from both client and server perspectives. This will improve usability for users who want to implement streaming functionality in their applications using KeepRoLLMing.
+A troubleshooting guide is essential for helping users resolve issues they may face when implementing or using the KeepRoLLMing orchestrator. This will improve user experience by providing clear guidance on how to identify and fix problems that commonly occur during setup, configuration, and usage of the system.
 
 ## Clarifications
-- Focus specifically on the V1 chat completions endpoint
-- Include examples showing both regular responses vs streaming mode behavior
-- Document required parameters for enabling streaming (stream=true)
-- Explain how response format changes between streaming and non-streaming modes
+- Focus on typical issues that arise from misconfiguration rather than core system bugs  
+- Include examples with error messages and suggested fixes 
+- Provide step-by-step troubleshooting approaches for common scenarios
+- Document both client-side and server-side problem resolution
 
-## Likely files to touch
-- _docs/API_DOCUMENTATION.md
-- README.md
-- _agent/ACTIVE_TASK.md (this file)
+## Likely files to touch  
+- _docs/TESTING.md (if existing)
+- _docs/TROUBLESHOOTING.md (new file)
+- README.md (may need updates)
 
-## Constraints
+## Constraints 
 - Must maintain consistency with existing documentation templates
-- Keep all examples in the same format as other documented endpoints
+- Keep all examples in the same format as other documented endpoints  
 - Preserve proper datetime tracking throughout process (DD/MM/YYYY HH:MM:SS)
 - Follow established cross-referencing patterns
 
 ## Proposed approach
-1. Review current API documentation structure and identify where streaming section should be added
-2. Add new subsection for "Streaming Responses" in API documentation
-3. Document parameters required to enable streaming mode (stream=true)
-4. Provide example requests showing both regular vs streaming formats
-5. Explain response format differences between modes
-6. Include environment variable settings that affect streaming behavior
-7. Update README.md with relevant usage examples
+1. Review current documentation structure and identify where troubleshooting section should be added
+2. Create new _docs/TROUBLESHOOTING.md file with comprehensive guide structure 
+3. Document common error scenarios including:
+   - API endpoint connection issues
+   - Context overflow handling problems  
+   - Model configuration mismatches
+   - Streaming response format errors
+   - Performance bottlenecks
+4. Provide specific solutions and configuration adjustments for each issue
+5. Include examples showing error messages and resolution steps
+6. Update README.md with reference to the new troubleshooting guide
 
 ## Test plan
-- Verify that new documentation integrates well with existing API docs structure
-- Ensure all examples are consistent and properly formatted
+- Verify that new documentation integrates well with existing docs structure
+- Ensure all examples are clear and properly formatted  
 - Check that cross-references work correctly in the updated documentation
-- Validate that no broken links were introduced
+- Validate that no broken links were introduced  
 
-## Done when criteria
-- New "Streaming Responses" section added to API documentation with proper examples
-- README.md includes streaming usage examples
+## Done when criteria  
+- New _docs/TROUBLESHOOTING.md file created with comprehensive guide content
+- README.md includes reference to troubleshooting guide  
 - All documentation maintains template consistency and datetime tracking
 
 ## Out of scope
 - Implementation changes or code modifications (only documentation updates)
-- Adding new endpoints beyond what's already defined in existing structure
-- Detailed internal implementation specifics for streaming logic
+- Adding new endpoints beyond what's already defined in existing structure  
+- Detailed internal implementation specifics for error handling logic 
 
-## Notes for agent use
+## Notes for agent use  
 - Use the same template format as other documentation sections to maintain consistency
 - Pay attention to proper datetime tracking and cross-referencing patterns
 - Consider how this relates to current knowledge base improvements around API documentation approaches
-
-## Completion Summary
-Task completed successfully on 15/03/2026 15:47:00. Added comprehensive streaming response documentation including:
-- New "Streaming Responses" section in _docs/API_DOCUMENTATION.md 
-- Updated README.md with detailed streaming usage examples
-- Proper format for SSE chunk responses with delta content
-- Streaming parameter description and behavior explanation
-
-Files touched during completion: 
-- _docs/API_DOCUMENTATION.md  
-- README.md
