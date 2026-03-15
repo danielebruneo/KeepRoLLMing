@@ -6,7 +6,7 @@ description: Implements systematic learning process that reviews project compone
 # LEARN Skill
 
 ## Goal
-Implement a comprehensive learning process that systematically reviews project components, identifies improvement opportunities, and executes consolidation of knowledge enhancements by leveraging existing skills effectively.
+Undergo through a comprehensive learning process that systematically reviews project components, identifies improvement opportunities, and executes consolidation of knowledge enhancements by leveraging existing skills effectively.
 
 ## Procedure
 1. **Review Current State**: Examine all existing skills, documentation files, templates, and workflows using [REVIEW-DOC](../REVIEW-DOC/SKILL-REVIEW-DOC.md) and [UPDATE-KNOWLEDGE-BASE](../UPDATE-KNOWLEDGE-BASE/SKILL-UPDATE-KNOWLEDGE-BASE.md)
@@ -16,10 +16,12 @@ Implement a comprehensive learning process that systematically reviews project c
 5. **Validate Implementation**: Ensure improvements maintain backward compatibility using [SAFE-REFACTOR](../SAFE-REFACTOR/SKILL-SAFE-REFACTOR.md) and validate with existing tests
 6. **Document Learning**: Record lessons learned from this process for future reference, using [UPDATE-HUMAN-DOCS](../UPDATE-HUMAN-DOCS/SKILL-UPDATE-HUMAN-DOCS.md)
 7. **Generate Final Report**: Produce a detailed report to the user summarizing what was learned, why it matters, how adaptation occurred, and outcomes achieved
+8. **Create Learning Report File**: Generate a comprehensive learning report in _agent/learning_reports/ directory with structured data about improvements identified
+9. **Prepare Commit Message**: Create appropriate commit message for documenting this learning session
 
 ## When to Use
 - When seeking systematic improvement of agent workflow capabilities
-- After multiple related changes have been implemented  
+- After multiple related changes have been implemented
 - When maintaining or upgrading the entire system's knowledge base
 - During regular maintenance periods for continuous improvement
 
@@ -31,17 +33,17 @@ Implement a comprehensive learning process that systematically reviews project c
 
 ## Skill Integration
 This skill is designed to leverage other skills in the system:
-- **REVIEW-DOC**: For examining and validating documentation accuracy  
+- **REVIEW-DOC**: For examining and validating documentation accuracy
 - **UPDATE-KNOWLEDGE-BASE**: For maintaining knowledge files consistency
 - **FEEDBACK**: For analyzing patterns from execution experience
-- **IMPROVE-SKILLS**: For enhancing existing skill documentation quality 
+- **IMPROVE-SKILLS**: For enhancing existing skill documentation quality
 - **IMPROVE-DOC-STRUCTURES**: For organizing document structure improvements
 - **SAFE-REFACTOR**: For ensuring changes are safe and backward compatible
 
 ## Modular Design Principles
 This skill follows modular design principles:
 - Leverages specialized skills for specific functions rather than trying to do everything itself
-- Maintains loose coupling between components while enabling tight integration when needed  
+- Maintains loose coupling between components while enabling tight integration when needed
 - Promotes reusability of existing functionality through proper referencing
 - Ensures each skill has clear responsibility and scope
 
@@ -49,7 +51,7 @@ This skill follows modular design principles:
 When executing this skill:
 - All improvements should maintain backward compatibility with existing functionality using [SAFE-REFACTOR](../SAFE-REFACTOR/SKILL-SAFE-REFACTOR.md)
 - Template-based workflows are consistently applied across all components (ACTIVE_TASK.template.md, HANDOFF.template.md)
-- DateTime tracking is properly implemented in all relevant files 
+- DateTime tracking is properly implemented in all relevant files
 - Cross-referencing between components is clear and logical
 
 ## Orchestration policy
@@ -60,3 +62,20 @@ When executing this skill:
 - prefer consolidation and pruning over adding more documentation by default
 
 When running as periodic maintenance, `LEARN` should leave the repository in a more compact and better-aligned state.
+
+## File Generation Details
+The LEARN skill will create learning report files in:
+- `_agent/learning_reports/` directory (created if it doesn't exist)
+- Each report file named with timestamp: `learn_session_YYYYMMDD_HHMMSS.md`
+
+## Commit Message Format
+When completing a LEARN session, the commit message follows this format:
+```
+CATALYST Learning session [datetime]: Summary of improvements identified and implemented
+
+This session reviewed all project components to identify enhancement opportunities:
+- Updated knowledge base with current understanding
+- Applied template-based workflow consistently 
+- Maintained datetime tracking throughout process (DD/MM/YYYY HH:MM:SS)
+- Consolidated lessons learned from project work
+```
