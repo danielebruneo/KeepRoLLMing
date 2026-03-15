@@ -55,6 +55,13 @@ from .summary_cache import conversation_fingerprint, find_best_prefix_entry_with
 from .token_counter import TokenCounter
 from .upstream import close_http_client, get_ctx_len_for_model, http_client
 from .performance import record_request_performance
+from .metrics import (
+    METRICS_COLLECTOR,
+    record_conversation_metrics,
+    record_summary_cache_hit,
+    record_summary_cache_miss,
+    record_summary_reuse
+)
 
 # ----------------------------
 # Token counter
@@ -223,6 +230,16 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Get system and conversation metrics"""
+    return {
+        "system": METRICS_COLLECTOR.get_system_metrics(),
+        "summary_stats": METRICS_COLLECTOR.get_summary_statistics(),
+        "conversation_count": len(METRICS_COLLECTOR.conversations),
+    }
 
 
 @app.post("/v1/chat/completions")
@@ -671,6 +688,27 @@ async def chat_completions(req: Request) -> Response:
                         passthrough=is_passthrough,
                         completion_tokens_source=completion_tokens_source,
                     )
+                    
+                    # Collect conversation metrics for streaming response
+                    elapsed_total_ms = (time.perf_counter() - t_start) * 1000.0
+                    
+                    record_conversation_metrics(
+                        conversation_id=conv_id or req_id,
+                        user_id=user_id,
+                        model_used=model_for_metrics or upstream_model,
+                        prompt_tokens=prompt_tokens_u or 0,
+                        completion_tokens=completion_tokens_u or 0,
+                        total_tokens=total_tokens_u or 0,
+                        summary_used=did_summarize,
+                        summary_tokens=summary_tokens,
+                        context_length=ctx_eff,
+                        elapsed_time_ms=elapsed_total_ms,
+                        request_count=len(messages) if isinstance(messages, list) else 0,
+                        first_message_length=first_message_length,
+                        last_message_length=last_message_length,
+                        avg_message_length=avg_message_length,
+                        summary_decision_reason=plan.reason if not is_passthrough and not skip_summary_for_tools else "passthrough"
+                    )
                     if LOG_MODE == "DEBUG":
                         log(
                             "INFO",
@@ -779,6 +817,27 @@ async def chat_completions(req: Request) -> Response:
             did_summarize=did_summarize,
             passthrough=is_passthrough,
             completion_tokens_source=completion_tokens_source,
+        )
+        
+        # Collect conversation metrics
+        elapsed_total_ms = (time.perf_counter() - t_start) * 1000.0
+        
+        record_conversation_metrics(
+            conversation_id=conv_id or req_id,
+            user_id=user_id,
+            model_used=str(data.get("model") or upstream_model),
+            prompt_tokens=prompt_tokens_u or 0,
+            completion_tokens=completion_tokens_u or 0,
+            total_tokens=total_tokens_u or 0,
+            summary_used=did_summarize,
+            summary_tokens=summary_tokens,
+            context_length=ctx_eff,
+            elapsed_time_ms=elapsed_total_ms,
+            request_count=len(messages) if isinstance(messages, list) else 0,
+            first_message_length=first_message_length,
+            last_message_length=last_message_length,
+            avg_message_length=avg_message_length,
+            summary_decision_reason=plan.reason if not is_passthrough and not skip_summary_for_tools else "passthrough"
         )
         if LOG_MODE == "DEBUG":
             log(
