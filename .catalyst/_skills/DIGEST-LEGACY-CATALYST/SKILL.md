@@ -52,19 +52,29 @@ Legacy skills require special handling:
 6. Use `RECONCILE-LEGACY-SKILLS` for skill-specific reconciliation.
 7. After skill digestion, run `SYNC-QWEN-SKILL-REGISTRY`.
 
-## Procedure
-1. Read `.catalyst_legacy/LATEST_MIGRATION.md` and identify the latest migration snapshot.
-2. Inspect the actual archived snapshot directory even if the new layered structure already exists.
-3. Review legacy agent/project/core-like files.
-4. Extract information units, not just files.
-5. Route units to the proper new destinations.
-6. Use `RECONCILE-LEGACY-SKILLS` for legacy skill handling.
-7. Record unresolved ambiguities in `_agent/self/LEGACY_DIGEST_NOTES.md`.
-8. Archive anything still unclear rather than forcing a bad import.
-9. Run `SYNC-QWEN-SKILL-REGISTRY` once skill inventory changes are finalized.
+## Enhanced Procedure 
+1. **Read `.catalyst_legacy/LATEST_MIGRATION.md`** and identify the latest migration snapshot.
+2. **Inspect the actual archived snapshot directory** even if the new layered structure already exists.
+3. **Review legacy agent/project/core-like files**, paying special attention to:
+   - Distinguish between project-specific content (host repository description) vs. agent workflow knowledge
+   - Identify when files describe the system itself vs. how the agent operates on it  
+4. **Extract information units, not just files**.
+5. **Route units properly based on semantic meaning**:
+   - Project-specific architecture/components/constraints/tests → `_project/`
+   - Agent thinking/remembering/handoff/skill choice behavior → `_agent/` 
+6. **Use `RECONCILE-LEGACY-SKILLS` for legacy skill handling** and ensure proper classification.
+7. **Record unresolved ambiguities in `_agent/self/LEGACY_DIGEST_NOTES.md`** with explicit reasoning about the decision made.
+8. **Archive anything still unclear rather than forcing a bad import** - especially when semantic meaning is ambiguous.
+9. **Run `SYNC-QWEN-SKILL-REGISTRY` once skill inventory changes are finalized.**
 
 ## Output
-- A concise digest report
-- Updated destinations in the new layered structure
-- Updated `_agent/self/LEGACY_DIGEST_NOTES.md`
+- A concise digest report 
+- Updated destinations in the new layered structure  
+- Updated `_agent/self/LEGACY_DIGEST_NOTES.md` with explicit reasoning about decisions made
 - Triggered or recommended registry sync
+
+## Improvement Notes
+This skill has been enhanced to emphasize:
+1. **Semantic routing** rather than location-based file copying 
+2. **Explicit classification logic** for distinguishing project vs agent content  
+3. **Process consistency** - ensure template, datetime tracking, and cross-referencing are applied uniformly
