@@ -12,3 +12,14 @@ Direct text content that doesn't match these patterns should be used literally a
 This pattern of distinguishing between path strings and direct text can be applied to similar future features where configuration values may represent either file references or literal values, maintaining backward compatibility while enabling new functionality.
 
 The solution involves checking the string prefix/syntax before deciding how to handle it during loading.
+
+## Skill Structure Consistency
+
+### Key Learning:
+All CATALYST skills must follow a consistent directory structure with:
+1. A main documentation file named `SKILL-NAME.md`
+2. A symlink named `SKILL.md` pointing to this main file
+3. This pattern ensures proper recognition by the agent system during sync operations
+
+### Implementation Pattern:
+When creating or modifying skills, always ensure both files exist and are properly linked with correct relative paths.
