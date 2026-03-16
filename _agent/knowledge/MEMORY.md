@@ -5,7 +5,7 @@
 ### Key Learning:
 When implementing custom summary prompts from config.yaml, the main challenge was properly distinguishing between file references (strings starting with `./`, `/` or containing path separators) and direct text content. This is crucial for proper functionality.
 
-File-based references should start with "./", "/", or contain path separators to be treated as paths.
+File-based references should be identified by strings that start with "./", "/", or contain path separators to be treated as paths.
 Direct text content that doesn't match these patterns should be used literally as prompt templates in config files.
 
 ### Implementation Pattern:
