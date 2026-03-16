@@ -102,6 +102,7 @@ It is NOT responsible for:
 - `requirements-dev.txt` - Development dependencies
 - `_docs/` - Documentation directory
 - `_prompts/` - Summary prompt templates
+- `_project/TODOS.md` - Project enhancement wishlist for long-term goals
 
 ## Key Environment Variables
 - `LOG_MODE` (DEBUG, MEDIUM, BASIC, BASIC_PLAIN) - Logging verbosity level

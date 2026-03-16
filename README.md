@@ -9,6 +9,7 @@ This repository uses **[CATALYST](CATALYST.md)** as its agent-assisted developme
 - [QWEN.md](QWEN.md) is the Qwen-specific bootstrap entrypoint.
 - [AGENTS.md](AGENTS.md) is the canonical workflow specification for coding agents.
 - [_agent/](_agent/) contains operational state such as the active task, handoff, knowledge base, and repo map.
+- [_project/TODOS.md](_project/TODOS.md) contains the project's long-term enhancement wishlist.
 
 If an agent runner passes through this README, it should continue into [QWEN.md](QWEN.md) and then [AGENTS.md](AGENTS.md) before making substantial changes.
 

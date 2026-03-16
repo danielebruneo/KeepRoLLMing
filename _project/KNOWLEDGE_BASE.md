@@ -142,6 +142,7 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 - [_docs/decisions/DECISIONS.md](../_docs/decisions/DECISIONS.md): Design decisions
 - [_docs/development/STYLE.md](../_docs/development/STYLE.md): Coding conventions
 - [_docs/development/WORKFLOW.md](../_docs/development/WORKFLOW.md): Development workflow
+- [_project/TODOS.md](_project/TODOS.md): Project enhancement wishlist
 
 ## Related Skills
 

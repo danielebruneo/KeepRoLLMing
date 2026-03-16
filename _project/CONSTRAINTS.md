@@ -18,6 +18,7 @@
 ## Documentation discipline
 - Update [_agent/HANDOFF.md](HANDOFF.md) after each meaningful work session.
 - Add reusable lessons to [_agent/MEMORY.md](MEMORY.md).
+- Reference project TODOs in [_project/TODOS.md](TODOS.md) when adding new features or enhancements.
 
 ## Runtime discipline
 - Follow runtime tool schemas as provided by the environment.
