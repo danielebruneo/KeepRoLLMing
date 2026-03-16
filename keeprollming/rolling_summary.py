@@ -213,7 +213,7 @@ def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
             except Exception:
                 pass  # Fall back to loading default prompts
 
-        # For direct text prompts in config file or other values that should be treated literally  
+        # For direct text prompts in config file or other values that should be treated literally
         elif isinstance(prompt_config, str):
             return prompt_config
 
@@ -242,17 +242,18 @@ def render_summary_prompt(
     prompt_type: Optional[str] = None,
     lang_hint: str = "italiano",
 ) -> str:
-    template = load_summary_prompt_template(prompt_type=prompt_type)
+    # If we have both a specific prompt type and direct text, use the text directly as template 
+    if prompt_type is not None:
+        custom_prompt = load_custom_prompt(prompt_type)
+        if custom_prompt != "":
+            # We're using a custom prompt provided in request
+            return (
+                custom_prompt
+                .replace("{{TRANSCRIPT}}", transcript)
+                .replace("{{LANG_HINT}}", lang_hint)
+            )
     
-    # If we have a custom prompt, use it directly
-    custom_prompt = load_custom_prompt(prompt_type)
-    if custom_prompt and not prompt_type:
-        # We're using a custom prompt text as the default 
-        return (
-            custom_prompt
-            .replace("{{TRANSCRIPT}}", transcript)
-            .replace("{{LANG_HINT}}", lang_hint)
-        )
+    template = load_summary_prompt_template(prompt_type=prompt_type)
 
     return (
         template

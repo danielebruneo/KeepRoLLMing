@@ -270,8 +270,8 @@ async def chat_completions(req: Request) -> Response:
     custom_prompt_type = payload.get("summary_prompt_type")
     custom_prompt_text = payload.get("summary_prompt")
 
-    # If we have a custom prompt text, use it directly as the prompt type
-    if custom_prompt_text and isinstance(custom_prompt_text, str):
+    # If we have a custom prompt text and no specific type, use it directly as the prompt type
+    if custom_prompt_text and isinstance(custom_prompt_text, str) and not custom_prompt_type:
         custom_prompt_type = custom_prompt_text
 
     messages = payload.get("messages")
