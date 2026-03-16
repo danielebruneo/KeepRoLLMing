@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 
-from .config import SAFETY_MARGIN_TOK, SUMMARY_MAX_TOKENS, UPSTREAM_BASE_URL
+from .config import SAFETY_MARGIN_TOK, SUMMARY_MAX_TOKENS, UPSTREAM_BASE_URL, CONFIG
 from .logger import log, snip_json
 from .upstream import http_client, get_ctx_len_for_model
 from .token_counter import TokenCounter
@@ -194,15 +194,34 @@ Transcript:
 
 
 def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
-    """Load a summary prompt template from file or fallback to default."""
+    """Load a summary prompt template from config or file or fallback to default."""
     effective_type = (prompt_type or SUMMARY_PROMPT_TYPE or "curated").strip()
 
-    # Load from file
+    # If we have custom prompts defined in the configuration, check if this is one of them
+    custom_prompts_config = CONFIG.get("custom_summary_prompts", {})
+
+    # Only proceed with config-based prompt handling if it's a dict and has our effective_type
+    if isinstance(custom_prompts_config, dict) and effective_type in custom_prompts_config:
+        prompt_config = custom_prompts_config[effective_type]
+
+        # If we have a file path string (relative to _prompts directory)
+        if isinstance(prompt_config, str) and not prompt_config.startswith('|'):
+            try:
+                path = Path(SUMMARY_PROMPT_DIR) / prompt_config
+                return path.read_text(encoding="utf-8")
+            except Exception:
+                pass  # Fall back to loading default prompts
+
+        # For direct text prompts in config file or other values that should be treated literally
+        elif isinstance(prompt_config, str):
+            return prompt_config
+
+    # Load from file for backward compatibility and other named prompts not defined in config
     path = Path(SUMMARY_PROMPT_DIR) / f"{effective_type}.txt"
     try:
         return path.read_text(encoding="utf-8")
     except Exception:
-        # fallback to default prompt if file not found
+        # fallback to default prompt if file not found or error occurs
         return DEFAULT_SUMMARY_PROMPTS.get(effective_type, DEFAULT_SUMMARY_PROMPTS["curated"])
 
 

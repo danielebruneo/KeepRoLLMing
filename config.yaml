@@ -27,3 +27,34 @@ max_head: 3
 max_tail: 3
 default_ctx_len: 4096
 summary_max_tokens: 512
+
+# Custom summary prompt templates - can be either:
+# - a file path (relative to _prompts directory) 
+# - direct text content for simple prompts
+custom_summary_prompts:
+  # Example of a custom prompt template that would be loaded from _prompts/custom.txt  
+  my_template: "./_prompts/example_custom.txt"
+  
+  # Example of direct text in config
+  structured_explainer: |
+    You are an expert explainer.
+    Explain the following conversation transcript in a technical and concise way.
+
+    === TRANSCRIPT START ===
+    {{TRANSCRIPT}}
+    === TRANSCRIPT END ===
+
+    Your explanation should be clear, structured, and focused on key points only.
+  # Example of a custom prompt template that would be loaded from _prompts/custom.txt
+  # custom: "./_prompts/custom.txt"
+  
+  # Example of direct text in config
+  # my_template: |
+  #   You are an expert explainer.
+  #   Explain the following conversation transcript:
+  #
+  #   === TRANSCRIPT START ===
+  #   {{TRANSCRIPT}}
+  #   === TRANSCRIPT END ===
+  #   
+  #   Your explanation should be concise, technical, and clear.

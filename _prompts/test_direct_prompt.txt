@@ -1,0 +1,2 @@
+This is a direct text prompt for testing.
+It should be loaded correctly from the config file directly.

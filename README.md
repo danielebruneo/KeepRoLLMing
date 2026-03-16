@@ -102,14 +102,38 @@ Or use dedicated test scripts for better environment management:
 
 ## Custom Summary Prompts
 
-The orchestrator now supports custom summary prompts. You can provide your own prompt text in the request payload to override the default behavior.
+The orchestrator now supports loading custom summary prompt templates from the `_prompts` directory or from the config file directly. This allows users to define their own summarization prompts for more flexibility.
 
 ### How it works:
-1. When providing `summary_prompt` field in the request, that text will be used as the summary prompt
-2. If both `summary_prompt_type` and `summary_prompt` are provided:
-   - The value of `summary_prompt_type` is ignored when `summary_prompt` exists
-   - The value of `summary_prompt` becomes the actual prompt content
-3. If only `summary_prompt` is provided, it will be used as a custom prompt (equivalent to setting `summary_prompt_type` to that string)
+
+1. When providing `summary_prompt_type` field in a request, that name will be used to look up the template
+2. If the value is found in the configuration's `custom_summary_prompts` section:
+   - If it's a string that doesn't start with "|", it will be treated as a file path (relative to `_prompts`)
+   - If it starts with "|", it will be treated as direct multi-line text content
+3. Otherwise, templates are loaded from the `_prompts` directory
+
+### Configuration Example:
+
+In `config.yaml`, you can define custom prompt templates in the `custom_summary_prompts` section:
+```yaml
+# Custom summary prompt templates - can be either:
+# - a file path (relative to _prompts directory)
+# - direct text content for simple prompts
+custom_summary_prompts:
+  # Example of a custom prompt template that would be loaded from _prompts/custom.txt  
+  my_custom_prompt: "./_prompts/example_custom.txt"
+  
+  # Example of direct text in config, which will be treated as the actual prompt content
+  structured_explainer: |
+    You are an expert explainer.
+    Explain the following conversation transcript in a technical and concise way.
+
+    === TRANSCRIPT START ===
+    {{TRANSCRIPT}}
+    === TRANSCRIPT END ===
+
+    Your explanation should be clear, structured, and focused on key points only.
+```
 
 ### Usage Examples:
 ```bash
@@ -118,7 +142,17 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -d '{
     "model":"local/main",
     "messages":[{"role":"user","content":"Explain quantum computing"}],
-    "summary_prompt": "You are an expert explainer. Please provide a clear and concise explanation of quantum computing based on the conversation transcript."
+    "summary_prompt_type": "my_custom_prompt"
+  }'
+```
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{
+    "model":"local/main",
+    "messages":[{"role":"user","content":"Explain quantum computing"}],
+    "summary_prompt_type": "structured_explainer"
   }'
 ```
 
@@ -129,7 +163,7 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
     "model":"local/main",
     "messages":[{"role":"user","content":"Explain quantum computing"}],
     "summary_prompt_type": "custom",
-    "summary_prompt": "You are an expert explainer. Please provide a clear and concise explanation of quantum computing based on the conversation transcript."
+    "summary_prompt": "You are an expert explainer. Please provide a concise explanation of the following conversation transcript."
   }'
 ```
 
