@@ -6,53 +6,43 @@ description: Reviews and enhances existing skills in the project to improve clar
 # IMPROVE-SKILLS Skill
 
 ## Goal
-Review existing skills in the project and enhance their documentation to make them more clear, usable, and actionable for Qwen Code agents.
+Review existing skills in the project and enhance their documentation to make them more clear, usable, and actionable for Qwen Code agents. This skill should focus on improving clarity of intent, integration with other skills, and ensuring consistent file references.
 
 ## Procedure
 1. Analyze current skill documentation - examine all existing skill definitions.
 2. Identify areas where descriptions can be made clearer or more actionable.
 3. Propose specific improvements to skill definitions and descriptions.
 4. Update skill documentation with enhanced clarity, examples, and usage guidance.
-5. Ensure consistency across all skills in the project.
+5. Ensure consistency across all skills in the project by:
+   - Verifying correct file path references throughout
+   - Confirming integration patterns work properly  
+   - Checking that cross-references point to actual files
+6. Test integration between related skills through example workflows
 
 ## When to Use
 - When reviewing project skills for improvement opportunities
 - When enhancing documentation to make skills more usable by agents
 - After identifying gaps or ambiguities in existing skill definitions
+- During regular maintenance when knowledge base consistency should be verified
+- Before implementing major system changes that might affect skill functionality
 
-## Examples
-- Improving skill descriptions to include when they should be used (e.g., adding clearer "When to Use" sections)
-- Adding concrete usage examples for each skill (e.g., providing specific project-related examples)
-- Making procedural steps more detailed and actionable (e.g., adding specific implementation details)
-- Ensuring consistent format across all skill documents (e.g., uniform structure and style)
+## Examples of Specific Improvements 
+- Adding concrete file path examples for when skills reference project locations
+- Ensuring all skill descriptions properly reference their integration points  
+- Verifying that skill documentation uses correct relative paths to other files and directories
+- Making procedural steps more actionable with specific implementation details
+- Checking that cross-references in skill docs point to actual existing files
 
-## Skill Integration
-This skill works best when integrated with other system skills:
-- **LEARN**: Can leverage this skill during systematic learning processes for improving skill documentation  
-- **REVIEW-DOC**: Should reference this skill when reviewing how well skill documentation aligns with project needs
-- **UPDATE-KNOWLEDGE-BASE**: Integrates with knowledge base updates to maintain consistency of all skills
-
-## Modular Design Principles
-This skill follows modular design principles:
-- Focuses on enhancing only the skill documentation rather than re-implementing functionality 
-- Maintains clear separation between what each skill does vs. what it references  
-- Promotes reuse of existing system capabilities through proper integration
-- Ensures comprehensive coverage without duplicating efforts
-
-## DateTime Tracking
-All skill improvements should include:
-- Timestamp in DD/MM/YYYY HH:MM:SS format for when changes were made
+## Integration Verification Process
+When reviewing skills for improvements:
+1. Verify all file path references are consistent (e.g., using `../../` correctly)
+2. Confirm integration points between skills work properly together
+3. Check that cross-referenced documentation files actually exist 
+4. Validate that the skill workflow makes logical sense
 
 ## Knowledge Base Integration
 This skill now encompasses improved workflow integration including:
-- Template-based system enhancement
+- Template-based system enhancement  
 - DateTime tracking implementation across all project files
-- Documentation reference guidance for agents
 - Consistent formatting and cross-referencing patterns
 - Updated knowledge base file structure (MAP, COMMANDS, etc.)
-
-## New Symlink System 
-The project now implements a symlink system where each skill has a named symlink with the prefix "SKILL-" to make them more discoverable in tools like Obsidian graph views. This approach:
-- Provides consistent naming across all skills
-- Makes it easier for agents to identify and reference skills by their semantic names
-- Reinforces the meaning of skills through file naming conventions

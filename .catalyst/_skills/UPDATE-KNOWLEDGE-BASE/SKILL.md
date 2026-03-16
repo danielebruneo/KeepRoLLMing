@@ -15,14 +15,22 @@ Refresh the internal knowledge files after the project changed.
 4. Keep [_agent/MAP.md](../../_agent/MAP.md) and [_agent/COMMANDS.md](../../_agent/COMMANDS.md) aligned with reality - ensure they reflect current state.
 
 ## When to Use
-- After project structure or code changes that affect internal documentation
-- When repository has been modified in ways that impact knowledge base
-- When maintaining consistency between code and documentation
+- After project structure changes that affect internal documentation 
+- When repository has been modified in ways that impact knowledge base consistency
+- During regular maintenance periods when file contents may have drifted from actual state
+- When adding or removing significant modules, scripts, or configuration files
 
 ## Examples
-- Updating MAP after adding new modules to the project (e.g., adding new directory entries to MAP.md)
-- Refreshing COMMANDS when new scripts are added (e.g., updating COMMANDS.md with new test or build scripts)
-- Aligning knowledge files with recent code refactoring (e.g., updating MAP.md to reflect new module locations)
+- Adding new core application components to keeprollming/ directory (e.g., updating MAP.md with new module information)
+- Creating new utility scripts in scripts/ directory that should be reflected in COMMANDS.md 
+- Refactoring codebase structure that affects how components relate to each other
+- Migrating legacy data from one documentation format to another
+
+## Specific Decision Points
+Before running this skill:
+1. Identify if any core repository files have been modified since last update
+2. Check for new directory structures or file additions in key areas (keeprollming/, scripts/)
+3. Verify that knowledge base files align with current runtime state patterns
 
 ## Skill Integration
 This skill works best when integrated with other system skills:
