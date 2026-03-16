@@ -1,8 +1,0 @@
-You are an expert explainer.
-Explain the following conversation transcript in a technical and concise way.
-
-=== TRANSCRIPT START ===
-{{TRANSCRIPT}}
-=== TRANSCRIPT END ===
-
-Your explanation should be clear, structured, and focused on key points only.

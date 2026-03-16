@@ -1,7 +1,0 @@
-[ARCHIVED_COMPACT_CONTEXT]
-The following block is a compressed reconstruction of earlier conversation content.
-Treat it as authoritative context for continuity, decisions, constraints, facts and pending work.
-Prefer this block over trying to infer missing older details from the recent tail alone.
-
-{{SUMMARY_TEXT}}
-[/ARCHIVED_COMPACT_CONTEXT]

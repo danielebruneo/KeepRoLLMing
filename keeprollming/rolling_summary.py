@@ -205,14 +205,15 @@ def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
         prompt_config = custom_prompts_config[effective_type]
 
         # If we have a file path string (relative to _prompts directory)
-        if isinstance(prompt_config, str) and not prompt_config.startswith('|'):
+        # This handles paths that start with ./ or / or contain path separators
+        if isinstance(prompt_config, str) and (prompt_config.startswith('./') or prompt_config.startswith('/') or '/' in prompt_config or '\\' in prompt_config):
             try:
                 path = Path(SUMMARY_PROMPT_DIR) / prompt_config
                 return path.read_text(encoding="utf-8")
             except Exception:
                 pass  # Fall back to loading default prompts
 
-        # For direct text prompts in config file or other values that should be treated literally
+        # For direct text prompts in config file or other values that should be treated literally  
         elif isinstance(prompt_config, str):
             return prompt_config
 
