@@ -118,6 +118,26 @@ ventions for keeping project tools properly grouped.
 
 ## Topic: Scope-allowed CATALYST adaptation
 - Date/session: 15/03/2026 20:44:21
-- Lesson: When current scope is `CATALYST` or `META`, improvements to CATALYST skills, workflow docs, and knowledge files are valid repository changes. Do not misclassify them as “only agent capability improvements” with no actionable file target. In those cases prefer FEEDBACK -> THINK -> ADAPT with a minimal target.
+- Lesson: When current scope is `CATALYST` or `META`, improvements to CATALYST skills, workflow docs, and knowledge files are valid repository changes. Do not misclassify them as "only agent capability improvements" with no actionable file target. In those cases prefer FEEDBACK -> THINK -> ADAPT with a minimal target.
 - Relevant files: _skills/FEEDBACK/SKILL.md, _skills/THINK/SKILL.md, _skills/ADAPT/SKILL.md, AGENTS.md
+- Category: Process Pattern
+
+## Topic: Git directory handling and manual commit requirements
+- Date/session: 16/03/2026 
+- Lesson: When working with directories in CATALYST migration processes:
+  - Empty directories are not tracked by git unless files are added to them  
+  - Complex iterative operations may require manual intervention for proper commit tracking
+  - Files within directories that are initially untracked need explicit add commands before committing
+  - Process validation steps should include verification of all directory structures before final commits
+- Relevant files: _agent/knowledge/, _project/
+- Category: Process Pattern
+
+## Topic: Iterative correction workflow in migration processes
+- Date/session: 16/03/2026  
+- Lesson: Migration tasks that involve semantic analysis and classification require iterative corrections:
+  - Initial attempts may misclassify content 
+  - Multiple rounds of review and correction are needed for proper placement
+  - Complex cases sometimes need explicit manual steps to ensure correctness
+  - Feedback cycles help improve process understanding for future executions
+- Relevant files: _agent/knowledge/SKILL_PROPOSAL.md, _project/KNOWLEDGE_BASE.md, _agent/state/
 - Category: Process Pattern
