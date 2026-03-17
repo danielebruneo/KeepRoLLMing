@@ -22,6 +22,7 @@ from .config import (
     SUMMARY_FORCE_CONSOLIDATE,
     SUMMARY_CONSOLIDATE_WHEN_NEEDED,
     UPSTREAM_BASE_URL,
+    DEFAULT_MAX_COMPLETION_TOKENS,
     resolve_profile_and_models,
     CONFIG
 )
@@ -485,7 +486,7 @@ async def chat_completions(req: Request) -> Response:
         prompt_tokens_for_log = None
 
     max_tokens_upstream = max(64, int(ctx_eff) - int(prompt_tokens_for_log or 0) - int(SAFETY_MARGIN_TOK))
-    requested_out = int(max_tokens_req) if isinstance(max_tokens_req, int) and max_tokens_req > 0 else 900
+    requested_out = int(max_tokens_req) if isinstance(max_tokens_req, int) and max_tokens_req > 0 else DEFAULT_MAX_COMPLETION_TOKENS
     adjusted_out = min(requested_out, max_tokens_upstream)
     upstream_payload["max_tokens"] = adjusted_out
     if adjusted_out < requested_out:

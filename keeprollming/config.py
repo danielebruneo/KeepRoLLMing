@@ -65,6 +65,7 @@ def load_config() -> Dict[str, Any]:
     config["default_ctx_len"] = int(os.getenv("DEFAULT_CTX_LEN", str(config.get("default_ctx_len", "4096"))))
     config["summary_max_tokens"] = int(os.getenv("SUMMARY_MAX_TOKENS", str(config.get("summary_max_tokens", "256"))))
     config["safety_margin_tok"] = int(os.getenv("SAFETY_MARGIN_TOK", str(config.get("safety_margin_tok", "128"))))
+    config["default_max_completion_tokens"] = int(os.getenv("DEFAULT_MAX_COMPLETION_TOKENS", str(config.get("default_max_completion_tokens", "900"))))
     
     config["summary_mode"] = os.getenv("SUMMARY_MODE", config.get("summary_mode", "cache_append")).strip().lower()
     config["summary_cache_enabled"] = os.getenv("SUMMARY_CACHE_ENABLED", str(config.get("summary_cache_enabled", "1"))).strip().lower() not in {"0", "false", "no", "off"}
@@ -98,6 +99,7 @@ DEEP_SUMMARY_MODEL = CONFIG["deep_summary_model"]
 DEFAULT_CTX_LEN = CONFIG["default_ctx_len"]
 SUMMARY_MAX_TOKENS = CONFIG["summary_max_tokens"]
 SAFETY_MARGIN_TOK = CONFIG["safety_margin_tok"]
+DEFAULT_MAX_COMPLETION_TOKENS = CONFIG["default_max_completion_tokens"]
 
 SUMMARY_MODE = CONFIG["summary_mode"]
 SUMMARY_CACHE_ENABLED = CONFIG["summary_cache_enabled"]
