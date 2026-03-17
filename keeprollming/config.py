@@ -32,6 +32,11 @@ def load_config() -> Dict[str, Any]:
         "main": {"main_model": "qwen2.5-v1-7b-instruct", "summary_model": "qwen2.5-3b-instruct"},
         "deep": {"main_model": "qwen2.5-27b-instruct", "summary_model": "qwen2.5-7b-instruct"}
     })
+
+    # Add reasoning_content transformation option per profile (default: False)
+    for profile_name in config.get("profiles", {}):
+        if "transform_reasoning_content" not in config["profiles"][profile_name]:
+            config["profiles"][profile_name]["transform_reasoning_content"] = False
     
     config.setdefault("model_aliases", {
         "local/quick": "quick",
@@ -120,13 +125,19 @@ class Profile:
     name: str
     main_model: str
     summary_model: str
+    transform_reasoning_content: bool = False
 
 
 def create_profiles_from_config(config: Dict[str, Any]) -> Dict[str, Profile]:
     """Create profile dictionary from configuration."""
     profiles = {}
     for name, profile_data in config["profiles"].items():
-        profiles[name] = Profile(name, profile_data["main_model"], profile_data["summary_model"])
+        profiles[name] = Profile(
+            name,
+            profile_data["main_model"],
+            profile_data["summary_model"],
+            transform_reasoning_content=profile_data.get("transform_reasoning_content", False)
+        )
     return profiles
 
 
@@ -136,19 +147,25 @@ PROFILES: Dict[str, Profile] = create_profiles_from_config(CONFIG)
 MODEL_ALIASES: Dict[str, str] = CONFIG["model_aliases"]
 
 
-def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool]:
-    """Return (profile_or_none, upstream_main_model, summary_model, passthrough_enabled)."""
+def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool, bool]:
+    """Return (profile_or_none, upstream_main_model, summary_model, passthrough_enabled, transform_reasoning_content)."""
     if isinstance(client_model, str) and client_model.startswith(PASSTHROUGH_PREFIX):
         backend = client_model[len(PASSTHROUGH_PREFIX):].strip()
         # If empty, fallback to MAIN_MODEL but keep passthrough disabled to avoid surprises
         if not backend:
-            return (None, MAIN_MODEL, SUMMARY_MODEL, False)
-        return (None, backend, SUMMARY_MODEL, True)
+            return (None, MAIN_MODEL, SUMMARY_MODEL, False, False)
+        # For passthrough, check if the upstream model matches any profile and use that profile's setting
+        transform_reasoning = False
+        for p in PROFILES.values():
+            if backend.startswith(p.main_model):
+                transform_reasoning = p.transform_reasoning_content
+                break
+        return (None, backend, SUMMARY_MODEL, True, transform_reasoning)
 
     key = MODEL_ALIASES.get(client_model)
     if key and key in PROFILES:
         p = PROFILES[key]
-        return (p, p.main_model, p.summary_model, False)
+        return (p, p.main_model, p.summary_model, False, p.transform_reasoning_content)
 
     # No alias: treat it as an explicit upstream model name (backwards-compatible)
-    return (None, client_model or MAIN_MODEL, SUMMARY_MODEL, False)
+    return (None, client_model or MAIN_MODEL, SUMMARY_MODEL, False, False)

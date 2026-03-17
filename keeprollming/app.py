@@ -265,7 +265,7 @@ async def chat_completions(req: Request) -> Response:
         log("INFO", "request_received", header=headers, req_id=req_id, body_json=snip_json(payload))
 
     client_model = payload.get("model", MAIN_MODEL)
-    profile, upstream_model, summary_model, is_passthrough = resolve_profile_and_models(client_model)
+    profile, upstream_model, summary_model, is_passthrough, transform_reasoning_content = resolve_profile_and_models(client_model)
 
     # Check for custom prompt in request
     custom_prompt_type = payload.get("summary_prompt_type")
@@ -536,6 +536,10 @@ async def chat_completions(req: Request) -> Response:
             generated_tokens_est: int | None = 0
             last_progress_log_ms = 0.0
             r: httpx.Response | None = None
+            
+            # Track if we need to transform reasoning_content -> content for compatibility
+            needs_transformation = is_passthrough and transform_reasoning_content
+            
             try:
                 async with client.stream("POST", url, json=upstream_payload) as resp:
                     r = resp
@@ -555,6 +559,40 @@ async def chat_completions(req: Request) -> Response:
                         if len(captured) < MAX_SSE_BYTES:
                             take = min(len(chunk), MAX_SSE_BYTES - len(captured))
                             captured.extend(chunk[:take])
+
+                        # If we need to transform reasoning_content, modify the chunk before yielding
+                        transformed_chunk = chunk
+                        if needs_transformation and LOG_MODE in {"DEBUG", "MEDIUM"}:
+                            try:
+                                sse_text = chunk.decode("utf-8", errors="replace")
+                                if sse_text.startswith("data:"):
+                                    data_content = sse_text[5:].strip()
+                                    if data_content and data_content != "[DONE]":
+                                        obj = json.loads(data_content)
+                                        choices = obj.get("choices")
+                                        if isinstance(choices, list) and choices:
+                                            c0 = choices[0] if isinstance(choices[0], dict) else None
+                                            if isinstance(c0, dict):
+                                                delta = c0.get("delta")
+                                                if isinstance(delta, dict) and "reasoning_content" in delta:
+                                                    # Transform reasoning_content -> content for OpenAI compatibility
+                                                    transformed_delta = dict(delta)
+                                                    transformed_delta["content"] = transformed_delta.pop("reasoning_content")
+                                                    choices[0]["delta"] = transformed_delta
+                                                    data_content = json.dumps(obj, separators=(",", ":"))
+                                                    transformed_chunk = f"data: {data_content}\n\n".encode("utf-8")
+                                                    if LOG_MODE == "DEBUG" and stream_event_count <= 5:
+                                                        log(
+                                                            "INFO",
+                                                            "stream_transformed_reasoning",
+                                                            req_id=req_id,
+                                                            event_num=stream_event_count,
+                                                            original_keys=list(delta.keys()),
+                                                            transformed=True,
+                                                        )
+                            except Exception as _t:
+                                # If transformation fails, use original chunk
+                                pass
 
                         # Feed SSE parser buffer (best-effort utf-8 decode)
                         try:
@@ -705,7 +743,7 @@ async def chat_completions(req: Request) -> Response:
                                     if isinstance(fr, str) and fr:
                                         finish_reason = fr
 
-                        yield chunk
+                        yield transformed_chunk
             except httpx.HTTPStatusError as e:
                 err_text = e.response.text
                 log(

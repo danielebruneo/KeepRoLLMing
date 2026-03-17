@@ -1,13 +1,16 @@
 profiles:
   quick:
-    main_model: qwen2.5-3b-instruct
-    summary_model: qwen2.5-1.5b-instruct
+    main_model: unsloth/qwen3.5-35b-a3b
+    summary_model: unsloth/qwen3.5-35b-a3b
+    transform_reasoning_content: true
   main:
-    main_model: qwen2.5-v1-7b-instruct
-    summary_model: qwen2.5-3b-instruct
+    main_model: unsloth/qwen3.5-35b-a3b
+    summary_model: unsloth/qwen3.5-35b-a3b
+    transform_reasoning_content: true
   deep:
-    main_model: qwen/qwen3.5-35b-a3b
-    summary_model: qwen2.5-7b-instruct
+    main_model: unsloth/qwen3.5-35b-a3b
+    summary_model: unsloth/qwen3.5-35b-a3b
+    transform_reasoning_content: true
 
 model_aliases:
   local/quick: quick
@@ -20,8 +23,8 @@ model_aliases:
 passthrough_prefix: pass/
 default_profile: main
 upstream_base_url: http://127.0.0.1:1234/v1
-main_model: qwen/qwen3.5-35b-a3b
-summary_model: qwen2.5-1.5b-instruct
+main_model: unsloth/qwen3.5-35b-a3b
+summary_model: unsloth/qwen3.5-35b-a3b
 
 max_head: 3
 max_tail: 3
