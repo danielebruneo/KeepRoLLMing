@@ -614,8 +614,8 @@ async def chat_completions(req: Request) -> Response:
                                             event_num=stream_event_count,
                                             has_delta=bool(delta),
                                             delta_keys=list(delta.keys()) if isinstance(delta, dict) else [],
-                                            content=piece if isinstance(piece, str) and piece else None,
                                         )
+                                    
                                     if isinstance(delta, dict):
                                         piece = delta.get("content")
                                         if isinstance(piece, str) and piece:
