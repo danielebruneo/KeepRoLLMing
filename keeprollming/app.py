@@ -623,6 +623,13 @@ async def chat_completions(req: Request) -> Response:
                                             new_text_piece = True
                                         
                                         # Log tool_calls or function_call even when no content
+                                        # Handle reasoning_content (Qwen3.5 thinking tokens)
+                                        reasoning = delta.get("reasoning_content")
+                                        if isinstance(reasoning, str) and reasoning:
+                                            # Include reasoning content in the response
+                                            assistant_parts.append(reasoning)
+                                            new_text_piece = True
+
                                         if not new_text_piece and LOG_MODE in {"DEBUG", "MEDIUM"}:
                                             tool_calls = delta.get("tool_calls")
                                             function_call = delta.get("function_call")
