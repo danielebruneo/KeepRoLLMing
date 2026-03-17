@@ -37,6 +37,9 @@ def load_config() -> Dict[str, Any]:
     for profile_name in config.get("profiles", {}):
         if "transform_reasoning_content" not in config["profiles"][profile_name]:
             config["profiles"][profile_name]["transform_reasoning_content"] = False
+        # Alternative: add empty content field when only reasoning is present (default: False)
+        if "add_empty_content_when_reasoning_only" not in config["profiles"][profile_name]:
+            config["profiles"][profile_name]["add_empty_content_when_reasoning_only"] = False
     
     config.setdefault("model_aliases", {
         "local/quick": "quick",
@@ -126,6 +129,7 @@ class Profile:
     main_model: str
     summary_model: str
     transform_reasoning_content: bool = False
+    add_empty_content_when_reasoning_only: bool = False
 
 
 def create_profiles_from_config(config: Dict[str, Any]) -> Dict[str, Profile]:
@@ -136,7 +140,8 @@ def create_profiles_from_config(config: Dict[str, Any]) -> Dict[str, Profile]:
             name,
             profile_data["main_model"],
             profile_data["summary_model"],
-            transform_reasoning_content=profile_data.get("transform_reasoning_content", False)
+            transform_reasoning_content=profile_data.get("transform_reasoning_content", False),
+            add_empty_content_when_reasoning_only=profile_data.get("add_empty_content_when_reasoning_only", False)
         )
     return profiles
 
@@ -147,25 +152,27 @@ PROFILES: Dict[str, Profile] = create_profiles_from_config(CONFIG)
 MODEL_ALIASES: Dict[str, str] = CONFIG["model_aliases"]
 
 
-def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool, bool]:
-    """Return (profile_or_none, upstream_main_model, summary_model, passthrough_enabled, transform_reasoning_content)."""
+def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool, bool, bool]:
+    """Return (profile_or_none, upstream_main_model, summary_model, passthrough_enabled, transform_reasoning_content, add_empty_content_when_reasoning_only)."""
     if isinstance(client_model, str) and client_model.startswith(PASSTHROUGH_PREFIX):
         backend = client_model[len(PASSTHROUGH_PREFIX):].strip()
         # If empty, fallback to MAIN_MODEL but keep passthrough disabled to avoid surprises
         if not backend:
-            return (None, MAIN_MODEL, SUMMARY_MODEL, False, False)
+            return (None, MAIN_MODEL, SUMMARY_MODEL, False, False, False)
         # For passthrough, check if the upstream model matches any profile and use that profile's setting
         transform_reasoning = False
+        add_empty_content = False
         for p in PROFILES.values():
             if backend.startswith(p.main_model):
                 transform_reasoning = p.transform_reasoning_content
+                add_empty_content = p.add_empty_content_when_reasoning_only
                 break
-        return (None, backend, SUMMARY_MODEL, True, transform_reasoning)
+        return (None, backend, SUMMARY_MODEL, True, transform_reasoning, add_empty_content)
 
     key = MODEL_ALIASES.get(client_model)
     if key and key in PROFILES:
         p = PROFILES[key]
-        return (p, p.main_model, p.summary_model, False, p.transform_reasoning_content)
+        return (p, p.main_model, p.summary_model, False, p.transform_reasoning_content, p.add_empty_content_when_reasoning_only)
 
     # No alias: treat it as an explicit upstream model name (backwards-compatible)
-    return (None, client_model or MAIN_MODEL, SUMMARY_MODEL, False, False)
+    return (None, client_model or MAIN_MODEL, SUMMARY_MODEL, False, False, False)

@@ -265,7 +265,7 @@ async def chat_completions(req: Request) -> Response:
         log("INFO", "request_received", header=headers, req_id=req_id, body_json=snip_json(payload))
 
     client_model = payload.get("model", MAIN_MODEL)
-    profile, upstream_model, summary_model, is_passthrough, transform_reasoning_content = resolve_profile_and_models(client_model)
+    profile, upstream_model, summary_model, is_passthrough, transform_reasoning_content, add_empty_content_when_reasoning_only = resolve_profile_and_models(client_model)
 
     # Check for custom prompt in request
     custom_prompt_type = payload.get("summary_prompt_type")
@@ -538,7 +538,7 @@ async def chat_completions(req: Request) -> Response:
             r: httpx.Response | None = None
             
             # Track if we need to transform reasoning_content -> content for compatibility
-            needs_transformation = is_passthrough and transform_reasoning_content
+            needs_transformation = is_passthrough and (transform_reasoning_content or add_empty_content_when_reasoning_only)
             
             try:
                 async with client.stream("POST", url, json=upstream_payload) as resp:
@@ -574,22 +574,43 @@ async def chat_completions(req: Request) -> Response:
                                             c0 = choices[0] if isinstance(choices[0], dict) else None
                                             if isinstance(c0, dict):
                                                 delta = c0.get("delta")
-                                                if isinstance(delta, dict) and "reasoning_content" in delta:
-                                                    # Transform reasoning_content -> content for OpenAI compatibility
-                                                    transformed_delta = dict(delta)
-                                                    transformed_delta["content"] = transformed_delta.pop("reasoning_content")
-                                                    choices[0]["delta"] = transformed_delta
-                                                    data_content = json.dumps(obj, separators=(",", ":"))
-                                                    transformed_chunk = f"data: {data_content}\n\n".encode("utf-8")
-                                                    if LOG_MODE == "DEBUG" and stream_event_count <= 5:
-                                                        log(
-                                                            "INFO",
-                                                            "stream_transformed_reasoning",
-                                                            req_id=req_id,
-                                                            event_num=stream_event_count,
-                                                            original_keys=list(delta.keys()),
-                                                            transformed=True,
-                                                        )
+                                                if isinstance(delta, dict):
+                                                    has_reasoning = "reasoning_content" in delta
+                                                    has_content = "content" in delta and delta["content"]
+                                                    
+                                                    if has_reasoning:
+                                                        if transform_reasoning_content and not has_content:
+                                                            # Transform reasoning_content -> content for OpenAI compatibility
+                                                            transformed_delta = dict(delta)
+                                                            transformed_delta["content"] = transformed_delta.pop("reasoning_content")
+                                                            choices[0]["delta"] = transformed_delta
+                                                            data_content = json.dumps(obj, separators=(",", ":"))
+                                                            transformed_chunk = f"data: {data_content}\n\n".encode("utf-8")
+                                                            if LOG_MODE == "DEBUG" and stream_event_count <= 5:
+                                                                log(
+                                                                    "INFO",
+                                                                    "stream_transformed_reasoning_to_content",
+                                                                    req_id=req_id,
+                                                                    event_num=stream_event_count,
+                                                                    original_keys=list(delta.keys()),
+                                                                    method="transform",
+                                                                )
+                                                        elif add_empty_content_when_reasoning_only and not has_content:
+                                                            # Add empty content field while keeping reasoning_content intact
+                                                            transformed_delta = dict(delta)
+                                                            transformed_delta["content"] = ""
+                                                            choices[0]["delta"] = transformed_delta
+                                                            data_content = json.dumps(obj, separators=(",", ":"))
+                                                            transformed_chunk = f"data: {data_content}\n\n".encode("utf-8")
+                                                            if LOG_MODE == "DEBUG" and stream_event_count <= 5:
+                                                                log(
+                                                                    "INFO",
+                                                                    "stream_added_empty_content",
+                                                                    req_id=req_id,
+                                                                    event_num=stream_event_count,
+                                                                    original_keys=list(delta.keys()),
+                                                                    method="add_empty_content",
+                                                                )
                             except Exception as _t:
                                 # If transformation fails, use original chunk
                                 pass
