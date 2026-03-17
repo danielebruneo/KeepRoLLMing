@@ -278,6 +278,24 @@ async def chat_completions(req: Request) -> Response:
     if not isinstance(messages, list):
         return JSONResponse({"error": {"message": "Invalid payload: messages must be a list"}}, status_code=400)
 
+    # Calculate message length metrics for tracking
+    first_message_length = 0
+    last_message_length = 0
+    avg_message_length = 0.0
+    
+    if isinstance(messages, list) and len(messages) > 0:
+        total_chars = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                length = len(content)
+                total_chars += length
+                if msg.get("role") == "user":
+                    last_message_length = max(last_message_length, length)
+        
+        first_message_length = len(messages[0].get("content", "")) if messages else 0
+        avg_message_length = total_chars / len(messages) if messages else 0
+
     stream = bool(payload.get("stream", False))
 
     last_user = extract_last_user_text(messages)
