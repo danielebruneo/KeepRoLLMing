@@ -604,6 +604,18 @@ async def chat_completions(req: Request) -> Response:
                                 if isinstance(c0, dict):
                                     delta = c0.get("delta")
                                     new_text_piece = False
+                                    
+                                    # DEBUG: Log every chunk for first 10 events to see what's happening
+                                    if LOG_MODE == "DEBUG" and stream_event_count <= 10:
+                                        log(
+                                            "INFO",
+                                            "stream_chunk_debug",
+                                            req_id=req_id,
+                                            event_num=stream_event_count,
+                                            has_delta=bool(delta),
+                                            delta_keys=list(delta.keys()) if isinstance(delta, dict) else [],
+                                            content=piece if isinstance(piece, str) and piece else None,
+                                        )
                                     if isinstance(delta, dict):
                                         piece = delta.get("content")
                                         if isinstance(piece, str) and piece:
