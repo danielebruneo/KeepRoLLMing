@@ -609,12 +609,41 @@ async def chat_completions(req: Request) -> Response:
                                         if isinstance(piece, str) and piece:
                                             assistant_parts.append(piece)
                                             new_text_piece = True
+                                        
+                                        # Log tool_calls or function_call even when no content
+                                        if not new_text_piece and LOG_MODE in {"DEBUG", "MEDIUM"}:
+                                            tool_calls = delta.get("tool_calls")
+                                            function_call = delta.get("function_call")
+                                            if tool_calls or function_call:
+                                                log(
+                                                    "INFO",
+                                                    "stream_tool_response",
+                                                    req_id=req_id,
+                                                    event_num=stream_event_count,
+                                                    tool_calls=tool_calls,
+                                                    function_call=function_call,
+                                                )
                                     msg_obj = c0.get("message")
                                     if isinstance(msg_obj, dict):
                                         piece = msg_obj.get("content")
                                         if isinstance(piece, str) and piece:
                                             assistant_parts.append(piece)
                                             new_text_piece = True
+
+                                    # Log when we have choices but no content captured
+                                    if not new_text_piece and LOG_MODE == "DEBUG":
+                                        has_tool_calls = bool(delta.get("tool_calls")) or bool(c0.get("tool_calls"))
+                                        has_function_call = bool(delta.get("function_call")) or bool(c0.get("function_call"))
+                                        if has_tool_calls or has_function_call:
+                                            log(
+                                                "INFO",
+                                                "stream_non_text_response",
+                                                req_id=req_id,
+                                                event_num=stream_event_count,
+                                                delta_keys=list(delta.keys()) if isinstance(delta, dict) else [],
+                                                tool_calls=c0.get("tool_calls"),
+                                                function_call=c0.get("function_call"),
+                                            )
 
                                     if new_text_piece:
                                         now_perf = time.perf_counter()
