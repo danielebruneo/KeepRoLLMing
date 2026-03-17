@@ -301,6 +301,7 @@ async def chat_completions(req: Request) -> Response:
     did_summarize = False
     repacked_messages = messages
     skip_summary_for_tools = _is_tool_orchestration_payload(payload, messages)
+    summary_tokens = 0
 
     if is_passthrough:
         log("INFO", "summary_bypassed", req_id=req_id, reason="passthrough_model")
@@ -357,6 +358,7 @@ async def chat_completions(req: Request) -> Response:
                             pinned_head_n=pinned_head_n,
                         )
                         did_summarize = True
+                        summary_tokens = _count_tokens_safe(summary_text) or 0
                         if middle:
                             start_idx = head_n
                             end_idx = n - tail_n - 1
@@ -399,6 +401,7 @@ async def chat_completions(req: Request) -> Response:
                                 pinned_head_n=pinned_head_n,
                             )
                             did_summarize = True
+                            summary_tokens = _count_tokens_safe(summary_text) or 0
                             if is_summary_cacheable(summary_text):
                                 entry = make_cache_entry(
                                     fingerprint=fingerprint or conversation_fingerprint(messages=messages, user_id=user_id, conv_id=conv_id, n_head=SUMMARY_CACHE_FINGERPRINT_MSGS),
@@ -433,6 +436,7 @@ async def chat_completions(req: Request) -> Response:
                     pinned_head_n=plan.pinned_head_n,
                 )
                 did_summarize = True
+                summary_tokens = _count_tokens_safe(summary_text) or 0
 
             repacked_messages = ensure_repacked_has_user_message(repacked_messages, messages)
             repacked_tok_est = TOK.count_messages(repacked_messages)
