@@ -4,16 +4,19 @@ profiles:
     summary_model: unsloth/qwen3.5-35b-a3b
     transform_reasoning_content: false
     add_empty_content_when_reasoning_only: true
+    reasoning_placeholder_content: "..."
   main:
     main_model: unsloth/qwen3.5-35b-a3b
     summary_model: unsloth/qwen3.5-35b-a3b
     transform_reasoning_content: false
     add_empty_content_when_reasoning_only: true
+    reasoning_placeholder_content: "..."
   deep:
     main_model: unsloth/qwen3.5-35b-a3b
     summary_model: unsloth/qwen3.5-35b-a3b
     transform_reasoning_content: false
     add_empty_content_when_reasoning_only: true
+    reasoning_placeholder_content: "..."
 
 model_aliases:
   local/quick: quick

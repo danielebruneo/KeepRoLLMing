@@ -265,7 +265,7 @@ async def chat_completions(req: Request) -> Response:
         log("INFO", "request_received", header=headers, req_id=req_id, body_json=snip_json(payload))
 
     client_model = payload.get("model", MAIN_MODEL)
-    profile, upstream_model, summary_model, is_passthrough, transform_reasoning_content, add_empty_content_when_reasoning_only = resolve_profile_and_models(client_model)
+    profile, upstream_model, summary_model, is_passthrough, transform_reasoning_content, add_empty_content_when_reasoning_only, reasoning_placeholder = resolve_profile_and_models(client_model)
 
     # Check for custom prompt in request
     custom_prompt_type = payload.get("summary_prompt_type")
@@ -596,9 +596,9 @@ async def chat_completions(req: Request) -> Response:
                                                                     method="transform",
                                                                 )
                                                         elif add_empty_content_when_reasoning_only and not has_content:
-                                                            # Add empty content field while keeping reasoning_content intact
+                                                            # Add placeholder content field while keeping reasoning_content intact
                                                             transformed_delta = dict(delta)
-                                                            transformed_delta["content"] = ""
+                                                            transformed_delta["content"] = reasoning_placeholder or ""
                                                             choices[0]["delta"] = transformed_delta
                                                             data_content = json.dumps(obj, separators=(",", ":"))
                                                             transformed_chunk = f"data: {data_content}\n\n".encode("utf-8")
@@ -610,6 +610,7 @@ async def chat_completions(req: Request) -> Response:
                                                                     event_num=stream_event_count,
                                                                     original_keys=list(delta.keys()),
                                                                     method="add_empty_content",
+                                                                    placeholder_used=reasoning_placeholder or "(empty)",
                                                                 )
                             except Exception as _t:
                                 # If transformation fails, use original chunk
