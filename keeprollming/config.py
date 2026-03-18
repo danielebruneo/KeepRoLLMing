@@ -12,19 +12,31 @@ from typing import Dict, Optional, Tuple, Any
 
 def load_config() -> Dict[str, Any]:
     """Load configuration from config.yaml or config.json file, with fallback to environment variables."""
+
+    # Check for custom config file via environment variable
+    custom_config_path = os.getenv("CONFIG_FILE")
     
-    # Try to load from config.yaml first
-    try:
-        with open("config.yaml", "r") as f:
-            config = yaml.safe_load(f)
-    except FileNotFoundError:
-        # Try to load from config.json if yaml doesn't exist
-        try:
-            with open("config.json", "r") as f:
+    if custom_config_path and os.path.exists(custom_config_path):
+        # Load from custom config path
+        if custom_config_path.endswith(".yaml") or custom_config_path.endswith(".yml"):
+            with open(custom_config_path, "r") as f:
+                config = yaml.safe_load(f)
+        else:
+            with open(custom_config_path, "r") as f:
                 config = json.load(f)
+    else:
+        # Try to load from config.yaml first
+        try:
+            with open("config.yaml", "r") as f:
+                config = yaml.safe_load(f)
         except FileNotFoundError:
-            # If no config file exists, use defaults
-            config = {}
+            # Try to load from config.json if yaml doesn't exist
+            try:
+                with open("config.json", "r") as f:
+                    config = json.load(f)
+            except FileNotFoundError:
+                # If no config file exists, use defaults
+                config = {}
     
     # Set defaults for missing values
     config.setdefault("profiles", {

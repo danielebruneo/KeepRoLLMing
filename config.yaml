@@ -3,19 +3,19 @@ profiles:
     main_model: unsloth/qwen3.5-35b-a3b
     summary_model: unsloth/qwen3.5-35b-a3b
     transform_reasoning_content: false
-    add_empty_content_when_reasoning_only: true
+    add_empty_content_when_reasoning_only: false
     reasoning_placeholder_content: "..."
   main:
     main_model: unsloth/qwen3.5-35b-a3b
     summary_model: unsloth/qwen3.5-35b-a3b
     transform_reasoning_content: false
-    add_empty_content_when_reasoning_only: true
+    add_empty_content_when_reasoning_only: false
     reasoning_placeholder_content: "..."
   deep:
     main_model: unsloth/qwen3.5-35b-a3b
     summary_model: unsloth/qwen3.5-35b-a3b
     transform_reasoning_content: false
-    add_empty_content_when_reasoning_only: true
+    add_empty_content_when_reasoning_only: false
     reasoning_placeholder_content: "..."
 
 model_aliases:
@@ -28,7 +28,7 @@ model_aliases:
 
 passthrough_prefix: pass/
 default_profile: main
-upstream_base_url: http://127.0.0.1:1234/v1
+upstream_base_url: http://arkai.local:1234/v1
 main_model: unsloth/qwen3.5-35b-a3b
 summary_model: unsloth/qwen3.5-35b-a3b
 

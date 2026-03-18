@@ -539,6 +539,9 @@ async def chat_completions(req: Request) -> Response:
             
             # Track if we need to transform reasoning_content -> content for compatibility
             needs_transformation = is_passthrough and (transform_reasoning_content or add_empty_content_when_reasoning_only)
+
+            # Track whether we've seen regular content (not just reasoning_content) during streaming
+            has_seen_regular_content: bool = False
             
             try:
                 async with client.stream("POST", url, json=upstream_payload) as resp:
@@ -594,23 +597,6 @@ async def chat_completions(req: Request) -> Response:
                                                                     event_num=stream_event_count,
                                                                     original_keys=list(delta.keys()),
                                                                     method="transform",
-                                                                )
-                                                        elif add_empty_content_when_reasoning_only and not has_content:
-                                                            # Add placeholder content field while keeping reasoning_content intact
-                                                            transformed_delta = dict(delta)
-                                                            transformed_delta["content"] = reasoning_placeholder or ""
-                                                            choices[0]["delta"] = transformed_delta
-                                                            data_content = json.dumps(obj, separators=(",", ":"))
-                                                            transformed_chunk = f"data: {data_content}\n\n".encode("utf-8")
-                                                            if LOG_MODE == "DEBUG" and stream_event_count <= 5:
-                                                                log(
-                                                                    "INFO",
-                                                                    "stream_added_empty_content",
-                                                                    req_id=req_id,
-                                                                    event_num=stream_event_count,
-                                                                    original_keys=list(delta.keys()),
-                                                                    method="add_empty_content",
-                                                                    placeholder_used=reasoning_placeholder or "(empty)",
                                                                 )
                             except Exception as _t:
                                 # If transformation fails, use original chunk
@@ -680,6 +666,7 @@ async def chat_completions(req: Request) -> Response:
                                         piece = delta.get("content")
                                         if isinstance(piece, str) and piece:
                                             assistant_parts.append(piece)
+                                            has_seen_regular_content = True
                                             new_text_piece = True
                                         
                                         # Log tool_calls or function_call even when no content
@@ -707,6 +694,7 @@ async def chat_completions(req: Request) -> Response:
                                         piece = msg_obj.get("content")
                                         if isinstance(piece, str) and piece:
                                             assistant_parts.append(piece)
+                                            has_seen_regular_content = True
                                             new_text_piece = True
 
                                     # Log when we have choices but no content captured
@@ -764,6 +752,33 @@ async def chat_completions(req: Request) -> Response:
                                     fr = c0.get("finish_reason")
                                     if isinstance(fr, str) and fr:
                                         finish_reason = fr
+
+                        # If add_empty_content_when_reasoning_only is enabled and we haven't seen any regular content,
+                        # inject an empty content chunk at the end of the stream
+                        if add_empty_content_when_reasoning_only and not has_seen_regular_content and finish_reason is not None:
+                            # Create a final delta with empty content to satisfy OpenAI clients
+                            final_chunk_obj = {
+                                "id": obj.get("id"),
+                                "created": obj.get("created"),
+                                "model": obj.get("model"),
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {"content": reasoning_placeholder or ""},
+                                        "finish_reason": finish_reason,
+                                    }
+                                ],
+                            }
+                            if final_usage:
+                                final_chunk_obj["usage"] = final_usage
+                            yield (f"data: {json.dumps(final_chunk_obj, separators=(',', ':'))}\n\n").encode("utf-8")
+                            if LOG_MODE == "DEBUG" and not has_seen_regular_content:
+                                log(
+                                    "INFO",
+                                    "stream_added_empty_content_at_end",
+                                    req_id=req_id,
+                                    placeholder_used=reasoning_placeholder or "(empty)",
+                                )
 
                         yield transformed_chunk
             except httpx.HTTPStatusError as e:

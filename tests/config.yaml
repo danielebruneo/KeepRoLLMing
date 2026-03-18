@@ -1,0 +1,38 @@
+profiles:
+  quick:
+    main_model: qwen2.5-3b-instruct
+    summary_model: qwen2.5-1.5b-instruct
+    transform_reasoning_content: false
+    add_empty_content_when_reasoning_only: false
+    reasoning_placeholder_content: "..."
+  main:
+    main_model: qwen2.5-v1-7b-instruct
+    summary_model: qwen2.5-3b-instruct
+    transform_reasoning_content: false
+    add_empty_content_when_reasoning_only: false
+    reasoning_placeholder_content: "..."
+  deep:
+    main_model: qwen2.5-27b-instruct
+    summary_model: qwen2.5-7b-instruct
+    transform_reasoning_content: false
+    add_empty_content_when_reasoning_only: false
+    reasoning_placeholder_content: "..."
+
+model_aliases:
+  local/quick: quick
+  quick: quick
+  local/main: main
+  main: main
+  local/deep: deep
+  deep: deep
+
+passthrough_prefix: pass/
+default_profile: main
+upstream_base_url: http://localhost:9999/v1
+main_model: qwen2.5-v1-7b-instruct
+summary_model: qwen2.5-3b-instruct
+
+max_head: 3
+max_tail: 3
+default_ctx_len: 4096
+summary_max_tokens: 512
