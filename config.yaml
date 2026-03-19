@@ -18,11 +18,11 @@ routes:
 
   arkai/lmstudio:
     is_private: true  # Not listed in /models
-    upstream_base_url: "http://arkai.local:1234/v1"
+    upstream_url: "http://arkai.local:1234"
 
   arkai/lemonade:
     is_private: true  # Not listed in /models
-    upstream_base_url: "http://arkai.local:8000/api/v1"
+    upstream_url: "http://arkai.local:8000/api/v1"
 
   # ========== MODELS ==========
 
@@ -97,6 +97,14 @@ routes:
   chat/deep:
     extends: [chat, base/deep]
 
+  # ========== LibreChat ROUTES ==========  
+  local/quick:
+    extends: [base/quick]
+  local/main:
+    extends: [base/main]
+  local/deep:
+    extends: [base/deep]
+
   # ========== SYSTEM ROUTES ==========
 
   sys/memory:
@@ -120,3 +128,4 @@ routes:
   code/architect:
     extends: [base/deep]
     summary_enabled: true
+

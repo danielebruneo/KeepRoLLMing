@@ -85,10 +85,10 @@ class RouteMatch:
 
 # Built-in default routes that work without any configuration
 BUILTIN_ROUTES: List[Route] = [
-    # Quick profile - fast responses with summarization
+    # Quick profile - fast responses with summarization (fallback when no user config)
     Route(
-        name="quick-default",
-        pattern="local/quick|quick",
+        name="builtin/quick-default",
+        pattern="builtin/quick|quick-fallback",
         main_model="qwen2.5-3b-instruct",
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
@@ -97,10 +97,10 @@ BUILTIN_ROUTES: List[Route] = [
         passthrough_enabled=False,
     ),
 
-    # Main profile - balanced performance
+    # Main profile - balanced performance (fallback when no user config)
     Route(
-        name="main-default",
-        pattern="local/main|main",
+        name="builtin/main-default",
+        pattern="builtin/main|main-fallback",
         main_model="qwen2.5-v1-7b-instruct",
         summary_model="qwen2.5-3b-instruct",
         ctx_len=8192,
@@ -109,10 +109,10 @@ BUILTIN_ROUTES: List[Route] = [
         passthrough_enabled=False,
     ),
 
-    # Deep profile - maximum context and quality
+    # Deep profile - maximum context and quality (fallback when no user config)
     Route(
-        name="deep-default",
-        pattern="local/deep|deep",
+        name="builtin/deep-default",
+        pattern="builtin/deep|deep-fallback",
         main_model="qwen2.5-27b-instruct",
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
@@ -121,10 +121,10 @@ BUILTIN_ROUTES: List[Route] = [
         passthrough_enabled=False,
     ),
 
-    # Code/Senior - specialized for senior developer tasks
+    # Code/Senior - specialized for senior developer tasks (fallback when no user config)
     Route(
-        name="code-senior-default",
-        pattern="code/senior|senior",
+        name="builtin/code-senior-default",
+        pattern="builtin/code/senior|senior-fallback",
         main_model="qwen3.5-35b-a3b",
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
@@ -133,10 +133,10 @@ BUILTIN_ROUTES: List[Route] = [
         passthrough_enabled=False,
     ),
 
-    # Code/Junior - simplified for junior developer tasks
+    # Code/Junior - simplified for junior developer tasks (fallback when no user config)
     Route(
-        name="code-junior-default",
-        pattern="code/junior|junior",
+        name="builtin/code-junior-default",
+        pattern="builtin/code/junior|junior-fallback",
         main_model="qwen2.5-7b-instruct",
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
@@ -145,9 +145,9 @@ BUILTIN_ROUTES: List[Route] = [
         passthrough_enabled=False,
     ),
 
-    # Passthrough - bypass summarization, forward directly
+    # Passthrough - bypass summarization, forward directly (fallback when no user config)
     Route(
-        name="passthrough-default",
+        name="builtin/passthrough-default",
         pattern="pass/*",
         passthrough_enabled=True,
         summary_enabled=False,
@@ -155,9 +155,9 @@ BUILTIN_ROUTES: List[Route] = [
     ),
 ]
 
-# Fallback route for unmatched models
+# Fallback route for unmatched models (use builtin prefix to avoid conflicts)
 DEFAULT_FALLBACK_ROUTE = Route(
-    name="fallback-default",
+    name="builtin/fallback-default",
     pattern="*",
     main_model="qwen2.5-v1-7b-instruct",
     summary_model="qwen2.5-3b-instruct",
@@ -368,6 +368,22 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         "cost_priority": get_value(route.cost_priority, resolved_parent.cost_priority),
         "extends": None,  # Resolved - no longer needs to extend
     }
+
+    # Apply defaults for any remaining _UNSET values (from parent's defaults)
+    def apply_default(val, default):
+        return val if val is not _UNSET else default
+
+    merged_settings["summary_enabled"] = apply_default(merged_settings["summary_enabled"], True)
+    merged_settings["passthrough_enabled"] = apply_default(merged_settings["passthrough_enabled"], False)
+    merged_settings["transform_reasoning_content"] = apply_default(merged_settings["transform_reasoning_content"], False)
+    merged_settings["add_empty_content_when_reasoning_only"] = apply_default(merged_settings["add_empty_content_when_reasoning_only"], False)
+    merged_settings["reasoning_placeholder_content"] = apply_default(merged_settings["reasoning_placeholder_content"], "")
+    merged_settings["upstream_headers"] = apply_default(merged_settings["upstream_headers"], {})
+    merged_settings["fallback_chain"] = apply_default(merged_settings["fallback_chain"], [])
+    merged_settings["circuit_breaker_enabled"] = apply_default(merged_settings["circuit_breaker_enabled"], False)
+    merged_settings["failure_threshold"] = apply_default(merged_settings["failure_threshold"], 3)
+    merged_settings["recovery_timeout"] = apply_default(merged_settings["recovery_timeout"], 60)
+    merged_settings["cost_priority"] = apply_default(merged_settings["cost_priority"], 999)
 
     return Route(**merged_settings)
 
