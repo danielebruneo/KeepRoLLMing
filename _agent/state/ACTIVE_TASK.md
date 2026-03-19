@@ -51,36 +51,37 @@ routes:
 - [x] Add built-in default routes (quick/main/deep/code/senior/code/junior/pass/*)
 - [ ] Review and refine design with stakeholders
 
-### Phase 2: Core Infrastructure
-- [ ] Create `Route` dataclass in config.py (include fallback_chain field)
-- [ ] Define built-in default routes programmatically
-- [ ] Update config loader to parse user-defined routes from YAML/JSON
-- [ ] Implement prefix-based pattern matching logic with wildcard support (pass/*, code/*)
-- [ ] Add fallback/default route handling
-- [ ] Write unit tests for routing logic
+### Phase 2: Core Infrastructure ✅
+- [x] Create `Route` dataclass in config.py (include fallback_chain field)
+- [x] Define built-in default routes programmatically
+- [x] Update config loader to parse user-defined routes from YAML/JSON
+- [x] Implement prefix-based pattern matching logic with wildcard support (pass/*, code/*)
+- [x] Add fallback/default route handling and resolve_route function
+- [x] Write unit tests for routing logic
 
 ### Phase 3: Integration with App
-- [ ] Replace `resolve_profile_and_models()` with new routing resolver
+- [ ] Replace `resolve_profile_and_models()` with new routing resolver in app.py
 - [ ] Update app.py to use route settings for decision making
 - [ ] Ensure passthrough and summary logic respect route config
 - [ ] Support capture groups in pattern matching (e.g., pass/(.*) -> $1)
-- [ ] Implement fallback chain resolution:
+- [ ] Implement fallback chain resolution in request handling:
   - Track visited models per request to prevent loops
   - Attempt each fallback option sequentially
   - Log each fallback attempt for debugging
   - Return detailed error if all options fail
 - [ ] Write integration tests
 
-### Phase 4: Migration & Documentation
-- [ ] Add migration guide from old profile-based config
-- [ ] Update README with new configuration examples
-- [ ] Write comprehensive documentation
-- [ ] Create example configs for common use cases (code/senior, code/junior)
-- [ ] Document fallback chain usage and best practices
+### Phase 4: Cleanup & Migration
+- [ ] Remove old profile-based configuration support (profiles section)
+- [ ] Remove environment variable overrides for models (MAIN_MODEL, SUMMARY_MODEL, etc.)
+- [ ] Remove model_aliases section - use routes instead
+- [ ] Update all documentation to reflect new config structure
+- [ ] Create migration guide from old config format to new route-based format
+- [ ] Add deprecation warnings during transition period
 
 ### Phase 5: Testing & Validation
-- [ ] Test backward compatibility with existing configs
-- [ ] Verify all existing tests still pass
+- [ ] Test backward compatibility with existing configs (during transition)
+- [ ] Verify all existing tests still pass after cleanup
 - [ ] Add new e2e tests for routing scenarios including code/senior and code/junior
 - [ ] Test fallback chain scenarios (deep -> medium -> quick)
 - [ ] Performance testing (ensure no regression)
@@ -104,14 +105,15 @@ routes:
 
 ## Timeline
 - **Phase 1**: Complete ✅
-- **Phase 2**: ~4 days (includes wildcard pattern matching, capture groups, and fallback chain infrastructure)
-- **Phase 3**: ~3 days (includes fallback chain resolution logic)  
-- **Phase 4**: ~1 day
-- **Phase 5**: ~2 days (includes extensive fallback testing)
+- **Phase 2**: Complete ✅ (Core infrastructure with routing module)
+- **Phase 3**: ~3 days (Integration with app.py and request handling)
+- **Phase 4**: ~2 days (Cleanup old config system, remove env vars, migration guide)
+- **Phase 5**: ~2 days (Comprehensive testing including e2e fallback scenarios)
 - **Total**: ~10-12 days
 
 ## Notes
 - Keep existing `model_aliases` as shortcuts for route names during transition
-- Support both old profile-based and new route-based configs during transition
+- Support both old profile-based and new route-based configs during Phase 3
+- Remove all legacy config support in Phase 4 (profiles, env vars, model_aliases)
 - Ensure clear error messages when config is invalid
 - Document the order of precedence (user routes > built-in defaults > fallback)

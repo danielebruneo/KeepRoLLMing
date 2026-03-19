@@ -1,0 +1,51 @@
+# Test configuration for keeprollming orchestrator
+# Uses simple, predictable values for testing
+
+upstream_base_url: "http://localhost:9999/v1"
+
+routes:
+  # Quick profile - fast responses
+  quick:
+    pattern: "local/quick|quick"
+    upstream_url: "http://localhost:9999/v1"
+    main_model: "test-quick-model"
+    summary_model: "test-summary-1.5b"
+    ctx_len: 8192
+    max_tokens: 4096
+    summary_enabled: true
+
+  # Main profile - balanced
+  main:
+    pattern: "local/main|main"
+    upstream_url: "http://localhost:9999/v1"
+    main_model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 16384
+    max_tokens: 8192
+    summary_enabled: true
+
+  # Deep profile - maximum context
+  deep:
+    pattern: "local/deep|deep"
+    upstream_url: "http://localhost:9999/v1"
+    main_model: "test-deep-model"
+    summary_model: "test-summary-7b"
+    ctx_len: 32768
+    max_tokens: 16384
+    summary_enabled: true
+
+  # Passthrough route
+  passthrough:
+    pattern: "pass/*"
+    upstream_url: "http://localhost:9999/v1"
+    main_model: null
+    summary_model: null
+    ctx_len: 8192
+    max_tokens: 4096
+    passthrough_enabled: true
+
+# Fallback settings
+fallback:
+  main_model: "test-fallback-model"
+  summary_model: "test-summary-default"
+  ctx_len: 8192

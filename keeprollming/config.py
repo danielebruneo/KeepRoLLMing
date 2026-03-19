@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import json
 import yaml
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple, Any, List
 
 # Import routing module for Route class and functions
@@ -14,6 +14,9 @@ from keeprollming.routing import (
     resolve_route as _resolve_route,
     resolve_fallback_chain as _resolve_fallback_chain,
     get_route_settings as _get_route_settings,
+    DefaultSettings,
+    ModelConfig,
+    _UNSET,
 )
 
 # ----------------------------
@@ -32,39 +35,138 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
         List of Route objects from user configuration
     """
     user_routes = []
-    routes_config = config.get("routes", [])
+    routes_config = config.get("routes", {})
 
-    for route_data in routes_config:
-        try:
-            route = Route(
-                name=route_data.get("name", "unnamed"),
-                pattern=route_data.get("pattern", ""),
-                summary_enabled=route_data.get("summary_enabled", True),
-                passthrough_enabled=route_data.get("passthrough_enabled", False),
-                main_model=route_data.get("main_model"),
-                summary_model=route_data.get("summary_model"),
-                ctx_len=route_data.get("ctx_len", 8192),
-                max_tokens=route_data.get("max_tokens", 4096),
-                transform_reasoning_content=route_data.get("transform_reasoning_content", False),
-                add_empty_content_when_reasoning_only=route_data.get("add_empty_content_when_reasoning_only", False),
-                reasoning_placeholder_content=route_data.get("reasoning_placeholder_content", ""),
-                backend_model_pattern=route_data.get("backend_model_pattern"),
-                fallback_chain=route_data.get("fallback_chain", []),
-                circuit_breaker_enabled=route_data.get("circuit_breaker_enabled", False),
-                failure_threshold=route_data.get("failure_threshold", 3),
-                recovery_timeout=route_data.get("recovery_timeout", 60),
-                cost_priority=route_data.get("cost_priority", 999),
-            )
-            user_routes.append(route)
-        except Exception as e:
-            # Log error but continue with other routes
-            print(f"Warning: Failed to parse route '{route_data.get('name', 'unknown')}': {e}")
+    # Handle both list format and dict format
+    if isinstance(routes_config, list):
+        # List format: [{"name": "quick", ...}, {"name": "main", ...}]
+        for route_data in routes_config:
+            try:
+                name = route_data.get("name", "unnamed")
+                pattern = route_data.get("pattern", name)
+
+                # Helper to get value or _UNSET if not specified
+                def get_or_unset(key, default=None):
+                    return route_data.get(key, _UNSET)  # type: ignore
+
+                route = Route(
+                    name=name,
+                    pattern=pattern,
+                    summary_enabled=get_or_unset("summary_enabled", True),  # type: ignore
+                    passthrough_enabled=get_or_unset("passthrough_enabled", False),  # type: ignore
+                    main_model=get_or_unset("main_model"),  # type: ignore
+                    summary_model=get_or_unset("summary_model"),  # type: ignore
+                    ctx_len=get_or_unset("ctx_len", _UNSET),  # type: ignore
+                    max_tokens=get_or_unset("max_tokens", _UNSET),  # type: ignore
+                    transform_reasoning_content=get_or_unset("transform_reasoning_content", False),  # type: ignore
+                    add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
+                    reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
+                    backend_model_pattern=get_or_unset("backend_model_pattern"),  # type: ignore
+                    upstream_url=get_or_unset("upstream_url"),  # type: ignore
+                    upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
+                    fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
+                    circuit_breaker_enabled=get_or_unset("circuit_breaker_enabled", False),  # type: ignore
+                    failure_threshold=get_or_unset("failure_threshold", 3),  # type: ignore
+                    recovery_timeout=get_or_unset("recovery_timeout", 60),  # type: ignore
+                    cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
+                    extends=route_data.get("extends"),
+                )
+                user_routes.append(route)
+            except Exception as e:
+                print(f"Warning: Failed to parse route: {e}")
+    elif isinstance(routes_config, dict):
+        # Dict format: {"quick": {...}, "main": {...}}
+        for name, route_data in routes_config.items():
+            if not isinstance(route_data, dict):
+                continue
+
+            try:
+                pattern = route_data.get("pattern", name)
+
+                # Helper to get value or _UNSET if not specified
+                def get_or_unset(key, default=None):
+                    return route_data.get(key, _UNSET)  # type: ignore
+
+                route = Route(
+                    name=name,
+                    pattern=pattern,
+                    summary_enabled=get_or_unset("summary_enabled", True),  # type: ignore
+                    passthrough_enabled=get_or_unset("passthrough_enabled", False),  # type: ignore
+                    main_model=get_or_unset("main_model"),  # type: ignore
+                    summary_model=get_or_unset("summary_model"),  # type: ignore
+                    ctx_len=get_or_unset("ctx_len", _UNSET),  # type: ignore
+                    max_tokens=get_or_unset("max_tokens", _UNSET),  # type: ignore
+                    transform_reasoning_content=get_or_unset("transform_reasoning_content", False),  # type: ignore
+                    add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
+                    reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
+                    backend_model_pattern=get_or_unset("backend_model_pattern"),  # type: ignore
+                    upstream_url=get_or_unset("upstream_url"),  # type: ignore
+                    upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
+                    fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
+                    circuit_breaker_enabled=get_or_unset("circuit_breaker_enabled", False),  # type: ignore
+                    failure_threshold=get_or_unset("failure_threshold", 3),  # type: ignore
+                    recovery_timeout=get_or_unset("recovery_timeout", 60),  # type: ignore
+                    cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
+                    extends=route_data.get("extends"),
+                )
+                user_routes.append(route)
+            except Exception as e:
+                print(f"Warning: Failed to parse route '{name}': {e}")
 
     return user_routes
 
 
+def resolve_route_settings(
+    route: Route,
+    models_config: Dict[str, ModelConfig],
+    defaults: DefaultSettings,
+) -> Tuple[int, int]:
+    """
+    Resolve ctx_len and max_tokens for a route by applying 3-level hierarchy.
+    
+    Priority order (highest to lowest):
+      1. Route level settings
+      2. Model-specific settings  
+      3. Root-level defaults
+    
+    Args:
+        route: The matched route with potentially unset ctx_len/max_tokens
+        models_config: Dictionary mapping model names to their configs
+        defaults: Global default settings
+        
+    Returns:
+        Tuple of (resolved_ctx_len, resolved_max_tokens)
+    """
+    # Get main model name for lookup
+    main_model = route.main_model
+    
+    # Start with global defaults
+    ctx_len = defaults.ctx_len
+    max_tokens = defaults.max_tokens
+    
+    # Apply model-specific settings if available
+    if main_model and main_model in models_config:
+        model_cfg = models_config[main_model]
+        
+        # Override with model values if set (not _UNSET)
+        if model_cfg.ctx_len is not _UNSET:  # type: ignore
+            ctx_len = model_cfg.ctx_len  # type: ignore
+        
+        if model_cfg.max_tokens is not _UNSET:  # type: ignore
+            max_tokens = model_cfg.max_tokens  # type: ignore
+    
+    # Apply route-level overrides (highest priority)
+    if route.ctx_len is not _UNSET:  # type: ignore
+        ctx_len = route.ctx_len  # type: ignore
+    
+    if route.max_tokens is not _UNSET:  # type: ignore
+        max_tokens = route.max_tokens  # type: ignore
+    
+    return ctx_len, max_tokens
+
+
 def load_config() -> Dict[str, Any]:
-    """Load configuration from config.yaml or config.json file, with fallback to environment variables."""
+    """Load configuration from config.yaml or config.json file."""
 
     # Check for custom config file via environment variable
     custom_config_path = os.getenv("CONFIG_FILE")
@@ -92,54 +194,31 @@ def load_config() -> Dict[str, Any]:
                 config = {}
 
     # Set defaults for missing values
-    config.setdefault("profiles", {
-        "quick": {"main_model": "qwen2.5-3b-instruct", "summary_model": "qwen2.5-1.5b-instruct"},
-        "main": {"main_model": "qwen2.5-v1-7b-instruct", "summary_model": "qwen2.5-3b-instruct"},
-        "deep": {"main_model": "qwen2.5-27b-instruct", "summary_model": "qwen2.5-7b-instruct"}
-    })
-
-    # Add reasoning_content transformation option per profile (default: False)
-    for profile_name in config.get("profiles", {}):
-        if "transform_reasoning_content" not in config["profiles"][profile_name]:
-            config["profiles"][profile_name]["transform_reasoning_content"] = False
-        # Alternative: add empty content field when only reasoning is present (default: False)
-        if "add_empty_content_when_reasoning_only" not in config["profiles"][profile_name]:
-            config["profiles"][profile_name]["add_empty_content_when_reasoning_only"] = False
-        # Content to use when adding empty content for reasoning-only responses (default: "")
-        if "reasoning_placeholder_content" not in config["profiles"][profile_name]:
-            config["profiles"][profile_name]["reasoning_placeholder_content"] = ""
-
-    config.setdefault("model_aliases", {
-        "local/quick": "quick",
-        "quick": "quick",
-        "local/main": "main",
-        "main": "main",
-        "local/deep": "deep",
-        "deep": "deep"
-    })
-
-    config.setdefault("passthrough_prefix", "pass/")
-    config.setdefault("default_profile", "main")
     config.setdefault("upstream_base_url", "http://127.0.0.1:1234/v1")
-    config.setdefault("main_model", "qwen2.5-3b-instruct")
-    config.setdefault("summary_model", "qwen2.5-1.5b-instruct")
-
-    # Override with environment variables if they exist
-    config["upstream_base_url"] = os.getenv("UPSTREAM_BASE_URL", config["upstream_base_url"]).rstrip("/")
-    config["main_model"] = os.getenv("MAIN_MODEL", config["main_model"])
-    config["summary_model"] = os.getenv("SUMMARY_MODEL", config["summary_model"])
-
-    # Profile defaults (requested)
-    config["quick_main_model"] = os.getenv("QUICK_MAIN_MODEL", config["profiles"]["quick"]["main_model"])
-    config["quick_summary_model"] = os.getenv("QUICK_SUMMARY_MODEL", config["profiles"]["quick"]["summary_model"])
-    config["base_main_model"] = os.getenv("BASE_MAIN_MODEL", config["profiles"]["main"]["main_model"])
-    config["base_summary_model"] = os.getenv("BASE_SUMMARY_MODEL", config["profiles"]["main"]["summary_model"])
-    config["deep_main_model"] = os.getenv("DEEP_MAIN_MODEL", config["profiles"]["deep"]["main_model"])
-    config["deep_summary_model"] = os.getenv("DEEP_SUMMARY_MODEL", config["profiles"]["deep"]["summary_model"])
-
-    # Other configuration values
-    config["default_ctx_len"] = int(os.getenv("DEFAULT_CTX_LEN", str(config.get("default_ctx_len", "4096"))))
-    config["summary_max_tokens"] = int(os.getenv("SUMMARY_MAX_TOKENS", str(config.get("summary_max_tokens", "256"))))
+    
+    # Parse 3-level hierarchy structure
+    # Level 1: Defaults
+    defaults_config = config.get("defaults", {})
+    config["defaults"] = {
+        "ctx_len": int(defaults_config.get("ctx_len", 8192)),
+        "max_tokens": int(defaults_config.get("max_tokens", 4096)),
+        "summary_enabled": defaults_config.get("summary_enabled", True),
+    }
+    
+    # Level 2: Models config
+    models_config = {}
+    for model_name, model_settings in config.get("models", {}).items():
+        if isinstance(model_settings, dict):
+            models_config[model_name] = ModelConfig(
+                ctx_len=model_settings.get("ctx_len", _UNSET),  # type: ignore
+                max_tokens=model_settings.get("max_tokens", _UNSET),  # type: ignore
+                summary_enabled=model_settings.get("summary_enabled", _UNSET),  # type: ignore
+            )
+    config["models"] = models_config
+    
+    # Other configuration values (no environment variable overrides - all in YAML now)
+    config["default_ctx_len"] = int(os.getenv("DEFAULT_CTX_LEN", str(config["defaults"]["ctx_len"])))
+    config["summary_max_tokens"] = int(os.getenv("SUMMARY_MAX_TOKENS", str(config.get("summary_max_tokens", "512"))))
     config["safety_margin_tok"] = int(os.getenv("SAFETY_MARGIN_TOK", str(config.get("safety_margin_tok", "128"))))
     config["default_max_completion_tokens"] = int(os.getenv("DEFAULT_MAX_COMPLETION_TOKENS", str(config.get("default_max_completion_tokens", "900"))))
 
@@ -162,6 +241,16 @@ CONFIG = load_config()
 
 # Parse user-defined routes from config
 USER_ROUTES: List[Route] = load_user_routes(CONFIG)
+
+# Create DefaultSettings object for resolution
+DEFAULTS = DefaultSettings(
+    ctx_len=CONFIG["defaults"]["ctx_len"],
+    max_tokens=CONFIG["defaults"]["max_tokens"],
+    summary_enabled=CONFIG["defaults"]["summary_enabled"],
+)
+
+# Models config is already parsed in CONFIG["models"]
+MODELS_CONFIG: Dict[str, ModelConfig] = CONFIG["models"]
 
 
 def resolve_route(client_model: str) -> Tuple[Optional[Route], str]:
@@ -218,19 +307,8 @@ def get_route_settings(route: Route, backend_model: str) -> Dict[str, Any]:
     return _get_route_settings(route, backend_model)
 
 
-# Extract values from config
+# Extract values from config (no environment variable overrides - all in YAML now)
 UPSTREAM_BASE_URL = CONFIG["upstream_base_url"]
-MAIN_MODEL = CONFIG["main_model"]
-SUMMARY_MODEL = CONFIG["summary_model"]
-
-# Profile defaults (requested) - kept for backward compatibility
-QUICK_MAIN_MODEL = CONFIG["quick_main_model"]
-QUICK_SUMMARY_MODEL = CONFIG["quick_summary_model"]
-BASE_MAIN_MODEL = CONFIG["base_main_model"]
-BASE_SUMMARY_MODEL = CONFIG["base_summary_model"]
-DEEP_MAIN_MODEL = CONFIG["deep_main_model"]
-DEEP_SUMMARY_MODEL = CONFIG["deep_summary_model"]
-
 DEFAULT_CTX_LEN = CONFIG["default_ctx_len"]
 SUMMARY_MAX_TOKENS = CONFIG["summary_max_tokens"]
 SAFETY_MARGIN_TOK = CONFIG["safety_margin_tok"]
@@ -247,11 +325,10 @@ SUMMARY_CONSOLIDATE_WHEN_NEEDED = CONFIG["summary_consolidate_when_needed"]
 # Max chars for logging large payloads (input conversation, summary requests, etc.)
 LOG_PAYLOAD_MAX_CHARS = CONFIG["log_payload_max_chars"]
 
-PASSTHROUGH_PREFIX = CONFIG["passthrough_prefix"]
-
 
 @dataclass(frozen=True)
 class Profile:
+    """Legacy profile class - kept for backward compatibility during transition."""
     name: str
     main_model: str
     summary_model: str
@@ -261,9 +338,9 @@ class Profile:
 
 
 def create_profiles_from_config(config: Dict[str, Any]) -> Dict[str, Profile]:
-    """Create profile dictionary from configuration."""
+    """Create profile dictionary from configuration (legacy support)."""
     profiles = {}
-    for name, profile_data in config["profiles"].items():
+    for name, profile_data in config.get("profiles", {}).items():
         profiles[name] = Profile(
             name,
             profile_data["main_model"],
@@ -278,32 +355,27 @@ def create_profiles_from_config(config: Dict[str, Any]) -> Dict[str, Profile]:
 PROFILES: Dict[str, Profile] = create_profiles_from_config(CONFIG)
 
 # Client-facing model aliases (LibreChat or your own) - kept for backward compatibility
-MODEL_ALIASES: Dict[str, str] = CONFIG["model_aliases"]
+MODEL_ALIASES: Dict[str, str] = CONFIG.get("model_aliases", {})
+
+PASSTHROUGH_PREFIX = CONFIG.get("passthrough_prefix", "pass/")
 
 
 def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool, bool, bool, str]:
-    """Return (profile_or_none, upstream_main_model, summary_model, passthrough_enabled, transform_reasoning_content, add_empty_content_when_reasoning_only, reasoning_placeholder_content)."""
-    if isinstance(client_model, str) and client_model.startswith(PASSTHROUGH_PREFIX):
-        backend = client_model[len(PASSTHROUGH_PREFIX):].strip()
-        # If empty, fallback to MAIN_MODEL but keep passthrough disabled to avoid surprises
-        if not backend:
-            return (None, MAIN_MODEL, SUMMARY_MODEL, False, False, False, "")
-        # For passthrough, check if the upstream model matches any profile and use that profile's setting
-        transform_reasoning = False
-        add_empty_content = False
-        placeholder = ""
-        for p in PROFILES.values():
-            if backend.startswith(p.main_model):
-                transform_reasoning = p.transform_reasoning_content
-                add_empty_content = p.add_empty_content_when_reasoning_only
-                placeholder = p.reasoning_placeholder_content
-                break
-        return (None, backend, SUMMARY_MODEL, True, transform_reasoning, add_empty_content, placeholder)
-
-    key = MODEL_ALIASES.get(client_model)
-    if key and key in PROFILES:
-        p = PROFILES[key]
-        return (p, p.main_model, p.summary_model, False, p.transform_reasoning_content, p.add_empty_content_when_reasoning_only, p.reasoning_placeholder_content)
-
-    # No alias: treat it as an explicit upstream model name (backwards-compatible)
-    return (None, client_model or MAIN_MODEL, SUMMARY_MODEL, False, False, False, "")
+    """Legacy function - deprecated. Use resolve_route() instead."""
+    # For backward compatibility, delegate to new routing system
+    route, backend_model = resolve_route(client_model)
+    settings = get_route_settings(route, backend_model)
+    
+    profile = None
+    if MODEL_ALIASES.get(client_model) in PROFILES:
+        profile = PROFILES[MODEL_ALIASES[client_model]]
+    
+    return (
+        profile,
+        settings["backend_model"],
+        settings["summary_model"] or settings["main_model"],
+        settings["passthrough_enabled"],
+        settings["transform_reasoning_content"],
+        settings["add_empty_content_when_reasoning_only"],
+        settings["reasoning_placeholder_content"]
+    )

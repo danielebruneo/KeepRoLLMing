@@ -464,7 +464,7 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         )
         add_section("STREAM_PROGRESS", ANSI_BLUE, meta=meta)
     else:
-        add_section(msg or "LOG", ANSI_BLUE, _snip_text_active(json.dumps(rec, ensure_ascii=False), BASIC_SNIP_CHARS))
+        add_section(msg or "LOG", ANSI_BLUE, _snip_text_active(snip_json(rec), BASIC_SNIP_CHARS))
 
     footer = _maybe_close_plain_request(msg, req_id)
     if footer:
@@ -528,8 +528,17 @@ async def log_request(req: httpx.Request) -> None:
 
 
 def snip_json(obj: Any, max_chars: int = LOG_PAYLOAD_MAX_CHARS) -> str:
+    """Convert object to JSON string with fallback for non-serializable objects."""
+    from keeprollming.routing import _UNSET
+    
+    def custom_serializer(o):
+        """Custom JSON serializer that handles _UNSET and other special types."""
+        if o is _UNSET:
+            return "<UNSET>"  # Sentinel value - not serializable
+        raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+    
     try:
-        s = json.dumps(obj, ensure_ascii=False)
+        s = json.dumps(obj, ensure_ascii=False, default=custom_serializer)
     except Exception:
         try:
             s = str(obj)

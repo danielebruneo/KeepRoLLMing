@@ -12,9 +12,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .config import (
-    MAIN_MODEL,
     SAFETY_MARGIN_TOK,
-    SUMMARY_MODEL,
     SUMMARY_MODE,
     SUMMARY_CACHE_ENABLED,
     SUMMARY_CACHE_DIR,
@@ -23,9 +21,16 @@ from .config import (
     SUMMARY_CONSOLIDATE_WHEN_NEEDED,
     UPSTREAM_BASE_URL,
     DEFAULT_MAX_COMPLETION_TOKENS,
-    resolve_profile_and_models,
-    CONFIG
+    resolve_route,
+    resolve_fallback_chain,
+    get_route_settings,
+    CONFIG,
+    MODELS_CONFIG,
+    DEFAULTS,
+    resolve_route_settings,
+    USER_ROUTES,
 )
+from .routing import Route
 from .logger import (
     BASIC_SNIP_CHARS,
     LOG_MODE,
@@ -243,6 +248,62 @@ async def get_metrics():
     }
 
 
+@app.get("/v1/models")
+async def list_models():
+    """List all available models with their context lengths.
+    
+    Returns one entry per route, including duplicates under different names.
+    For routes with summarization enabled, reports max(ctx_len_main, ctx_len_summary).
+    """
+    from keeprollming.routing import _UNSET
+    
+    models = []
+    
+    for route in USER_ROUTES:
+        settings = get_route_settings(route, route.name)
+        
+        # Get main model context length
+        main_model = settings["main_model"]
+        summary_model = settings["summary_model"]
+        is_summary_enabled = settings.get("summary_enabled", True)
+        
+        # Resolve ctx_len for main model using hierarchy
+        route_with_ctx = Route(
+            name=route.name,
+            pattern=route.pattern,
+            main_model=main_model,
+            summary_model=summary_model,
+            ctx_len=_UNSET if route.ctx_len is None else route.ctx_len,  # type: ignore
+            max_tokens=_UNSET if route.max_tokens is None else route.max_tokens,  # type: ignore
+        )
+        
+        main_ctx_len = resolve_route_settings(route_with_ctx, MODELS_CONFIG, DEFAULTS)[0]
+        
+        # If summarization enabled and summary model has different ctx_len, use max
+        if is_summary_enabled and summary_model and summary_model != main_model:
+            route_summary = Route(
+                name=route.name,
+                pattern=route.pattern,
+                main_model=summary_model,
+                summary_model=None,
+                ctx_len=_UNSET if route.ctx_len is None else route.ctx_len,  # type: ignore
+                max_tokens=_UNSET if route.max_tokens is None else route.max_tokens,  # type: ignore
+            )
+            summary_ctx_len = resolve_route_settings(route_summary, MODELS_CONFIG, DEFAULTS)[0]
+            ctx_len = max(main_ctx_len, summary_ctx_len)
+        else:
+            ctx_len = main_ctx_len
+        
+        models.append({
+            "id": route.name,
+            "object": "model",
+            "owned_by": "orchestrator",
+            "context_length": ctx_len,
+        })
+    
+    return {"data": models}
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(req: Request) -> Response:
     req_id = os.urandom(6).hex()
@@ -264,8 +325,27 @@ async def chat_completions(req: Request) -> Response:
     if LOG_MODE == "DEBUG":
         log("INFO", "request_received", header=headers, req_id=req_id, body_json=snip_json(payload))
 
-    client_model = payload.get("model", MAIN_MODEL)
-    profile, upstream_model, summary_model, is_passthrough, transform_reasoning_content, add_empty_content_when_reasoning_only, reasoning_placeholder = resolve_profile_and_models(client_model)
+    client_model = payload.get("model")
+
+    # Use new routing system to resolve route and backend model
+    route, backend_model = resolve_route(client_model)
+    route_settings = get_route_settings(route, backend_model)
+    
+    # Extract settings from route configuration
+    upstream_model = route_settings["backend_model"]
+    summary_model = route_settings["summary_model"] or route_settings["main_model"]
+    is_passthrough = route_settings["passthrough_enabled"]
+    transform_reasoning_content = route_settings["transform_reasoning_content"]
+    add_empty_content_when_reasoning_only = route_settings["add_empty_content_when_reasoning_only"]
+    reasoning_placeholder = route_settings["reasoning_placeholder_content"]
+    
+    # Get route-specific upstream URL (if defined, otherwise use global default)
+    route_upstream_url = route_settings.get("upstream_url") or UPSTREAM_BASE_URL
+    route_headers = route_settings.get("upstream_headers", {})
+
+    # Resolve ctx_len and max_tokens using 3-level hierarchy:
+    # Route > Model > Defaults
+    resolved_ctx_len, resolved_max_tokens = resolve_route_settings(route, MODELS_CONFIG, DEFAULTS)
 
     # Check for custom prompt in request
     custom_prompt_type = payload.get("summary_prompt_type")
@@ -303,7 +383,8 @@ async def chat_completions(req: Request) -> Response:
     if LOG_MODE in {"BASIC", "BASIC_PLAIN"} and last_user:
         log("INFO", "conv_user", req_id=req_id, text=last_user)
 
-    ctx_eff = await get_ctx_len_for_model(upstream_model)
+    # Use resolved ctx_len instead of fetching from upstream
+    ctx_eff = resolved_ctx_len
 
     max_tokens_req = payload.get("max_tokens")
     max_out = _clamp_max_out_for_ctx(max_tokens_req, ctx_eff)
@@ -509,15 +590,21 @@ async def chat_completions(req: Request) -> Response:
         req_id=req_id,
         did_summarize=did_summarize,
         passthrough=is_passthrough,
-        upstream_url=f"{UPSTREAM_BASE_URL}/v1/chat/completions",
+        upstream_url=f"{route_upstream_url}/v1/chat/completions",
         prompt_tokens=prompt_tokens_for_log,
         **req_summary,
         adjusted_max_tokens=upstream_payload.get("max_tokens"),
         body_json=snip_json(upstream_payload),
     )
 
-    url = f"{UPSTREAM_BASE_URL}/v1/chat/completions"
+    url = f"{route_upstream_url}/v1/chat/completions"
     client = await http_client()
+
+    # Get fallback chain if available
+    fallback_attempts = []
+    if route.fallback_chain:
+        log("INFO", "fallback_chain_available", req_id=req_id, chain=route.fallback_chain)
+        fallback_attempts = resolve_fallback_chain(route, upstream_model, req_id)
 
     if stream:
         async def _iter():
@@ -544,7 +631,7 @@ async def chat_completions(req: Request) -> Response:
             has_seen_regular_content: bool = False
             
             try:
-                async with client.stream("POST", url, json=upstream_payload) as resp:
+                async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp:
                     r = resp
                     resp.raise_for_status()
                     async for chunk in resp.aiter_bytes():
@@ -792,8 +879,65 @@ async def chat_completions(req: Request) -> Response:
                     did_summarize=did_summarize,
                     passthrough=is_passthrough,
                 )
-                yield (f"data: {json.dumps({'error': {'message': 'Upstream error', 'details': err_text}})}\n\n").encode("utf-8")
-                yield b"data: [DONE]\n\n"
+                
+                # Try fallback chain if available and we haven't tried all options
+                if fallback_attempts and upstream_model not in visited_models:
+                    log(
+                        "INFO",
+                        "upstream_error_fallback_attempt",
+                        req_id=req_id,
+                        original_model=upstream_model,
+                        err=str(e),
+                    )
+                    
+                    # Find next fallback option that hasn't been tried
+                    for route_opt, fallback_model in fallback_attempts:
+                        if fallback_model not in visited_models:
+                            log(
+                                "INFO",
+                                "fallback_to_next_model",
+                                req_id=req_id,
+                                from_model=upstream_model,
+                                to_model=fallback_model,
+                            )
+                            
+                            # Update payload with new model
+                            upstream_payload["model"] = fallback_model
+                            visited_models.add(fallback_model)
+                            
+                            # Retry the request with the fallback model
+                            try:
+                                async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
+                                    r = resp_retry
+                                    resp_retry.raise_for_status()
+                                    
+                                    # Stream from retry response
+                                    async for chunk in resp_retry.aiter_bytes():
+                                        if not chunk:
+                                            continue
+                                        
+                                        yield chunk
+                                
+                                # Success with fallback - return early to avoid error response
+                                return
+                            except Exception as retry_err:
+                                log(
+                                    "WARN",
+                                    "fallback_retry_failed",
+                                    req_id=req_id,
+                                    from_model=upstream_model,
+                                    to_model=fallback_model,
+                                    err=str(retry_err),
+                                )
+                                visited_models.add(fallback_model)
+                    
+                    # All fallbacks exhausted - return error
+                    yield (f"data: {json.dumps({'error': {'message': 'Upstream error', 'details': err_text}})}\n\n").encode("utf-8")
+                    yield b"data: [DONE]\n\n"
+                else:
+                    # No fallback available or all tried - return error
+                    yield (f"data: {json.dumps({'error': {'message': 'Upstream error', 'details': err_text}})}\n\n").encode("utf-8")
+                    yield b"data: [DONE]\n\n"
             except Exception as e:
                 log(
                     "ERROR",
@@ -933,9 +1077,87 @@ async def chat_completions(req: Request) -> Response:
         return StreamingResponse(_iter(), headers=headers)
 
     t0 = time.time()
+    
+    # Track visited models for fallback chain (non-streaming)
+    visited_models_non_stream: set = {upstream_model} if not route.fallback_chain else set([upstream_model])
+    
     try:
-        r = await client.post(url, json=upstream_payload)
+        r = await client.post(url, json=upstream_payload, headers=route_headers)
+        
+        # If error and we have fallback options, retry with next model
+        while r.status_code >= 400 and fallback_attempts:
+            log(
+                "ERROR",
+                "upstream_http_error_fallback",
+                req_id=req_id,
+                status=r.status_code,
+                body=r.text[:500],
+                did_summarize=did_summarize,
+                passthrough=is_passthrough,
+            )
+            
+            # Find next fallback option that hasn't been tried
+            for route_opt, fallback_model in fallback_attempts:
+                if fallback_model not in visited_models_non_stream:
+                    log(
+                        "INFO",
+                        "fallback_to_next_model_sync",
+                        req_id=req_id,
+                        from_model=upstream_model,
+                        to_model=fallback_model,
+                    )
+                    
+                    # Update payload with new model
+                    upstream_payload["model"] = fallback_model
+                    visited_models_non_stream.add(fallback_model)
+                    
+                    # Retry the request with the fallback model
+                    try:
+                        r = await client.post(url, json=upstream_payload, headers=route_headers)
+                        
+                        if r.status_code < 400:
+                            log(
+                                "INFO",
+                                "fallback_success",
+                                req_id=req_id,
+                                from_model=upstream_model,
+                                to_model=fallback_model,
+                            )
+                            break  # Success - exit retry loop
+                    except Exception as retry_err:
+                        log(
+                            "WARN",
+                            "fallback_retry_failed_sync",
+                            req_id=req_id,
+                            from_model=upstream_model,
+                            to_model=fallback_model,
+                            err=str(retry_err),
+                        )
+                        visited_models_non_stream.add(fallback_model)
+                    else:
+                        # Continue loop to check status code again
+                        continue
+                    
+                    break  # Break inner loop, continue outer while
+            
+            # If still error after all fallbacks, return error
+            if r.status_code >= 400 and not any(
+                model in visited_models_non_stream 
+                for _, model in fallback_attempts
+            ):
+                log(
+                    "ERROR",
+                    "upstream_http_error_all_fallbacks_exhausted",
+                    req_id=req_id,
+                    status=r.status_code,
+                    body=r.text[:500],
+                    did_summarize=did_summarize,
+                    passthrough=is_passthrough,
+                )
+                return JSONResponse({"error": {"message": "Upstream error", "details": r.text}}, status_code=r.status_code)
+        
         elapsed_ms = (time.time() - t0) * 1000.0
+        
         if r.status_code >= 400:
             log(
                 "ERROR",

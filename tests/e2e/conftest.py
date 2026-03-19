@@ -206,7 +206,7 @@ def orchestrator_server(tmp_path: Path, backend_target: BackendTarget):
     port = _free_port()
     env = os.environ.copy()
     # Set the test config file
-    env["CONFIG_FILE"] = str(ROOT / "tests" / "config.yaml")
+    env["CONFIG_FILE"] = str(ROOT / "tests" / "config.test.yaml")
     env.update(
         {
             "PYTHONUNBUFFERED": "1",

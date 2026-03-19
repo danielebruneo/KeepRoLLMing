@@ -8,11 +8,25 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 
 ### Main Components
 1. **FastAPI Application** (`keeprollming/app.py`) - Handles incoming requests, processes them through orchestrator logic, and sends responses back to client
-2. **Configuration Management** (`keeprollming/config.py`) - Uses dataclass-based system for profiles with different main and summary models
-3. **Orchestrator Logic** (`keeprollming/rolling_summary.py`) - Handles token counting, message splitting, and summarization as needed
-4. **Upstream Client** (`keeprollming/upstream.py`) - Manages communication with OpenAI-compatible backend using `httpx.AsyncClient`
-5. **Rolling Summary Module** (`keeprollming/rolling_summary.py`) - Implements core logic for handling context overflow and summary generation
-6. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency
+2. **Configuration Management** (`keeprollming/config.py`) - Dataclass-based routing system with hierarchical profile inheritance using `extends` field
+3. **Routing System** (`keeprollming/routing.py`) - Route matching, pattern parsing, and inherited route resolution via `resolve_inherited_route()`
+4. **Orchestrator Logic** (`keeprollming/rolling_summary.py`) - Handles token counting, message splitting, and summarization as needed
+5. **Upstream Client** (`keeprollming/upstream.py`) - Manages communication with OpenAI-compatible backend using `httpx.AsyncClient`
+6. **Rolling Summary Module** (`keeprollming/rolling_summary.py`) - Implements core logic for handling context overflow and summary generation
+7. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency
+
+### Route Composition System
+- Routes can extend other routes using the `extends` field in YAML config
+- Child routes inherit all settings from parent unless explicitly overridden
+- Supports multi-level inheritance chains (grandparent → parent → child)
+- Circular inheritance detection prevents infinite loops
+- Default values defined in `Route` dataclass, `_UNSET` sentinel distinguishes "not set" vs "explicitly set to default"
+
+### Profile Categories
+1. **Base Profiles** - Common settings for groups of routes (e.g., `quick-base`, `main-base`, `deep-base`)
+2. **Chat Routes** - `chat/quick`, `chat/main`, `chat/deep` with varying context/token limits
+3. **System Routes** - `sys/memory`, `sys/summary` for system-level tasks
+4. **Code Routes** - `code/junior`, `code/senior`, `code/architect` for coding assistance at different levels
 
 ## Key Features
 
@@ -25,10 +39,47 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 
 ## Configuration
 
-### Profiles
-- `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
-- `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
-- `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
+### Route Configuration Format
+Routes can be defined in YAML using either list or dict format. Dict format supports inheritance:
+
+```yaml
+routes:
+  # Base profile with common settings
+  quick-base:
+    pattern: "local/quick|quick"
+    upstream_url: "http://arkai.local:1234/v1"
+    main_model: "qwen3.5-35b-a3b@q3_k_s"
+    ctx_len: 128000
+    max_tokens: 8192
+
+  # Child route that extends base and overrides specific fields
+  chat/quick:
+    pattern: "chat/quick|c/q"
+    extends: quick-base
+    main_model: "qwen2.5-3b-instruct"
+    max_tokens: 4096
+```
+
+### Profile Categories (Current Setup)
+
+**Base Profiles:**
+- `quick-base`: ArkAI port 1234, ctx=128K, max_tokens=8K
+- `main-base`: ArkAI port 1234, ctx=128K, max_tokens=16K  
+- `deep-base`: ArkAI port 1234, ctx=128K, max_tokens=32K
+
+**Chat Routes (extend base profiles):**
+- `chat/quick` → extends `quick-base`, uses qwen2.5-3b-instruct
+- `chat/main` → extends `main-base`, uses qwen3.5-35b-a3b
+- `chat/deep` → extends `deep-base`, uses qwen3.5-35b-a3b
+
+**System Routes (standalone):**
+- `sys/memory`: ctx=64K, for memory and context retention
+- `sys/summary`: ctx=64K, for summarization tasks
+
+**Code Routes (extend base profiles):**
+- `code/junior` → extends `quick-base`, uses qwen2.5-7b-instruct
+- `code/senior` → extends `main-base`, uses qwen3.5-35b-a3b
+- `code/architect` → extends `deep-base`, uses qwen3.5-35b-a3b
 
 ### Environment Variables
 - `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
@@ -98,14 +149,32 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 
 ## Usage Examples
 
-Basic usage:
+### Basic Route Matching
 ```bash
+# Quick chat (uses qwen2.5-3b-instruct, inherits ctx from quick-base)
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "content-type: application/json" \
-  -d '{"model":"local/main","messages":[{"role":"user","content":"ciao"}]}'
+  -d '{"model":"chat/quick","messages":[{"role":"user","content":"ciao"}]}'
+
+# Senior code assistance (extends main-base, uses qwen3.5-35b-a3b)
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"code/senior","messages":[{"role":"user","content":"review this code"}]}'
+
+# System memory (standalone route, ctx=64K)
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "content-type: application/json" \
+  -d '{"model":"sys/memory","messages":[{"role":"user","content":"save this context"}]}'
 ```
 
-Passthrough mode:
+### Pattern Aliases
+All routes support short aliases:
+- `chat/quick` or `c/q`
+- `chat/main` or `c/m`
+- `code/senior` or `c/sn`
+- etc.
+
+### Passthrough Mode
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
   -H "content-type: application/json" \

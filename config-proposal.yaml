@@ -1,0 +1,72 @@
+# Orchestrator Configuration - 3-Level Hierarchy
+# ================================================
+# Priority order (highest to lowest):
+#   1. Route level settings
+#   2. Model-specific settings  
+#   3. Root-level defaults
+
+# Level 1: Default settings - applied when not overridden
+ctx_len: 8192
+max_tokens: 4096
+upstream_base_url: "http://arkai.local:1234/v1"
+summary_enabled: true
+passthrough_enabled: false
+
+# Level 2: Model-specific configurations
+models:
+  # ArkAI models - LM Studio (port 1234)
+  big-vision:
+    model: "qwen3.5-35b-a3b@q3_k_s"
+    ctx_len: 128000
+    max_tokens: 32768
+    fallback: small-vision
+  
+  small-vision:
+    model: "qwen3-vl-2b-thinking"
+    ctx_len: 64000
+    max_tokens: 8192
+    fallback: small-text-npu
+
+  # ArkAI models - Lemonade (port 8000)
+  small-text-npu:
+    model: "Llama-3.2-3B-Instruct-Hybrid" # Run on NPU+AMD
+    upstream_url: "http://arkai.local:8000/api/v1"
+    ctx_len: 8192
+    max_tokens: 4096
+  
+# Level 3: Route configurations
+routes:
+  # ========== CHAT ROUTES ==========
+  chat/quick: # pattern not defined, rule name used as pattern
+    main_model: "small-vision"
+    summary_model: "small-vision"
+
+  chat/main:
+    patterns: "chat/*|c/*" #pattern defined, used for matching together with route name
+    main_model: "small-vision"
+    summary_model: "small-vision"
+
+  chat/deep:
+    main_model: "big-vision"
+    summary_model: "qwen3-vl-2b-thinking"
+
+  # ========== SYSTEM ROUTES ========== 
+  sys/memory:
+    extends: chat/quick
+    summary_enabled: false
+  sys/summary:
+    extends: chat/quick
+    summary_enabled: false
+
+  # ========== CODE ROUTES ==========
+  code/junior:
+    extends: chat/quick
+    summary_enabled: false
+
+  code/senior:
+    extends: chat/main
+    summary_enabled: false
+
+  code/architect:
+    extends: chat/deep
+    summary_enabled: false

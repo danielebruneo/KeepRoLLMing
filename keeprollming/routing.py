@@ -4,41 +4,72 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any, Union
 
+# Sentinel value to detect unset fields in inheritance
+_UNSET = object()
+
+
+@dataclass(frozen=True)
+class DefaultSettings:
+    """Default settings at root level of config - applied when not overridden."""
+    ctx_len: int = 8192
+    max_tokens: int = 4096
+    summary_enabled: bool = True
+    transform_reasoning_content: bool = False
+    add_empty_content_when_reasoning_only: bool = False
+    reasoning_placeholder_content: str = ""
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Configuration specific to a model - can override defaults."""
+    ctx_len: int = _UNSET  # type: ignore
+    max_tokens: int = _UNSET  # type: ignore
+    summary_enabled: bool = _UNSET  # type: ignore
+
 
 @dataclass(frozen=True)
 class Route:
     """Represents a routing rule with model settings and fallback chain."""
     name: str
     pattern: str  # Pattern to match (e.g., "local/quick", "pass/*")
-    
-    # Core settings
+
+    # Core settings - use sentinel for inheritance detection, but provide defaults
     summary_enabled: bool = True
     passthrough_enabled: bool = False
-    
-    # Model configuration
+
+    # Model configuration - can reference models dict or specify directly
     main_model: Optional[str] = None
     summary_model: Optional[str] = None
-    ctx_len: int = 8192
-    max_tokens: int = 4096
     
-    # Reasoning content handling
+    # Settings that can be overridden at route level (will fall back to model config)
+    ctx_len: int = _UNSET  # type: ignore
+    max_tokens: int = _UNSET  # type: ignore
+
+    # Reasoning content handling - use sentinel for inheritance detection, but provide defaults
     transform_reasoning_content: bool = False
     add_empty_content_when_reasoning_only: bool = False
     reasoning_placeholder_content: str = ""
-    
-    # Backend configuration (for passthrough)
-    backend_model_pattern: Optional[str] = None  # e.g., "${1}" to extract from pattern
-    
-    # Fallback chain for automatic rerouting
+
+    # Backend configuration (for passthrough) - use sentinel for inheritance detection, but provide defaults
+    backend_model_pattern: Optional[str] = None
+
+    # Upstream configuration - allows different upstreams per route - use sentinel
+    upstream_url: Optional[str] = None
+    upstream_headers: Dict[str, str] = field(default_factory=dict)  # Custom headers for this route
+
+    # Fallback chain for automatic rerouting - use sentinel
     fallback_chain: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
-    
-    # Circuit breaker settings (optional)
+
+    # Circuit breaker settings (optional) - use sentinel
     circuit_breaker_enabled: bool = False
     failure_threshold: int = 3
     recovery_timeout: int = 60
-    
-    # Cost priority for fallbacks (lower = higher priority)
+
+    # Cost priority for fallbacks (lower = higher priority) - use sentinel
     cost_priority: int = 999
+
+    # Route composition - extend another route and override settings
+    extends: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -58,8 +89,11 @@ BUILTIN_ROUTES: List[Route] = [
         main_model="qwen2.5-3b-instruct",
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
+        max_tokens=4096,
+        summary_enabled=True,
+        passthrough_enabled=False,
     ),
-    
+
     # Main profile - balanced performance
     Route(
         name="main-default",
@@ -67,8 +101,11 @@ BUILTIN_ROUTES: List[Route] = [
         main_model="qwen2.5-v1-7b-instruct",
         summary_model="qwen2.5-3b-instruct",
         ctx_len=8192,
+        max_tokens=4096,
+        summary_enabled=True,
+        passthrough_enabled=False,
     ),
-    
+
     # Deep profile - maximum context and quality
     Route(
         name="deep-default",
@@ -76,8 +113,11 @@ BUILTIN_ROUTES: List[Route] = [
         main_model="qwen2.5-27b-instruct",
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
+        max_tokens=8192,
+        summary_enabled=True,
+        passthrough_enabled=False,
     ),
-    
+
     # Code/Senior - specialized for senior developer tasks
     Route(
         name="code-senior-default",
@@ -85,8 +125,11 @@ BUILTIN_ROUTES: List[Route] = [
         main_model="qwen3.5-35b-a3b",
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
+        max_tokens=8192,
+        summary_enabled=True,
+        passthrough_enabled=False,
     ),
-    
+
     # Code/Junior - simplified for junior developer tasks
     Route(
         name="code-junior-default",
@@ -94,8 +137,11 @@ BUILTIN_ROUTES: List[Route] = [
         main_model="qwen2.5-7b-instruct",
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
+        max_tokens=4096,
+        summary_enabled=True,
+        passthrough_enabled=False,
     ),
-    
+
     # Passthrough - bypass summarization, forward directly
     Route(
         name="passthrough-default",
@@ -113,6 +159,8 @@ DEFAULT_FALLBACK_ROUTE = Route(
     main_model="qwen2.5-v1-7b-instruct",
     summary_model="qwen2.5-3b-instruct",
     ctx_len=8192,
+    max_tokens=4096,
+    passthrough_enabled=False,
 )
 
 
@@ -154,31 +202,31 @@ def _extract_backend_model(route: Route, matched_model: str) -> Tuple[str, Dict[
     Args:
         route: The matched route
         matched_model: The original client-facing model name
-        
+
     Returns:
         Tuple of (backend_model, capture_groups)
     """
-    # If route has a main_model defined, use it as the backend
-    if route.main_model:
+    # If route has a main_model defined (not _UNSET), use it as the backend
+    if route.main_model is not _UNSET and route.main_model:
         return route.main_model, {}
-    
+
     # For passthrough routes with pattern extraction
-    if not route.backend_model_pattern or not route.pattern.startswith("pass/"):
+    if not route.backend_model_pattern or route.backend_model_pattern is _UNSET or not route.pattern.startswith("pass/"):
         # No extraction needed - use the matched model as-is
         return matched_model, {}
-    
+
     # Extract capture groups from regex match
     pattern_regex, is_wildcard = _parse_pattern(route.pattern)
     match = pattern_regex.match(matched_model)
-    
+
     if not match:
         return matched_model, {}
-    
+
     # Handle ${1} style capture group extraction
     if route.backend_model_pattern == "${1}" and match.groups():
         backend = match.group(1).strip()
         return backend, {"extracted": match.group(1)}
-    
+
     return matched_model, {}
 
 
@@ -211,13 +259,14 @@ def _match_route(client_model: str, routes: List[Route]) -> Optional[RouteMatch]
 def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) -> Tuple[Optional[Route], str]:
     """
     Resolve a client-facing model name to the appropriate route and backend model.
-    
+
     This function implements first-match-wins routing with fallback chain support.
-    
+    It also handles route composition (extends) where routes can inherit from other routes.
+
     Args:
         client_model: The model name from the client request (e.g., "local/quick", "pass/openai/gpt-4")
         user_routes: Optional list of user-defined routes (from config.yaml)
-        
+
     Returns:
         Tuple of (matched_route, backend_model_name)
         - route can be None if no match found (shouldn't happen with fallback)
@@ -225,20 +274,99 @@ def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) 
     """
     # Combine user routes and built-in routes
     all_routes = []
-    
+
     if user_routes:
         all_routes.extend(user_routes)
-    
+
     all_routes.extend(BUILTIN_ROUTES)
-    
+
+    # Build a dictionary of routes by name for inheritance resolution
+    routes_by_name = {route.name: route for route in all_routes}
+
     # Try to match against routes in order (user-defined first, then built-in)
     route_match = _match_route(client_model, all_routes)
-    
+
     if route_match:
-        return route_match.route, route_match.backend_model
-    
+        matched_route = route_match.route
+        
+        # Resolve inheritance - merge with parent settings
+        resolved_route = resolve_inherited_route(matched_route, routes_by_name)
+        
+        return resolved_route, route_match.backend_model
+
     # No match found - use default fallback
     return DEFAULT_FALLBACK_ROUTE, "qwen2.5-v1-7b-instruct"
+
+
+def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visited: set = None) -> Route:
+    """
+    Resolve a route's full configuration by inheriting from parent routes.
+
+    This handles hierarchical route configuration where routes can extend other routes.
+    Child routes override parent settings while inheriting unspecified ones.
+
+    Args:
+        route: The route to resolve (may have extends set)
+        routes_by_name: Dictionary of all available routes by name
+        visited: Set of already-visited route names (to prevent infinite loops)
+
+    Returns:
+        A fully resolved Route with all inherited settings applied
+    """
+    if visited is None:
+        visited = set()
+
+    # Prevent infinite inheritance loops
+    if route.name in visited:
+        print(f"Warning: Circular inheritance detected for route '{route.name}'")
+        return route
+
+    # If no parent, return as-is
+    if not route.extends or route.extends not in routes_by_name:
+        return route
+
+    visited.add(route.name)
+
+    # Get parent route (resolve its inheritance first)
+    parent = routes_by_name.get(route.extends)
+    if not parent:
+        print(f"Warning: Parent route '{route.extends}' not found for route '{route.name}'")
+        return route
+    
+    # Recursively resolve parent's inheritance first
+    resolved_parent = resolve_inherited_route(parent, routes_by_name, visited.copy())
+
+    # Merge settings: child overrides parent (child values take precedence when explicitly set)
+    def get_value(child_val, parent_val):
+        """Get value from child if set, otherwise inherit from parent."""
+        if child_val is _UNSET:
+            return parent_val
+        return child_val
+    
+    merged_settings = {
+        "name": route.name,
+        "pattern": route.pattern,
+        "summary_enabled": get_value(route.summary_enabled, resolved_parent.summary_enabled),
+        "passthrough_enabled": get_value(route.passthrough_enabled, resolved_parent.passthrough_enabled),
+        "main_model": get_value(route.main_model, resolved_parent.main_model),
+        "summary_model": get_value(route.summary_model, resolved_parent.summary_model),
+        "ctx_len": get_value(route.ctx_len, resolved_parent.ctx_len),
+        "max_tokens": get_value(route.max_tokens, resolved_parent.max_tokens),
+        "transform_reasoning_content": get_value(route.transform_reasoning_content, resolved_parent.transform_reasoning_content),
+        "add_empty_content_when_reasoning_only": get_value(route.add_empty_content_when_reasoning_only, resolved_parent.add_empty_content_when_reasoning_only),
+        "reasoning_placeholder_content": get_value(route.reasoning_placeholder_content, resolved_parent.reasoning_placeholder_content),
+        "backend_model_pattern": get_value(route.backend_model_pattern, resolved_parent.backend_model_pattern),
+        "upstream_url": get_value(route.upstream_url, resolved_parent.upstream_url),
+        "upstream_headers": get_value(route.upstream_headers, resolved_parent.upstream_headers),
+        "fallback_chain": get_value(route.fallback_chain, resolved_parent.fallback_chain),
+        "circuit_breaker_enabled": get_value(route.circuit_breaker_enabled, resolved_parent.circuit_breaker_enabled),
+        "failure_threshold": get_value(route.failure_threshold, resolved_parent.failure_threshold),
+        "recovery_timeout": get_value(route.recovery_timeout, resolved_parent.recovery_timeout),
+        "cost_priority": get_value(route.cost_priority, resolved_parent.cost_priority),
+        "extends": None,  # Resolved - no longer needs to extend
+    }
+
+    return Route(**merged_settings)
 
 
 def resolve_fallback_chain(
@@ -312,13 +440,13 @@ def resolve_fallback_chain(
 def get_route_settings(route: Route, backend_model: str) -> Dict[str, Any]:
     """
     Extract all settings from a matched route for use in the application.
-    
+
     Args:
-        route: The matched route
+        route: The matched route (should already be resolved with inheritance applied)
         backend_model: The resolved backend model name
-        
+
     Returns:
-        Dictionary of all route settings
+        Dictionary of all route settings including upstream configuration
     """
     return {
         "route_name": route.name,
@@ -333,4 +461,7 @@ def get_route_settings(route: Route, backend_model: str) -> Dict[str, Any]:
         "add_empty_content_when_reasoning_only": route.add_empty_content_when_reasoning_only,
         "reasoning_placeholder_content": route.reasoning_placeholder_content,
         "fallback_chain": route.fallback_chain,
+        # Upstream configuration
+        "upstream_url": route.upstream_url,
+        "upstream_headers": route.upstream_headers or {},
     }
