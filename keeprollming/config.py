@@ -76,17 +76,45 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                 print(f"Warning: Failed to parse route: {e}")
     elif isinstance(routes_config, dict):
         # Dict format: {"quick": {...}, "main": {...}}
+        # Need to handle @private decorator which appears as a key with None value
+        
+        # First pass: identify private routes and remove them from config
+        private_routes = set()
+        items_to_remove = []
+        
+        for name, route_data in routes_config.items():
+            if name.startswith("@"):
+                private_routes.add(name)
+                items_to_remove.append(name)
+        
+        for name in items_to_remove:
+            del routes_config[name]
+
+        # Second pass: parse remaining routes
         for name, route_data in routes_config.items():
             if not isinstance(route_data, dict):
                 continue
 
             try:
                 pattern = route_data.get("pattern", name)
+                
+                # Support both 'pattern' and 'patterns' (plural) fields
+                patterns = route_data.get("patterns")
+                if patterns:
+                    if isinstance(patterns, list):
+                        pattern = "|".join(patterns)
+                    else:
+                        pattern = str(patterns)
 
                 # Helper to get value or _UNSET if not specified
                 def get_or_unset(key, default=None):
                     return route_data.get(key, _UNSET)  # type: ignore
 
+                # Handle multiple extends as list or single value
+                extends = route_data.get("extends")
+                if isinstance(extends, list):
+                    extends = ",".join(extends)
+                
                 route = Route(
                     name=name,
                     pattern=pattern,
@@ -107,7 +135,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     failure_threshold=get_or_unset("failure_threshold", 3),  # type: ignore
                     recovery_timeout=get_or_unset("recovery_timeout", 60),  # type: ignore
                     cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
-                    extends=route_data.get("extends"),
+                    extends=extends,
                 )
                 user_routes.append(route)
             except Exception as e:
@@ -193,29 +221,17 @@ def load_config() -> Dict[str, Any]:
                 # If no config file exists, use defaults
                 config = {}
 
-    # Set defaults for missing values
+    # Set defaults for missing values (flat structure now)
     config.setdefault("upstream_base_url", "http://127.0.0.1:1234/v1")
     
-    # Parse 3-level hierarchy structure
-    # Level 1: Defaults
-    defaults_config = config.get("defaults", {})
+    # Parse flat default settings at root level
     config["defaults"] = {
-        "ctx_len": int(defaults_config.get("ctx_len", 8192)),
-        "max_tokens": int(defaults_config.get("max_tokens", 4096)),
-        "summary_enabled": defaults_config.get("summary_enabled", True),
+        "ctx_len": int(config.get("ctx_len", 8192)),
+        "max_tokens": int(config.get("max_tokens", 4096)),
+        "summary_enabled": config.get("summary_enabled", True),
+        "passthrough_enabled": config.get("passthrough_enabled", False),
     }
-    
-    # Level 2: Models config
-    models_config = {}
-    for model_name, model_settings in config.get("models", {}).items():
-        if isinstance(model_settings, dict):
-            models_config[model_name] = ModelConfig(
-                ctx_len=model_settings.get("ctx_len", _UNSET),  # type: ignore
-                max_tokens=model_settings.get("max_tokens", _UNSET),  # type: ignore
-                summary_enabled=model_settings.get("summary_enabled", _UNSET),  # type: ignore
-            )
-    config["models"] = models_config
-    
+
     # Other configuration values (no environment variable overrides - all in YAML now)
     config["default_ctx_len"] = int(os.getenv("DEFAULT_CTX_LEN", str(config["defaults"]["ctx_len"])))
     config["summary_max_tokens"] = int(os.getenv("SUMMARY_MAX_TOKENS", str(config.get("summary_max_tokens", "512"))))
@@ -249,8 +265,7 @@ DEFAULTS = DefaultSettings(
     summary_enabled=CONFIG["defaults"]["summary_enabled"],
 )
 
-# Models config is already parsed in CONFIG["models"]
-MODELS_CONFIG: Dict[str, ModelConfig] = CONFIG["models"]
+# Models config removed - now defined inline in routes
 
 
 def resolve_route(client_model: str) -> Tuple[Optional[Route], str]:
@@ -358,6 +373,19 @@ PROFILES: Dict[str, Profile] = create_profiles_from_config(CONFIG)
 MODEL_ALIASES: Dict[str, str] = CONFIG.get("model_aliases", {})
 
 PASSTHROUGH_PREFIX = CONFIG.get("passthrough_prefix", "pass/")
+
+
+def get_private_routes() -> set:
+    """Get the set of private route names (those marked with @private decorator)."""
+    routes_config = CONFIG.get("routes", {})
+    if not isinstance(routes_config, dict):
+        return set()
+    
+    private_routes = set()
+    for name in routes_config.keys():
+        if name.startswith("@"):
+            private_routes.add(name)
+    return private_routes
 
 
 def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool, bool, bool, str]:

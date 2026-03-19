@@ -25,7 +25,6 @@ from .config import (
     resolve_fallback_chain,
     get_route_settings,
     CONFIG,
-    MODELS_CONFIG,
     DEFAULTS,
     resolve_route_settings,
     USER_ROUTES,
@@ -251,23 +250,33 @@ async def get_metrics():
 @app.get("/v1/models")
 async def list_models():
     """List all available models with their context lengths.
-    
+
     Returns one entry per route, including duplicates under different names.
     For routes with summarization enabled, reports max(ctx_len_main, ctx_len_summary).
+    Excludes routes marked with @private decorator.
     """
     from keeprollming.routing import _UNSET
     
+    # Get private routes to exclude
+    from .config import get_private_routes
+    private_routes = get_private_routes()
+
     models = []
-    
+
     for route in USER_ROUTES:
+        # Skip private routes (marked with @private decorator)
+        if route.name in private_routes:
+            continue
+            
         settings = get_route_settings(route, route.name)
-        
+
         # Get main model context length
         main_model = settings["main_model"]
         summary_model = settings["summary_model"]
         is_summary_enabled = settings.get("summary_enabled", True)
-        
+
         # Resolve ctx_len for main model using hierarchy
+        # Note: MODELS_CONFIG is now empty since models are defined inline in routes
         route_with_ctx = Route(
             name=route.name,
             pattern=route.pattern,
@@ -276,9 +285,9 @@ async def list_models():
             ctx_len=_UNSET if route.ctx_len is None else route.ctx_len,  # type: ignore
             max_tokens=_UNSET if route.max_tokens is None else route.max_tokens,  # type: ignore
         )
-        
-        main_ctx_len = resolve_route_settings(route_with_ctx, MODELS_CONFIG, DEFAULTS)[0]
-        
+
+        main_ctx_len = resolve_route_settings(route_with_ctx, {}, DEFAULTS)[0]
+
         # If summarization enabled and summary model has different ctx_len, use max
         if is_summary_enabled and summary_model and summary_model != main_model:
             route_summary = Route(
@@ -289,18 +298,18 @@ async def list_models():
                 ctx_len=_UNSET if route.ctx_len is None else route.ctx_len,  # type: ignore
                 max_tokens=_UNSET if route.max_tokens is None else route.max_tokens,  # type: ignore
             )
-            summary_ctx_len = resolve_route_settings(route_summary, MODELS_CONFIG, DEFAULTS)[0]
+            summary_ctx_len = resolve_route_settings(route_summary, {}, DEFAULTS)[0]
             ctx_len = max(main_ctx_len, summary_ctx_len)
         else:
             ctx_len = main_ctx_len
-        
+
         models.append({
             "id": route.name,
             "object": "model",
             "owned_by": "orchestrator",
             "context_length": ctx_len,
         })
-    
+
     return {"data": models}
 
 

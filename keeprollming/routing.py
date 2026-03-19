@@ -40,7 +40,7 @@ class Route:
     # Model configuration - can reference models dict or specify directly
     main_model: Optional[str] = None
     summary_model: Optional[str] = None
-    
+
     # Settings that can be overridden at route level (will fall back to model config)
     ctx_len: int = _UNSET  # type: ignore
     max_tokens: int = _UNSET  # type: ignore
@@ -70,6 +70,9 @@ class Route:
 
     # Route composition - extend another route and override settings
     extends: Optional[str] = None
+    
+    # Track if this route is private (@private decorator)
+    _is_private: bool = False
 
 
 @dataclass(frozen=True)

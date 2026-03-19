@@ -3,6 +3,7 @@
 """
 Comprehensive tests for 3-level configuration hierarchy resolution.
 Tests defaults → models → routes priority order.
+Note: Models are now defined inline in routes, not in a separate models section.
 """
 
 import pytest
@@ -15,7 +16,7 @@ class TestThreeLevelHierarchy:
     def test_defaults_only(self):
         """When no model or route overrides, use defaults."""
         from keeprollming.config import resolve_route_settings
-        
+
         route = Route(
             name="test",
             pattern="test/*",
@@ -23,19 +24,19 @@ class TestThreeLevelHierarchy:
             ctx_len=_UNSET,  # type: ignore
             max_tokens=_UNSET,  # type: ignore
         )
-        
+
         defaults = DefaultSettings(ctx_len=8192, max_tokens=4096)
         models_config = {}
-        
+
         ctx_len, max_tokens = resolve_route_settings(route, models_config, defaults)
-        
+
         assert ctx_len == 8192
         assert max_tokens == 4096
 
     def test_model_override_defaults(self):
         """Model config overrides defaults."""
         from keeprollming.config import resolve_route_settings
-        
+
         route = Route(
             name="test",
             pattern="test/*",
@@ -43,7 +44,7 @@ class TestThreeLevelHierarchy:
             ctx_len=_UNSET,  # type: ignore
             max_tokens=_UNSET,  # type: ignore
         )
-        
+
         defaults = DefaultSettings(ctx_len=8192, max_tokens=4096)
         models_config = {
             "qwen3.5-35b-a3b@q3_k_s": ModelConfig(

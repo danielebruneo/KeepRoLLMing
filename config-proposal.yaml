@@ -12,47 +12,93 @@ upstream_base_url: "http://arkai.local:1234/v1"
 summary_enabled: true
 passthrough_enabled: false
 
-# Level 2: Model-specific configurations
-models:
-  # ArkAI models - LM Studio (port 1234)
-  big-vision:
+# Level 2+3 collapsed: Route configurations
+routes:
+  # Backends
+  @private  # Not listed in /models
+  arkai/lmstudio:
+    upstream_base_url: "http://arkai.local:1234/v1"
+
+  @private  # Not listed in /models
+  arkai/lemonade:
+    upstream_base_url: "http://arkai.local:8000/api/v1"
+
+  # Models
+  @private  # Not listed in /models
+  arkai/GPU1/QWen3.5-35b-a3b: # Runs on RTX 3090 24GB [LM Studio]
+    extends: arkai/lmstudio
     model: "qwen3.5-35b-a3b@q3_k_s"
     ctx_len: 128000
     max_tokens: 32768
-    fallback: small-vision
+    capabilities: 
+      - chat
+      - vision
+      - tools
   
-  small-vision:
+  @private  # Not listed in /models
+  arkai/CPU/QWen3.5-VL-2B:  # Runs on CPU [LM Studio]
+    extends: arkai/lmstudio
     model: "qwen3-vl-2b-thinking"
     ctx_len: 64000
     max_tokens: 8192
-    fallback: small-text-npu
+    capabilities:
+      - chat
+      - vision
+      - tools
+      - thinking
 
-  # ArkAI models - Lemonade (port 8000)
-  small-text-npu:
-    model: "Llama-3.2-3B-Instruct-Hybrid" # Run on NPU+AMD
-    upstream_url: "http://arkai.local:8000/api/v1"
+  @private  # Not listed in /models
+  arkai/GPU1+NPU/Llama-3.2-3B: # Runs on NPU+AMD-GPU [Lemonade]
+    extends: arkai/lemonade
+    model: "Llama-3.2-3B-Instruct-Hybrid" 
     ctx_len: 8192
     max_tokens: 4096
-  
-# Level 3: Route configurations
-routes:
+    capabilities:
+    - chat
+    - tools
+
+  # Base routes
+  base/deep:
+    extends: arkai/GPU1/QWen3.5-35b-a3b
+
+  base/main:
+    extends: arkai/GPU1/QWen3.5-35b-a3b
+
+  base/quick:
+    extends: arkai/GPU1/QWen3.5-35b-a3b
+
+  base/alt:
+    extends: arkai/GPU1+NPU/Llama-3.2-3B
+
+  base/fallback:
+    extends: base/alt
+
+  base/summary:
+    extends: base/quick
+
+
   # ========== CHAT ROUTES ==========
+  chat:
+    summary_enabled: true
+    passthrough_enabled: false
+    summary_routing: base/summary
+
   chat/quick: # pattern not defined, rule name used as pattern
-    main_model: "small-vision"
-    summary_model: "small-vision"
+    extends: chat
+    extends: base/quick
 
   chat/main:
-    patterns: "chat/*|c/*" #pattern defined, used for matching together with route name
-    main_model: "small-vision"
-    summary_model: "small-vision"
+    patterns: "mainchat/*|c/*" #pattern defined, used for matching together with route name
+    extends: chat
+    extends: base/main
 
   chat/deep:
-    main_model: "big-vision"
-    summary_model: "qwen3-vl-2b-thinking"
+    extends: chat
+    extends: base/deep
 
   # ========== SYSTEM ROUTES ========== 
   sys/memory:
-    extends: chat/quick
+    extends: base/quick
     summary_enabled: false
   sys/summary:
     extends: chat/quick
@@ -60,13 +106,13 @@ routes:
 
   # ========== CODE ROUTES ==========
   code/junior:
-    extends: chat/quick
+    extends: base/quick
     summary_enabled: false
 
   code/senior:
-    extends: chat/main
+    extends: base/main
     summary_enabled: false
 
   code/architect:
-    extends: chat/deep
-    summary_enabled: false
+    extends: base/deep
+    summary_enabled: true
