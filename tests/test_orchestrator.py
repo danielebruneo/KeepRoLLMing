@@ -65,7 +65,7 @@ class _FakeAsyncClient:
         self.last_stream_url: Optional[str] = None
         self.last_stream_json: Optional[Dict[str, Any]] = None
 
-    async def post(self, url: str, json: Dict[str, Any]) -> _FakeResponse:
+    async def post(self, url: str, json: Dict[str, Any] = None, headers: Dict[str, Any] = None) -> _FakeResponse:
         self.last_post_url = url
         self.last_post_json = json
         return _FakeResponse(
@@ -74,7 +74,7 @@ class _FakeAsyncClient:
                 "id": "chatcmpl-test",
                 "object": "chat.completion",
                 "created": 0,
-                "model": json.get("model", "unknown"),
+                "model": json.get("model", "unknown") if json else "unknown",
                 "choices": [
                     {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
                 ],

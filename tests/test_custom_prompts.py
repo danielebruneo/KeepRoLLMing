@@ -23,14 +23,14 @@ class _FakeResponse:
 
 
 class _FakeAsyncClient:
-    async def post(self, url: str, json: dict) -> _FakeResponse:
+    async def post(self, url: str, json: dict = None, headers: dict = None) -> _FakeResponse:
         return _FakeResponse(
             status_code=200,
             json_data={
                 "id": "chatcmpl-test",
                 "object": "chat.completion",
                 "created": 0,
-                "model": json.get("model", "unknown"),
+                "model": json.get("model", "unknown") if json else "unknown",
                 "choices": [
                     {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
                 ],

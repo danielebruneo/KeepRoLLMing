@@ -17,17 +17,10 @@ import uvicorn
 
 from keeprollming.app import app  # noqa: F401  (import to expose for uvicorn)
 from keeprollming.config import (
-    BASE_MAIN_MODEL,
-    BASE_SUMMARY_MODEL,
     DEFAULT_CTX_LEN,
-    DEEP_MAIN_MODEL,
-    DEEP_SUMMARY_MODEL,
-    MAIN_MODEL,
-    QUICK_MAIN_MODEL,
-    QUICK_SUMMARY_MODEL,
-    SUMMARY_MODEL,
     UPSTREAM_BASE_URL,
-    CONFIG
+    CONFIG,
+    USER_ROUTES,
 )
 from keeprollming.logger import LOG_MODE, LOG_MODE_CHOICES, log
 
@@ -48,15 +41,8 @@ def main() -> None:
         "INFO",
         "startup",
         upstream=UPSTREAM_BASE_URL,
-        main_model=MAIN_MODEL,
-        summary_model=SUMMARY_MODEL,
-        log_mode=LOG_MODE,
-        profiles={
-            "quick": {"main": QUICK_MAIN_MODEL, "summary": QUICK_SUMMARY_MODEL},
-            "main": {"main": BASE_MAIN_MODEL, "summary": BASE_SUMMARY_MODEL},
-            "deep": {"main": DEEP_MAIN_MODEL, "summary": DEEP_SUMMARY_MODEL},
-        },
         default_ctx=DEFAULT_CTX_LEN,
+        routes=len(USER_ROUTES),
     )
 
     uvicorn.run("keeprollming.app:app", host=args.host, port=args.port, reload=False)

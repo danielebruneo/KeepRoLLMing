@@ -472,10 +472,31 @@ def _format_plain(rec: Dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _ensure_serializable(obj: Any) -> Any:
+    """Convert non-serializable objects to serializable equivalents."""
+    if obj is None:
+        return None
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {k: _ensure_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_ensure_serializable(item) for item in obj]
+    # For other types, convert to string representation
+    try:
+        return str(obj)
+    except Exception:
+        return f"<unserializable {type(obj).__name__}>"
+
+
 def log(level: str, msg: str, **fields: Any) -> None:
     if not _should_log(msg):
         return
-    rec = {"ts": _ts(), "level": level.upper(), "msg": msg, **fields}
+    rec = {"ts": _ts(), "level": level.upper(), "msg": msg}
+    # Ensure all fields are JSON serializable
+    for k, v in fields.items():
+        rec[k] = _ensure_serializable(v)
+    
     if LOG_MODE == "BASIC_PLAIN":
         print(_format_plain(rec))
         return

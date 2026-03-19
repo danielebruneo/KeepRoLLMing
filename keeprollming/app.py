@@ -354,7 +354,8 @@ async def chat_completions(req: Request) -> Response:
 
     # Resolve ctx_len and max_tokens using 3-level hierarchy:
     # Route > Model > Defaults
-    resolved_ctx_len, resolved_max_tokens = resolve_route_settings(route, MODELS_CONFIG, DEFAULTS)
+    # Note: MODELS_CONFIG is now empty since models are defined inline in routes
+    resolved_ctx_len, resolved_max_tokens = resolve_route_settings(route, {}, DEFAULTS)
 
     # Check for custom prompt in request
     custom_prompt_type = payload.get("summary_prompt_type")
@@ -417,7 +418,14 @@ async def chat_completions(req: Request) -> Response:
     elif skip_summary_for_tools:
         log("INFO", "summary_bypassed", req_id=req_id, reason="memory_payload")
     elif not plan.should:
-        log("INFO", "summary_bypassed", req_id=req_id, reason=plan.reason, prompt_tok_est=plan.prompt_tok_est, threshold=plan.threshold)
+        log(
+            "INFO",
+            "summary_bypassed",
+            req_id=req_id,
+            reason=plan.reason,
+            prompt_tok_est=plan.prompt_tok_est if plan.prompt_tok_est is not None else 0,
+            threshold=plan.threshold if plan.threshold is not None else 0,
+        )
 
     if (not is_passthrough) and (not skip_summary_for_tools) and plan.should:
         try:
@@ -425,8 +433,8 @@ async def chat_completions(req: Request) -> Response:
                 "INFO",
                 "summary_needed",
                 req_id=req_id,
-                prompt_tok_est=plan.prompt_tok_est,
-                threshold=plan.threshold,
+                prompt_tok_est=plan.prompt_tok_est or 0,
+                threshold=plan.threshold or 0,
                 head_n=plan.head_n,
                 tail_n=plan.tail_n,
                 middle_count=plan.middle_count,
@@ -440,7 +448,7 @@ async def chat_completions(req: Request) -> Response:
                 cache_repacked, append_until_idx, fingerprint, cache_entry = _try_cache_append_repack(
                     req_id=req_id,
                     messages=messages,
-                    threshold=plan.threshold,
+                    threshold=plan.threshold or 0,
                     desired_start_idx=plan.head_n,
                     user_id=user_id,
                     conv_id=conv_id,

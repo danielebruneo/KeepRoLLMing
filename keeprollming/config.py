@@ -45,9 +45,14 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                 name = route_data.get("name", "unnamed")
                 pattern = route_data.get("pattern", name)
 
-                # Helper to get value or _UNSET if not specified
+                # Helper to get value or _UNSET if not specified, otherwise return default
                 def get_or_unset(key, default=None):
-                    return route_data.get(key, _UNSET)  # type: ignore
+                    if key in route_data:
+                        return route_data[key]  # type: ignore
+                    elif default is None and key != "fallback_chain":
+                        return _UNSET  # type: ignore
+                    else:
+                        return default  # type: ignore
 
                 route = Route(
                     name=name,
@@ -76,28 +81,15 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                 print(f"Warning: Failed to parse route: {e}")
     elif isinstance(routes_config, dict):
         # Dict format: {"quick": {...}, "main": {...}}
-        # Need to handle @private decorator which appears as a key with None value
-        
-        # First pass: identify private routes and remove them from config
-        private_routes = set()
-        items_to_remove = []
-        
-        for name, route_data in routes_config.items():
-            if name.startswith("@"):
-                private_routes.add(name)
-                items_to_remove.append(name)
-        
-        for name in items_to_remove:
-            del routes_config[name]
 
-        # Second pass: parse remaining routes
+        # Parse all routes (is_private flag is now a property on each route)
         for name, route_data in routes_config.items():
             if not isinstance(route_data, dict):
                 continue
 
             try:
                 pattern = route_data.get("pattern", name)
-                
+
                 # Support both 'pattern' and 'patterns' (plural) fields
                 patterns = route_data.get("patterns")
                 if patterns:
@@ -106,15 +98,23 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     else:
                         pattern = str(patterns)
 
-                # Helper to get value or _UNSET if not specified
+                # Helper to get value or _UNSET if not specified, otherwise return default
                 def get_or_unset(key, default=None):
-                    return route_data.get(key, _UNSET)  # type: ignore
+                    if key in route_data:
+                        return route_data[key]  # type: ignore
+                    elif default is None and key != "fallback_chain":
+                        return _UNSET  # type: ignore
+                    else:
+                        return default  # type: ignore
 
                 # Handle multiple extends as list or single value
                 extends = route_data.get("extends")
                 if isinstance(extends, list):
                     extends = ",".join(extends)
-                
+
+                # Extract is_private flag from config (default False for non-private routes)
+                is_private = route_data.get("is_private", False)
+
                 route = Route(
                     name=name,
                     pattern=pattern,
@@ -136,6 +136,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     recovery_timeout=get_or_unset("recovery_timeout", 60),  # type: ignore
                     cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
                     extends=extends,
+                    _is_private=is_private,
                 )
                 user_routes.append(route)
             except Exception as e:
@@ -151,45 +152,45 @@ def resolve_route_settings(
 ) -> Tuple[int, int]:
     """
     Resolve ctx_len and max_tokens for a route by applying 3-level hierarchy.
-    
+
     Priority order (highest to lowest):
       1. Route level settings
-      2. Model-specific settings  
+      2. Model-specific settings
       3. Root-level defaults
-    
+
     Args:
         route: The matched route with potentially unset ctx_len/max_tokens
         models_config: Dictionary mapping model names to their configs
         defaults: Global default settings
-        
+
     Returns:
         Tuple of (resolved_ctx_len, resolved_max_tokens)
     """
     # Get main model name for lookup
     main_model = route.main_model
-    
+
     # Start with global defaults
     ctx_len = defaults.ctx_len
     max_tokens = defaults.max_tokens
-    
+
     # Apply model-specific settings if available
     if main_model and main_model in models_config:
         model_cfg = models_config[main_model]
-        
+
         # Override with model values if set (not _UNSET)
         if model_cfg.ctx_len is not _UNSET:  # type: ignore
             ctx_len = model_cfg.ctx_len  # type: ignore
-        
+
         if model_cfg.max_tokens is not _UNSET:  # type: ignore
             max_tokens = model_cfg.max_tokens  # type: ignore
-    
+
     # Apply route-level overrides (highest priority)
     if route.ctx_len is not _UNSET:  # type: ignore
         ctx_len = route.ctx_len  # type: ignore
-    
+
     if route.max_tokens is not _UNSET:  # type: ignore
         max_tokens = route.max_tokens  # type: ignore
-    
+
     return ctx_len, max_tokens
 
 
@@ -223,7 +224,7 @@ def load_config() -> Dict[str, Any]:
 
     # Set defaults for missing values (flat structure now)
     config.setdefault("upstream_base_url", "http://127.0.0.1:1234/v1")
-    
+
     # Parse flat default settings at root level
     config["defaults"] = {
         "ctx_len": int(config.get("ctx_len", 8192)),
@@ -376,16 +377,8 @@ PASSTHROUGH_PREFIX = CONFIG.get("passthrough_prefix", "pass/")
 
 
 def get_private_routes() -> set:
-    """Get the set of private route names (those marked with @private decorator)."""
-    routes_config = CONFIG.get("routes", {})
-    if not isinstance(routes_config, dict):
-        return set()
-    
-    private_routes = set()
-    for name in routes_config.keys():
-        if name.startswith("@"):
-            private_routes.add(name)
-    return private_routes
+    """Get the set of private route names (those marked with is_private=True)."""
+    return {route.name for route in USER_ROUTES if route._is_private}
 
 
 def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool, bool, bool, str]:
@@ -393,11 +386,11 @@ def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], st
     # For backward compatibility, delegate to new routing system
     route, backend_model = resolve_route(client_model)
     settings = get_route_settings(route, backend_model)
-    
+
     profile = None
     if MODEL_ALIASES.get(client_model) in PROFILES:
         profile = PROFILES[MODEL_ALIASES[client_model]]
-    
+
     return (
         profile,
         settings["backend_model"],

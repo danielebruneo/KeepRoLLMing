@@ -2,7 +2,7 @@
 # ================================================
 # Priority order (highest to lowest):
 #   1. Route level settings
-#   2. Model-specific settings  
+#   2. Model-specific settings
 #   3. Root-level defaults
 
 # Level 1: Default settings - applied when not overridden
@@ -15,19 +15,19 @@ passthrough_enabled: false
 # Level 2+3 collapsed: Route configurations
 routes:
   # ========== BACKENDS ==========
-  
-  @private  # Not listed in /models
+
   arkai/lmstudio:
+    is_private: true  # Not listed in /models
     upstream_base_url: "http://arkai.local:1234/v1"
 
-  @private  # Not listed in /models
   arkai/lemonade:
+    is_private: true  # Not listed in /models
     upstream_base_url: "http://arkai.local:8000/api/v1"
 
   # ========== MODELS ==========
-  
-  @private  # Not listed in /models
+
   arkai/GPU1/QWen3.5-35b-a3b:  # Runs on RTX 3090 24GB [LM Studio]
+    is_private: true
     extends: arkai/lmstudio
     main_model: "qwen3.5-35b-a3b@q3_k_s"
     ctx_len: 128000
@@ -37,8 +37,8 @@ routes:
       - vision
       - tools
 
-  @private  # Not listed in /models
   arkai/CPU/QWen3.5-VL-2B:  # Runs on CPU [LM Studio]
+    is_private: true
     extends: arkai/lmstudio
     main_model: "qwen3-vl-2b-thinking"
     ctx_len: 64000
@@ -49,8 +49,8 @@ routes:
       - tools
       - thinking
 
-  @private  # Not listed in /models
   arkai/GPU1+NPU/Llama-3.2-3B:  # Runs on NPU+AMD-GPU [Lemonade]
+    is_private: true
     extends: arkai/lemonade
     main_model: "Llama-3.2-3B-Instruct-Hybrid"
     ctx_len: 8192
@@ -60,7 +60,7 @@ routes:
       - tools
 
   # ========== BASE ROUTES ==========
-  
+
   base/deep:
     extends: arkai/GPU1/QWen3.5-35b-a3b
 
@@ -81,7 +81,7 @@ routes:
 
 
   # ========== CHAT ROUTES ==========
-  
+
   chat:
     summary_enabled: true
     passthrough_enabled: false
@@ -98,17 +98,17 @@ routes:
     extends: [chat, base/deep]
 
   # ========== SYSTEM ROUTES ==========
-  
+
   sys/memory:
     extends: [base/quick]
     summary_enabled: false
-  
+
   sys/summary:
     extends: [chat/quick]
     summary_enabled: false
 
   # ========== CODE ROUTES ==========
-  
+
   code/junior:
     extends: [base/quick]
     summary_enabled: false
