@@ -295,7 +295,8 @@ def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) 
         # Resolve inheritance - merge with parent settings
         resolved_route = resolve_inherited_route(matched_route, routes_by_name)
         
-        return resolved_route, route_match.backend_model
+        extracted_backend_model, _ = _extract_backend_model(resolved_route, client_model)
+        return resolved_route, extracted_backend_model
 
     # No match found - use default fallback
     return DEFAULT_FALLBACK_ROUTE, "qwen2.5-v1-7b-instruct"
