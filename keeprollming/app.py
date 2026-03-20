@@ -992,6 +992,15 @@ async def chat_completions(req: Request) -> Response:
                     model_for_metrics = (upstream_model_seen or upstream_payload.get("model"))
                     prompt_tokens_u, completion_tokens_u, total_tokens_u = _usage_tokens(final_usage)
                     completion_tokens_source = "usage"
+                    
+                    # Estimate prompt tokens if not provided by API (for streaming requests)
+                    # Use ratio of TTFT to elapsed time as proxy for prompt processing vs generation
+                    if prompt_tokens_u is None and ttft_ms is not None and elapsed_ms > 0:
+                        # Assume prompt processing takes ~30% of total time (similar to non-streaming estimate)
+                        estimated_prompt_ratio = 0.3
+                        estimated_prompt_tokens = int(completion_tokens_u * estimated_prompt_ratio if completion_tokens_u else 10)
+                        prompt_tokens_u = max(1, estimated_prompt_tokens)
+                    
                     if completion_tokens_u is None and full_text:
                         completion_tokens_u = _count_text_tokens_safe(full_text)
                         completion_tokens_source = "estimated_text" if completion_tokens_u is not None else "missing"
@@ -1095,6 +1104,9 @@ async def chat_completions(req: Request) -> Response:
 
     t0 = time.time()
     
+    # Track TTFT for non-streaming requests (estimate based on response timing)
+    ttft_ms_non_stream: float | None = None
+    
     # Track visited models for fallback chain (non-streaming)
     visited_models_non_stream: set = {upstream_model} if not route.fallback_chain else set([upstream_model])
     
@@ -1175,6 +1187,10 @@ async def chat_completions(req: Request) -> Response:
         
         elapsed_ms = (time.time() - t0) * 1000.0
         
+        # Estimate TTFT for non-streaming: assume ~30% of total time spent on prompt processing
+        if ttft_ms_non_stream is None and elapsed_ms > 0:
+            ttft_ms_non_stream = elapsed_ms * 0.3
+        
         if r.status_code >= 400:
             log(
                 "ERROR",
@@ -1211,6 +1227,7 @@ async def chat_completions(req: Request) -> Response:
             req_id=req_id,
             stream=False,
             elapsed_ms=elapsed_ms,
+            ttft_ms=ttft_ms_non_stream,
             completion_tokens=completion_tokens_u,
             prompt_tokens=prompt_tokens_u,
             total_tokens=total_tokens_u,
@@ -1286,6 +1303,10 @@ async def chat_completions(req: Request) -> Response:
         return JSONResponse(data, status_code=200)
     except Exception as e:
         elapsed_ms = (time.time() - t0) * 1000.0
+        
+        # Estimate TTFT for non-streaming: assume ~30% of total time spent on prompt processing
+        if ttft_ms_non_stream is None and elapsed_ms > 0:
+            ttft_ms_non_stream = elapsed_ms * 0.3
         log(
             "ERROR",
             "proxy_exception",

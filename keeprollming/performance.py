@@ -220,7 +220,8 @@ def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft
         if prompt is not None and prompt >= 0:
             # Prompt TPS based on TTFT if available, otherwise use elapsed time
             if ttft is not None and ttft > 0:
-                prompt_tps = prompt / ((ttft + (elapsed - ttft)) / 1000.0) if elapsed > ttft else prompt / ((ttft * 2) / 1000.0)
+                # Use TTFT for prompt processing time (time before first token)
+                prompt_tps = prompt / (ttft / 1000.0)
             else:
                 prompt_tps = prompt / (elapsed / 1000.0)
         

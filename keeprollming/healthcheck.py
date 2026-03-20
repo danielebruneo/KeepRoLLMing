@@ -109,6 +109,20 @@ class HealthCheckResults:
                     print(f"  {key}: {value}")
 
 
+def _has_valid_upstream(route: Route, all_routes: list[Route]) -> bool:
+    """Check if a route has a valid upstream URL after inheritance resolution."""
+    from keeprollming.routing import resolve_inherited_route
+    
+    # Build routes_by_name dict
+    routes_by_name = {r.name: r for r in all_routes}
+    
+    # Resolve the route with inheritance
+    resolved = resolve_inherited_route(route, routes_by_name)
+    
+    # Check if it has an upstream URL
+    return resolved.upstream_url is not None
+
+
 def run_health_check(
     config: Dict[str, Any],
     timeout: int = 10,
@@ -163,10 +177,16 @@ async def _run_health_check_async(
         """Check a single route's health."""
         async with semaphore:
             try:
-                from keeprollming.routing import get_route_settings, resolve_route
+                from keeprollming.routing import get_route_settings, resolve_inherited_route
                 
-                # Resolve route settings
-                resolved_route, backend_model = resolve_route(route.name, all_routes)
+                # Build routes_by_name dict for inheritance resolution
+                routes_by_name = {r.name: r for r in all_routes}
+                
+                # Resolve the route with inheritance (don't use resolve_route which matches by pattern)
+                resolved_route = resolve_inherited_route(route, routes_by_name)
+                
+                # For backend model, use main_model if set, otherwise fall back to route name
+                backend_model = resolved_route.main_model or route.name
                 settings = get_route_settings(resolved_route, backend_model)
                 
                 upstream_url = settings.get("upstream_url")
