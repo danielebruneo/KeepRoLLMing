@@ -141,45 +141,100 @@ def _update_summary(base_dir: Path) -> None:
             continue
 
         model_name = str(entries[-1].get("model") or path.stem.replace(".requests", "")).strip() or "unknown"
+        
+        # Collect all metrics
         tps_values = [v for v in (_safe_float(e.get("tps")) for e in entries) if v is not None]
         ttft_values = [v for v in (_safe_float(e.get("ttft_ms")) for e in entries) if v is not None]
+        completion_tokens_values = [v for v in (_safe_int(e.get("completion_tokens")) for e in entries) if v is not None]
+        prompt_tokens_values = [v for v in (_safe_int(e.get("prompt_tokens")) for e in entries) if v is not None]
+        completion_tps_values = [v for v in (_safe_float(e.get("completion_tps")) for e in entries) if v is not None]
+        prompt_tps_values = [v for v in (_safe_float(e.get("prompt_tps")) for e in entries) if v is not None]
+        
         tps_stats = _stats(tps_values)
         ttft_stats = _stats(ttft_values)
+        completion_tokens_stats = _stats([float(v) for v in completion_tokens_values]) if completion_tokens_values else {"avg": None, "min": None, "max": None}
+        prompt_tokens_stats = _stats([float(v) for v in prompt_tokens_values]) if prompt_tokens_values else {"avg": None, "min": None, "max": None}
+        completion_tps_stats = _stats(completion_tps_values)
+        prompt_tps_stats = _stats(prompt_tps_values)
 
         lines.append("  -")
         lines.append(f"    model: {_format_scalar(model_name)}")
         lines.append(f"    requests: {_format_scalar(len(entries))}")
+        
+        # TPS stats (overall, completion, prompt)
         lines.append("    tps:")
         lines.append(f"      avg: {_format_scalar(tps_stats['avg'])}")
         lines.append(f"      min: {_format_scalar(tps_stats['min'])}")
         lines.append(f"      max: {_format_scalar(tps_stats['max'])}")
+        
+        lines.append("    completion_tps:")
+        lines.append(f"      avg: {_format_scalar(completion_tps_stats['avg'])}")
+        lines.append(f"      min: {_format_scalar(completion_tps_stats['min'])}")
+        lines.append(f"      max: {_format_scalar(completion_tps_stats['max'])}")
+        
+        lines.append("    prompt_tps:")
+        lines.append(f"      avg: {_format_scalar(prompt_tps_stats['avg'])}")
+        lines.append(f"      min: {_format_scalar(prompt_tps_stats['min'])}")
+        lines.append(f"      max: {_format_scalar(prompt_tps_stats['max'])}")
+        
+        # Token counts stats
+        lines.append("    completion_tokens:")
+        lines.append(f"      avg: {_format_scalar(completion_tokens_stats['avg'])}")
+        lines.append(f"      min: {_format_scalar(completion_tokens_stats['min'])}")
+        lines.append(f"      max: {_format_scalar(completion_tokens_stats['max'])}")
+        
+        lines.append("    prompt_tokens:")
+        lines.append(f"      avg: {_format_scalar(prompt_tokens_stats['avg'])}")
+        lines.append(f"      min: {_format_scalar(prompt_tokens_stats['min'])}")
+        lines.append(f"      max: {_format_scalar(prompt_tokens_stats['max'])}")
+        
+        # TTFT stats
         lines.append("    ttft_ms:")
         lines.append(f"      avg: {_format_scalar(ttft_stats['avg'])}")
         lines.append(f"      min: {_format_scalar(ttft_stats['min'])}")
         lines.append(f"      max: {_format_scalar(ttft_stats['max'])}")
+        
         lines.append(f"    updated_at: {_format_scalar(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))}")
 
     (base_dir / "summary.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft_ms: Any = None) -> Dict[str, Any]:
+def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft_ms: Any = None, prompt_tokens: Any = None) -> Dict[str, Any]:
     elapsed = _safe_float(elapsed_ms)
     completion = _safe_int(completion_tokens)
     ttft = _safe_float(ttft_ms)
+    prompt = _safe_int(prompt_tokens)
+    
     tps = None
+    completion_tps = None
+    prompt_tps = None
 
     # Keep TPS stable and comparable across buffered/cached/streamed responses.
     # Using (elapsed - TTFT) can explode to unrealistic values when the stream is
     # delivered in one burst or the final usage arrives almost immediately after
     # the first content token. TTFT is tracked separately.
-    if elapsed is not None and elapsed > 0 and completion is not None and completion >= 0:
-        tps = completion / (elapsed / 1000.0)
+    if elapsed is not None and elapsed > 0:
+        if completion is not None and completion >= 0:
+            completion_tps = completion / (elapsed / 1000.0)
+        
+        if prompt is not None and prompt >= 0:
+            # Prompt TPS based on TTFT if available, otherwise use elapsed time
+            if ttft is not None and ttft > 0:
+                prompt_tps = prompt / ((ttft + (elapsed - ttft)) / 1000.0) if elapsed > ttft else prompt / ((ttft * 2) / 1000.0)
+            else:
+                prompt_tps = prompt / (elapsed / 1000.0)
+        
+        # Overall TPS is completion tokens per second (standard metric)
+        tps = completion_tps
 
     return {
         "elapsed_ms": round(elapsed, 4) if elapsed is not None else None,
         "completion_tokens": completion,
+        "prompt_tokens": prompt,
         "ttft_ms": round(ttft, 4) if ttft is not None else None,
         "tps": round(tps, 4) if tps is not None else None,
+        "completion_tps": round(completion_tps, 4) if completion_tps is not None else None,
+        "prompt_tps": round(prompt_tps, 4) if prompt_tps is not None else None,
     }
 
 
@@ -199,7 +254,7 @@ def record_request_performance(
     completion_tokens_source: Any = None,
 ) -> Dict[str, Any]:
     base_dir = _ensure_dir()
-    metrics = compute_request_performance(elapsed_ms=elapsed_ms, completion_tokens=completion_tokens, ttft_ms=ttft_ms)
+    metrics = compute_request_performance(elapsed_ms=elapsed_ms, completion_tokens=completion_tokens, ttft_ms=ttft_ms, prompt_tokens=prompt_tokens)
 
     entry: Dict[str, Any] = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -209,6 +264,8 @@ def record_request_performance(
         "elapsed_ms": metrics["elapsed_ms"],
         "ttft_ms": metrics["ttft_ms"],
         "tps": metrics["tps"],
+        "completion_tps": metrics["completion_tps"],
+        "prompt_tps": metrics["prompt_tps"],
         "completion_tokens": _safe_int(completion_tokens),
         "prompt_tokens": _safe_int(prompt_tokens),
         "total_tokens": _safe_int(total_tokens),

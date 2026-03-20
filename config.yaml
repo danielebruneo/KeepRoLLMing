@@ -8,7 +8,7 @@
 # Level 1: Default settings - applied when not overridden
 ctx_len: 8192
 max_tokens: 4096
-upstream_base_url: "http://arkai.local"
+upstream_url: "http://arkai.local"
 summary_enabled: true
 passthrough_enabled: false
 
@@ -22,7 +22,7 @@ routes:
 
   arkai/lemonade:
     is_private: true  # Not listed in /models
-    upstream_url: "http://arkai.local:8000/api/v1"
+    upstream_url: "http://arkai.local:8000/api"
 
   # ========== MODELS ==========
 
@@ -30,7 +30,7 @@ routes:
     is_private: true
     extends: arkai/lmstudio
     main_model: "qwen3.5-35b-a3b@q3_k_s"
-    ctx_len: 128000
+    ctx_len: 100000
     max_tokens: 32768
     capabilities:
       - chat
@@ -68,7 +68,7 @@ routes:
     extends: arkai/GPU1/QWen3.5-35b-a3b
 
   base/quick:
-    extends: arkai/GPU1/QWen3.5-35b-a3b
+    extends: arkai/CPU/QWen3.5-VL-2B
 
   base/alt:
     extends: arkai/GPU1+NPU/Llama-3.2-3B
@@ -83,6 +83,7 @@ routes:
   # ========== CHAT ROUTES ==========
 
   chat:
+    is_private: true  # Template/category marker, not a real route
     summary_enabled: true
     passthrough_enabled: false
     summary_routing: base/summary
@@ -108,7 +109,7 @@ routes:
   # ========== SYSTEM ROUTES ==========
 
   sys/memory:
-    extends: [base/quick]
+    extends: [base/alt]
     summary_enabled: false
 
   sys/summary:

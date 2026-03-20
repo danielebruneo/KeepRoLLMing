@@ -1,0 +1,16 @@
+{
+  "route_name": "base/alt",
+  "upstream_url": "http://arkai.local:8000/api",
+  "success": false,
+  "error_message": null,
+  "total_latency_ms": 8621.944427490234,
+  "time_to_first_token_ms": 2586.5833282470703,
+  "prompt_processing_time_ms": 2586.5833282470703,
+  "generation_time_ms": 6035.361099243164,
+  "prompt_tokens": 156,
+  "completion_tokens": 256,
+  "total_tokens": 412,
+  "prompt_tps": 60.31122148526386,
+  "completion_tps": 42.41668324238337,
+  "tps": 47.78504471524752
+}

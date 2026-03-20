@@ -1,0 +1,16 @@
+{
+  "route_name": "code/architect",
+  "upstream_url": "http://arkai.local:1234",
+  "success": false,
+  "error_message": null,
+  "total_latency_ms": 3761.6984844207764,
+  "time_to_first_token_ms": 1128.509545326233,
+  "prompt_processing_time_ms": 1128.509545326233,
+  "generation_time_ms": 2633.1889390945435,
+  "prompt_tokens": 140,
+  "completion_tokens": 256,
+  "total_tokens": 396,
+  "prompt_tps": 124.05743538441084,
+  "completion_tps": 97.2205207910485,
+  "tps": 105.2715951690572
+}

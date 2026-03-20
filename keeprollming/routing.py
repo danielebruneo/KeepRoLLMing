@@ -54,7 +54,7 @@ class Route:
     backend_model_pattern: Optional[str] = None
 
     # Upstream configuration - allows different upstreams per route - use sentinel
-    upstream_url: Optional[str] = None
+    upstream_url: Optional[str] = _UNSET  # type: ignore
     upstream_headers: Dict[str, str] = field(default_factory=dict)  # Custom headers for this route
 
     # Fallback chain for automatic rerouting - use sentinel
@@ -93,8 +93,6 @@ BUILTIN_ROUTES: List[Route] = [
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
         max_tokens=4096,
-        summary_enabled=True,
-        passthrough_enabled=False,
     ),
 
     # Main profile - balanced performance (fallback when no user config)
@@ -105,8 +103,6 @@ BUILTIN_ROUTES: List[Route] = [
         summary_model="qwen2.5-3b-instruct",
         ctx_len=8192,
         max_tokens=4096,
-        summary_enabled=True,
-        passthrough_enabled=False,
     ),
 
     # Deep profile - maximum context and quality (fallback when no user config)
@@ -117,8 +113,6 @@ BUILTIN_ROUTES: List[Route] = [
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
         max_tokens=8192,
-        summary_enabled=True,
-        passthrough_enabled=False,
     ),
 
     # Code/Senior - specialized for senior developer tasks (fallback when no user config)
@@ -129,8 +123,6 @@ BUILTIN_ROUTES: List[Route] = [
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
         max_tokens=8192,
-        summary_enabled=True,
-        passthrough_enabled=False,
     ),
 
     # Code/Junior - simplified for junior developer tasks (fallback when no user config)
@@ -141,8 +133,6 @@ BUILTIN_ROUTES: List[Route] = [
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
         max_tokens=4096,
-        summary_enabled=True,
-        passthrough_enabled=False,
     ),
 
     # Passthrough - bypass summarization, forward directly (fallback when no user config)
@@ -325,52 +315,74 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         print(f"Warning: Circular inheritance detected for route '{route.name}'")
         return route
 
+    # Handle multiple extends (comma-separated string from config parsing)
+    extends_list = []
+    if route.extends:
+        if isinstance(route.extends, str):
+            extends_list = [e.strip() for e in route.extends.split(",")]
+        elif isinstance(route.extends, list):
+            extends_list = route.extends
+
     # If no parent, return as-is
-    if not route.extends or route.extends not in routes_by_name:
+    if not extends_list:
         return route
 
     visited.add(route.name)
 
-    # Get parent route (resolve its inheritance first)
-    parent = routes_by_name.get(route.extends)
-    if not parent:
-        print(f"Warning: Parent route '{route.extends}' not found for route '{route.name}'")
-        return route
-    
-    # Recursively resolve parent's inheritance first
-    resolved_parent = resolve_inherited_route(parent, routes_by_name, visited.copy())
+    # Start with child's own settings (as a base to override from parents)
+    merged_settings = {
+        "name": route.name,
+        "pattern": route.pattern,
+        "summary_enabled": route.summary_enabled,
+        "passthrough_enabled": route.passthrough_enabled,
+        "main_model": route.main_model,
+        "summary_model": route.summary_model,
+        "ctx_len": route.ctx_len,
+        "max_tokens": route.max_tokens,
+        "transform_reasoning_content": route.transform_reasoning_content,
+        "add_empty_content_when_reasoning_only": route.add_empty_content_when_reasoning_only,
+        "reasoning_placeholder_content": route.reasoning_placeholder_content,
+        "backend_model_pattern": route.backend_model_pattern,
+        "upstream_url": route.upstream_url,
+        "upstream_headers": route.upstream_headers,
+        "fallback_chain": route.fallback_chain,
+        "circuit_breaker_enabled": route.circuit_breaker_enabled,
+        "failure_threshold": route.failure_threshold,
+        "recovery_timeout": route.recovery_timeout,
+        "cost_priority": route.cost_priority,
+    }
 
-    # Merge settings: child overrides parent (child values take precedence when explicitly set)
+    # Merge settings from each parent in order (left to right)
     def get_value(child_val, parent_val):
         """Get value from child if set, otherwise inherit from parent."""
         if child_val is _UNSET:
             return parent_val
         return child_val
-    
-    merged_settings = {
-        "name": route.name,
-        "pattern": route.pattern,
-        "summary_enabled": get_value(route.summary_enabled, resolved_parent.summary_enabled),
-        "passthrough_enabled": get_value(route.passthrough_enabled, resolved_parent.passthrough_enabled),
-        "main_model": get_value(route.main_model, resolved_parent.main_model),
-        "summary_model": get_value(route.summary_model, resolved_parent.summary_model),
-        "ctx_len": get_value(route.ctx_len, resolved_parent.ctx_len),
-        "max_tokens": get_value(route.max_tokens, resolved_parent.max_tokens),
-        "transform_reasoning_content": get_value(route.transform_reasoning_content, resolved_parent.transform_reasoning_content),
-        "add_empty_content_when_reasoning_only": get_value(route.add_empty_content_when_reasoning_only, resolved_parent.add_empty_content_when_reasoning_only),
-        "reasoning_placeholder_content": get_value(route.reasoning_placeholder_content, resolved_parent.reasoning_placeholder_content),
-        "backend_model_pattern": get_value(route.backend_model_pattern, resolved_parent.backend_model_pattern),
-        "upstream_url": get_value(route.upstream_url, resolved_parent.upstream_url),
-        "upstream_headers": get_value(route.upstream_headers, resolved_parent.upstream_headers),
-        "fallback_chain": get_value(route.fallback_chain, resolved_parent.fallback_chain),
-        "circuit_breaker_enabled": get_value(route.circuit_breaker_enabled, resolved_parent.circuit_breaker_enabled),
-        "failure_threshold": get_value(route.failure_threshold, resolved_parent.failure_threshold),
-        "recovery_timeout": get_value(route.recovery_timeout, resolved_parent.recovery_timeout),
-        "cost_priority": get_value(route.cost_priority, resolved_parent.cost_priority),
-        "extends": None,  # Resolved - no longer needs to extend
-    }
 
-    # Apply defaults for any remaining _UNSET values (from parent's defaults)
+    for parent_name in extends_list:
+        parent = routes_by_name.get(parent_name)
+        if not parent:
+            print(f"Warning: Parent route '{parent_name}' not found for route '{route.name}'")
+            continue
+        
+        # Recursively resolve parent's inheritance first
+        resolved_parent = resolve_inherited_route(parent, routes_by_name, visited.copy())
+
+        # Merge this parent's settings into merged_settings
+        new_merged = {}
+        for key in ["summary_enabled", "passthrough_enabled", "main_model", "summary_model",
+                    "ctx_len", "max_tokens", "transform_reasoning_content", 
+                    "add_empty_content_when_reasoning_only", "reasoning_placeholder_content",
+                    "backend_model_pattern", "upstream_url", "upstream_headers",
+                    "fallback_chain", "circuit_breaker_enabled", "failure_threshold",
+                    "recovery_timeout", "cost_priority"]:
+            child_val = merged_settings[key]
+            parent_val = getattr(resolved_parent, key, _UNSET)
+            new_merged[key] = get_value(child_val, parent_val)
+
+        merged_settings.update(new_merged)
+
+    # Apply defaults for any remaining _UNSET values
     def apply_default(val, default):
         return val if val is not _UNSET else default
 
@@ -379,6 +391,7 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
     merged_settings["transform_reasoning_content"] = apply_default(merged_settings["transform_reasoning_content"], False)
     merged_settings["add_empty_content_when_reasoning_only"] = apply_default(merged_settings["add_empty_content_when_reasoning_only"], False)
     merged_settings["reasoning_placeholder_content"] = apply_default(merged_settings["reasoning_placeholder_content"], "")
+    merged_settings["upstream_url"] = apply_default(merged_settings["upstream_url"], None)  # No default upstream
     merged_settings["upstream_headers"] = apply_default(merged_settings["upstream_headers"], {})
     merged_settings["fallback_chain"] = apply_default(merged_settings["fallback_chain"], [])
     merged_settings["circuit_breaker_enabled"] = apply_default(merged_settings["circuit_breaker_enabled"], False)

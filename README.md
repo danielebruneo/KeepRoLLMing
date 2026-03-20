@@ -38,10 +38,81 @@ The Keeprollming Orchestrator is designed to handle long conversations that woul
 Configuration is managed via:
 - `config.yaml` file with profiles and model aliases
 - Environment variables that override default values
-- Available profiles: 
+- Available profiles:
   - `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
   - `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
   - `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
+
+## Configuration Validation
+
+This project includes a comprehensive configuration validation tool to check:
+- **Route inheritance chains** - Validates that routes properly extend parent routes
+- **Circular references** - Detects circular inheritance (e.g., A extends B extends A)
+- **Required fields** - Ensures non-private routes have all necessary settings
+- **E2E health checks** - Tests actual backend connectivity
+
+### Usage
+
+```bash
+# Validate configuration structure
+python validate_config.py --config config.yaml validate
+
+# Run E2E health checks on all routes
+python validate_config.py --config config.yaml healthcheck
+
+# Run full validation (structure + health)
+python validate_config.py --config config.yaml full-check
+```
+
+### CLI Options
+
+| Command | Description |
+|---------|-------------|
+| `validate` | Validate configuration structure and inheritance chains |
+| `healthcheck` | Test backend connectivity for all routes |
+| `full-check` | Run both validation and health checks |
+
+### Exit Codes
+
+- `0` - Validation passed, all routes healthy
+- `1` - Validation failed or some routes unhealthy
+
+## Performance Benchmarking
+
+This project includes a benchmark tool to test route performance with predefined prompts:
+
+```bash
+# Run benchmarks on all routes
+python benchmark_routes.py --config config.yaml --output benchmarks/
+
+# Custom timeout and verbose output
+python benchmark_routes.py --config config.yaml -t 120 -v
+```
+
+### Benchmark Features
+- Tests multiple prompt types (story, technical explanation, code review)
+- Measures latency, throughput (tokens/sec), and token counts
+- **New metrics:**
+  - `prompt_tps` - Tokens per second during prompt processing (before first token)
+  - `completion_tps` - Tokens per second during generation (after first token)  
+  - `tps` - Overall tokens per second for entire request (prompt + completion combined)
+- Saves individual route results as JSON files
+- Generates aggregated summary statistics
+
+## Testing
+
+Run the test suite to verify validator functionality:
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run only validator tests
+pytest tests/test_validator.py -v
+
+# Run only health check tests  
+pytest tests/test_healthcheck.py -v
+```
 
 ## Running the Application
 

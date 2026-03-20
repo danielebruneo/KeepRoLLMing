@@ -1,0 +1,16 @@
+{
+  "route_name": "chat/deep",
+  "upstream_url": "http://arkai.local:1234",
+  "success": false,
+  "error_message": null,
+  "total_latency_ms": 3764.716863632202,
+  "time_to_first_token_ms": 1129.4150590896606,
+  "prompt_processing_time_ms": 1129.4150590896606,
+  "generation_time_ms": 2635.3018045425415,
+  "prompt_tokens": 140,
+  "completion_tokens": 256,
+  "total_tokens": 396,
+  "prompt_tps": 123.95797176003995,
+  "completion_tps": 97.14257378745987,
+  "tps": 105.18719317923389
+}

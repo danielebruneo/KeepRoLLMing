@@ -1,0 +1,16 @@
+{
+  "route_name": "code/junior",
+  "upstream_url": "http://arkai.local:1234",
+  "success": false,
+  "error_message": null,
+  "total_latency_ms": 5233.270168304443,
+  "time_to_first_token_ms": 1569.981050491333,
+  "prompt_processing_time_ms": 1569.981050491333,
+  "generation_time_ms": 3663.2891178131104,
+  "prompt_tokens": 133,
+  "completion_tokens": 256,
+  "total_tokens": 389,
+  "prompt_tps": 84.71439827784992,
+  "completion_tps": 69.88255411105128,
+  "tps": 74.33210736109088
+}

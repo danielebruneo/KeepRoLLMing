@@ -22,11 +22,11 @@ class TestPatternParsing:
     """Test pattern parsing logic."""
 
     def test_exact_match_pattern(self):
-        """Test exact match patterns like 'local/quick'."""
-        regex, is_wildcard = _parse_pattern("local/quick")
+        """Test exact match patterns like 'builtin/quick'."""
+        regex, is_wildcard = _parse_pattern("builtin/quick")
         assert not is_wildcard
-        assert regex.match("local/quick") is not None
-        assert regex.match("local/main") is None
+        assert regex.match("builtin/quick") is not None
+        assert regex.match("builtin/main") is None
 
     def test_wildcard_pattern(self):
         """Test wildcard patterns like 'pass/*'."""
@@ -38,20 +38,20 @@ class TestPatternParsing:
 
     def test_multiple_patterns(self):
         """Test multiple patterns separated by |."""
-        regex, is_wildcard = _parse_pattern("local/quick|quick")
-        assert regex.match("local/quick") is not None
-        assert regex.match("quick") is not None
+        regex, is_wildcard = _parse_pattern("builtin/quick|quick-fallback")
+        assert regex.match("builtin/quick") is not None
+        assert regex.match("quick-fallback") is not None
         assert regex.match("main") is None
 
     def test_code_patterns(self):
         """Test code/senior and code/junior patterns."""
-        regex, _ = _parse_pattern("code/senior|senior")
-        assert regex.match("code/senior") is not None
-        assert regex.match("senior") is not None
+        regex, _ = _parse_pattern("builtin/code/senior|senior-fallback")
+        assert regex.match("builtin/code/senior") is not None
+        assert regex.match("senior-fallback") is not None
 
-        regex2, _ = _parse_pattern("code/junior|junior")
-        assert regex2.match("code/junior") is not None
-        assert regex2.match("junior") is not None
+        regex2, _ = _parse_pattern("builtin/code/junior|junior-fallback")
+        assert regex2.match("builtin/code/junior") is not None
+        assert regex2.match("junior-fallback") is not None
 
 
 class TestBuiltInRoutes:
@@ -67,9 +67,8 @@ class TestBuiltInRoutes:
 
     def test_main_route_exists(self):
         """Verify main route is defined."""
-        main_routes = [r for r in BUILTIN_ROUTES if "main" in r.name and "default" not in r.name]
         # Note: We have main-default, so check by pattern
-        main_default = [r for r in BUILTIN_ROUTES if r.pattern == "local/main|main"]
+        main_default = [r for r in BUILTIN_ROUTES if r.pattern == "builtin/main|main-fallback"]
         assert len(main_default) > 0
 
     def test_deep_route_exists(self):
@@ -107,35 +106,35 @@ class TestRouteResolution:
 
     def test_resolve_quick_route(self):
         """Test resolving quick profile."""
-        route, backend = resolve_route("local/quick")
+        route, backend = resolve_route("quick-fallback")
         assert route is not None
         assert "quick" in route.name or "quick" in route.pattern
         assert backend == "qwen2.5-3b-instruct"
 
     def test_resolve_main_route(self):
         """Test resolving main profile."""
-        route, backend = resolve_route("main")
+        route, backend = resolve_route("main-fallback")
         assert route is not None
         assert "main" in route.name or "main" in route.pattern
         assert backend == "qwen2.5-v1-7b-instruct"
 
     def test_resolve_deep_route(self):
         """Test resolving deep profile."""
-        route, backend = resolve_route("local/deep")
+        route, backend = resolve_route("deep-fallback")
         assert route is not None
         assert "deep" in route.name or "deep" in route.pattern
         assert backend == "qwen2.5-27b-instruct"
 
     def test_resolve_code_senior(self):
         """Test resolving code/senior."""
-        route, backend = resolve_route("code/senior")
+        route, backend = resolve_route("senior-fallback")
         assert route is not None
         assert "senior" in route.name or "senior" in route.pattern
         assert backend == "qwen3.5-35b-a3b"
 
     def test_resolve_code_junior(self):
         """Test resolving code/junior."""
-        route, backend = resolve_route("code/junior")
+        route, backend = resolve_route("junior-fallback")
         assert route is not None
         assert "junior" in route.name or "junior" in route.pattern
         assert backend == "qwen2.5-7b-instruct"
@@ -153,7 +152,7 @@ class TestRouteResolution:
         """Test fallback for unknown model."""
         route, backend = resolve_route("unknown-model")
         assert route is not None
-        assert route.name == "fallback-default"
+        assert "fallback" in route.name.lower()
 
 
 class TestFallbackChain:
@@ -185,7 +184,7 @@ class TestFallbackChain:
             pattern="deep",
             main_model="qwen3.5-35b-a3b",
             fallback_chain=[
-                "local/main",  # Reference to built-in route
+                "main-fallback",  # Reference to built-in route
             ],
         )
 

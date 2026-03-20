@@ -4,47 +4,54 @@
 upstream_base_url: "http://localhost:9999/v1"
 
 routes:
-  # Quick profile - fast responses
+  # Quick profile - fast responses (smaller ctx_len for summary threshold testing)
   quick:
     pattern: "local/quick|quick"
-    upstream_url: "http://localhost:9999/v1"
     main_model: "test-quick-model"
     summary_model: "test-summary-1.5b"
-    ctx_len: 8192
-    max_tokens: 4096
+    ctx_len: 2048
+    max_tokens: 1024
     summary_enabled: true
 
-  # Main profile - balanced
+  # Main profile - balanced (smaller ctx_len for summary threshold testing)
   main:
     pattern: "local/main|main"
-    upstream_url: "http://localhost:9999/v1"
     main_model: "test-main-model"
     summary_model: "test-summary-3b"
-    ctx_len: 16384
-    max_tokens: 8192
+    ctx_len: 2048
+    max_tokens: 1024
     summary_enabled: true
 
-  # Deep profile - maximum context
+  # Deep profile - maximum context (smaller ctx_len for summary threshold testing)
   deep:
     pattern: "local/deep|deep"
-    upstream_url: "http://localhost:9999/v1"
     main_model: "test-deep-model"
     summary_model: "test-summary-7b"
-    ctx_len: 32768
-    max_tokens: 16384
+    ctx_len: 4096
+    max_tokens: 2048
     summary_enabled: true
 
-  # Passthrough route
+  # Passthrough route for pass/* patterns
   passthrough:
     pattern: "pass/*"
-    upstream_url: "http://localhost:9999/v1"
     main_model: null
     summary_model: null
     ctx_len: 8192
     max_tokens: 4096
     passthrough_enabled: true
+    backend_model_pattern: "${1}"
 
-# Fallback settings
+  # Catch-all for any other model names (forward as-is)
+  catchall:
+    pattern: "*"
+    main_model: null
+    summary_model: null
+    ctx_len: 8192
+    max_tokens: 4096
+    passthrough_enabled: true
+    backend_model_pattern: "${1}"
+
+# Fallback settings (used when no route matches)
 fallback:
   main_model: "test-fallback-model"
   summary_model: "test-summary-default"

@@ -111,6 +111,39 @@ routes:
 - **Phase 5**: ~2 days (Comprehensive testing including e2e fallback scenarios)
 - **Total**: ~10-12 days
 
+## Current Work Session - March 19, 2026
+
+### Context
+Working on integrating route-based configuration into the orchestrator. The system needs to:
+1. Support built-in default routes (quick/main/deep/code/senior/code/junior/pass/*)
+2. Allow custom routes with prefix pattern matching
+3. Implement fallback chain routing for automatic rerouting
+
+### Progress Made
+- Created design document at `_docs/design/Routing-Rules-System.md`
+- Defined Route dataclass in `config.py` with fallback_chain support
+- Implemented built-in default routes programmatically
+- Added prefix-based pattern matching logic with wildcard support (pass/*, code/*)
+- Wrote unit tests for routing logic
+
+### Current Challenge
+Test failure in `tests/test_orchestrator.py`: The test expects summarization to be triggered but it's not happening.
+
+**Root Cause Analysis:**
+The test uses a mock that returns `ctx_len=512` for all models, which is too small to trigger the summarization threshold calculation:
+- With ctx_len=512 and max_tokens=1024 (from config), threshold = max(256, 512 - 1024 - 128) = negative value
+- This causes `should_summarise` to return False even when it should trigger
+
+**Potential Solutions:**
+1. Increase ctx_len in the test fixture mock (preferred - keeps test realistic)
+2. Adjust summarization threshold logic to be more lenient with small contexts
+3. Modify test expectations for small context scenarios
+
+### Next Steps
+- Fix the test fixture to use a more realistic ctx_len value that allows summarization to trigger
+- Verify fallback chain routing works correctly
+- Complete integration tests for all route types including code/senior and code/junior
+
 ## Notes
 - Keep existing `model_aliases` as shortcuts for route names during transition
 - Support both old profile-based and new route-based configs during Phase 3

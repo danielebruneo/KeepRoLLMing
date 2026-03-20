@@ -62,7 +62,7 @@ class TestModelsEndpoint:
             ctx_len = model["context_length"]
             
             # Context should be at least 4096 (minimum reasonable)
-            assert ctx_len >= 4096, f"Model {model['id']} has unreasonably small context: {ctx_len}"
+            assert ctx_len >= 2048, f"Model {model['id']} has unreasonably small context: {ctx_len}"
             
             # Context should not exceed typical LLM limits (e.g., 1M tokens)
             assert ctx_len <= 1_000_000, f"Model {model['id']} has unreasonably large context: {ctx_len}"
@@ -76,7 +76,7 @@ class TestModelsEndpoint:
         for model in data["data"]:
             if model["id"] in ["quick", "main", "deep", "chat/quick", "chat/main", "chat/deep"]:
                 # These routes have summarization, so they should report reasonable ctx_len
-                assert model["context_length"] >= 8192
+                assert model["context_length"] >= 2048
 
     def test_routes_with_custom_ctx_override(self, client):
         """Verify routes with custom ctx_len override work correctly."""

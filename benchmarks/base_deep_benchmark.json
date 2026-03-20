@@ -1,0 +1,16 @@
+{
+  "route_name": "base/deep",
+  "upstream_url": "http://arkai.local:1234",
+  "success": false,
+  "error_message": null,
+  "total_latency_ms": 4223.806619644165,
+  "time_to_first_token_ms": 1267.1419858932495,
+  "prompt_processing_time_ms": 1267.1419858932495,
+  "generation_time_ms": 2956.6646337509155,
+  "prompt_tokens": 140,
+  "completion_tokens": 256,
+  "total_tokens": 396,
+  "prompt_tps": 110.48485612392479,
+  "completion_tps": 86.58405051344309,
+  "tps": 93.7542921965876
+}

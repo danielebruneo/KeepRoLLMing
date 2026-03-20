@@ -1,0 +1,16 @@
+{
+  "route_name": "code/junior",
+  "upstream_url": "http://arkai.local:1234",
+  "success": false,
+  "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'",
+  "total_latency_ms": 0.0,
+  "time_to_first_token_ms": 0.0,
+  "prompt_processing_time_ms": 0.0,
+  "generation_time_ms": 0.0,
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "total_tokens": 0,
+  "prompt_tps": 0.0,
+  "completion_tps": 0.0,
+  "tps": 0.0
+}

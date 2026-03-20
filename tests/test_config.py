@@ -44,21 +44,21 @@ def test_config_loading():
     resolved, backend = resolve_route("local/quick", routes)
     assert resolved.main_model == "test-quick-model"
     assert resolved.summary_model == "test-summary-1.5b"
-    assert resolved.ctx_len == 8192
+    assert resolved.ctx_len == 2048
     print("✓ Route resolution works for quick profile")
 
     # Test route resolution for main profile
     resolved, backend = resolve_route("local/main", routes)
     assert resolved.main_model == "test-main-model"
     assert resolved.summary_model == "test-summary-3b"
-    assert resolved.ctx_len == 16384
+    assert resolved.ctx_len == 2048
     print("✓ Route resolution works for main profile")
 
     # Test route resolution for deep profile
     resolved, backend = resolve_route("local/deep", routes)
     assert resolved.main_model == "test-deep-model"
     assert resolved.summary_model == "test-summary-7b"
-    assert resolved.ctx_len == 32768
+    assert resolved.ctx_len == 4096
     print("✓ Route resolution works for deep profile")
 
     # Test passthrough route
@@ -66,11 +66,13 @@ def test_config_loading():
     assert resolved.passthrough_enabled is True
     print("✓ Passthrough route works correctly")
 
-    # Test fallback for unknown route (uses hardcoded DEFAULT_FALLBACK_ROUTE)
+    # Test catchall for unknown routes (forwards model as-is)
     resolved, backend = resolve_route("unknown/model", routes)
-    # Fallback uses default values from routing.py, not config.yaml
-    assert resolved.main_model == "qwen2.5-v1-7b-instruct"
-    print("✓ Fallback route works correctly (uses hardcoded defaults)")
+    # Catchall route forwards the model name directly
+    assert resolved.name == "catchall"
+    assert resolved.passthrough_enabled is True
+    assert backend == "unknown/model"  # Full model name forwarded
+    print("✓ Catchall route works correctly (forwards unknown models)")
 
     # Check that built-in routes still exist
     assert len(BUILTIN_ROUTES) > 0

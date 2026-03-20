@@ -1,0 +1,518 @@
+{
+  "timestamp": "20260319_172034",
+  "total_routes": 51,
+  "successful": 0,
+  "failed": 51,
+  "results": [
+    {
+      "route_name": "base/deep",
+      "success": false,
+      "total_latency_ms": 5104.348659515381,
+      "time_to_first_token_ms": 1531.3045978546143,
+      "prompt_tps": 96.64961511076942,
+      "completion_tps": 71.64759112458582,
+      "tps": 79.1481983204409,
+      "error_message": null
+    },
+    {
+      "route_name": "base/main",
+      "success": false,
+      "total_latency_ms": 4565.65260887146,
+      "time_to_first_token_ms": 1369.695782661438,
+      "prompt_tps": 108.05319098845668,
+      "completion_tps": 80.10120721924201,
+      "tps": 88.48680235000641,
+      "error_message": null
+    },
+    {
+      "route_name": "base/quick",
+      "success": false,
+      "total_latency_ms": 5265.215158462524,
+      "time_to_first_token_ms": 1579.5645475387573,
+      "prompt_tps": 92.43053740823316,
+      "completion_tps": 69.45856431460183,
+      "tps": 76.35015624269123,
+      "error_message": null
+    },
+    {
+      "route_name": "base/alt",
+      "success": false,
+      "total_latency_ms": 14395.545959472656,
+      "time_to_first_token_ms": 4318.663787841797,
+      "prompt_tps": 39.132474372230725,
+      "completion_tps": 21.137490383647876,
+      "tps": 26.53598558022273,
+      "error_message": null
+    },
+    {
+      "route_name": "base/fallback",
+      "success": false,
+      "total_latency_ms": 7183.217287063599,
+      "time_to_first_token_ms": 2154.9651861190796,
+      "prompt_tps": 78.42354070895945,
+      "completion_tps": 42.36064455877015,
+      "tps": 53.17951340382694,
+      "error_message": null
+    },
+    {
+      "route_name": "base/summary",
+      "success": false,
+      "total_latency_ms": 5295.750856399536,
+      "time_to_first_token_ms": 1588.7252569198608,
+      "prompt_tps": 91.89757597424826,
+      "completion_tps": 69.05806100608872,
+      "tps": 75.90991549653658,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/quick",
+      "success": false,
+      "total_latency_ms": 5317.975044250488,
+      "time_to_first_token_ms": 1595.3925132751465,
+      "prompt_tps": 91.51352960800837,
+      "completion_tps": 68.76946256257379,
+      "tps": 75.59268267620418,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/main",
+      "success": false,
+      "total_latency_ms": 4872.405529022217,
+      "time_to_first_token_ms": 1461.721658706665,
+      "prompt_tps": 101.25046661137303,
+      "completion_tps": 75.05826096287113,
+      "tps": 82.9159226574217,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "success": false,
+      "total_latency_ms": 4575.174331665039,
+      "time_to_first_token_ms": 1372.5522994995117,
+      "prompt_tps": 107.82831375822022,
+      "completion_tps": 79.93450286323662,
+      "tps": 88.30264613173169,
+      "error_message": null
+    },
+    {
+      "route_name": "local/quick",
+      "success": false,
+      "total_latency_ms": 5277.3871421813965,
+      "time_to_first_token_ms": 1583.216142654419,
+      "prompt_tps": 92.2173517983568,
+      "completion_tps": 69.29836221246383,
+      "tps": 76.17405908823172,
+      "error_message": null
+    },
+    {
+      "route_name": "local/main",
+      "success": false,
+      "total_latency_ms": 4983.416557312012,
+      "time_to_first_token_ms": 1495.0249671936035,
+      "prompt_tps": 98.99500225592836,
+      "completion_tps": 73.38625649860327,
+      "tps": 81.0688802258008,
+      "error_message": null
+    },
+    {
+      "route_name": "local/deep",
+      "success": false,
+      "total_latency_ms": 4589.33687210083,
+      "time_to_first_token_ms": 1376.801061630249,
+      "prompt_tps": 107.49555918031866,
+      "completion_tps": 79.68782765490805,
+      "tps": 88.03014711253124,
+      "error_message": null
+    },
+    {
+      "route_name": "sys/memory",
+      "success": false,
+      "total_latency_ms": 5268.52822303772,
+      "time_to_first_token_ms": 1580.558466911316,
+      "prompt_tps": 92.3724133314152,
+      "completion_tps": 69.41488594767796,
+      "tps": 76.30214416279912,
+      "error_message": null
+    },
+    {
+      "route_name": "sys/summary",
+      "success": false,
+      "total_latency_ms": 5327.104330062866,
+      "time_to_first_token_ms": 1598.1312990188599,
+      "prompt_tps": 91.35669897062508,
+      "completion_tps": 68.65160940258323,
+      "tps": 75.4631362729958,
+      "error_message": null
+    },
+    {
+      "route_name": "code/junior",
+      "success": false,
+      "total_latency_ms": 5414.280414581299,
+      "time_to_first_token_ms": 1624.2841243743896,
+      "prompt_tps": 89.88575201166451,
+      "completion_tps": 67.54624025925473,
+      "tps": 74.24809378497766,
+      "error_message": null
+    },
+    {
+      "route_name": "code/senior",
+      "success": false,
+      "total_latency_ms": 4961.398124694824,
+      "time_to_first_token_ms": 1488.4194374084473,
+      "prompt_tps": 99.43433704258076,
+      "completion_tps": 73.71194097365061,
+      "tps": 81.42865979432966,
+      "error_message": null
+    },
+    {
+      "route_name": "code/architect",
+      "success": false,
+      "total_latency_ms": 4866.569995880127,
+      "time_to_first_token_ms": 1459.970998764038,
+      "prompt_tps": 101.37187665048948,
+      "completion_tps": 75.14826377179143,
+      "tps": 83.01534763540084,
+      "error_message": null
+    },
+    {
+      "route_name": "base/deep",
+      "success": false,
+      "total_latency_ms": 5189.647674560547,
+      "time_to_first_token_ms": 1556.894302368164,
+      "prompt_tps": 89.9226105375609,
+      "completion_tps": 70.46996417637426,
+      "tps": 76.30575808473026,
+      "error_message": null
+    },
+    {
+      "route_name": "base/main",
+      "success": false,
+      "total_latency_ms": 4878.26943397522,
+      "time_to_first_token_ms": 1463.480830192566,
+      "prompt_tps": 95.66233947975847,
+      "completion_tps": 74.96803746985154,
+      "tps": 81.17632807282361,
+      "error_message": null
+    },
+    {
+      "route_name": "base/quick",
+      "success": false,
+      "total_latency_ms": 5625.175714492798,
+      "time_to_first_token_ms": 1687.5527143478394,
+      "prompt_tps": 82.96037143592488,
+      "completion_tps": 65.01384210488807,
+      "tps": 70.39780090419912,
+      "error_message": null
+    },
+    {
+      "route_name": "base/alt",
+      "success": false,
+      "total_latency_ms": 8570.918798446655,
+      "time_to_first_token_ms": 2571.2756395339966,
+      "prompt_tps": 63.39265907312107,
+      "completion_tps": 34.1686987992721,
+      "tps": 42.93588688142678,
+      "error_message": null
+    },
+    {
+      "route_name": "base/fallback",
+      "success": false,
+      "total_latency_ms": 7892.629146575928,
+      "time_to_first_token_ms": 2367.7887439727783,
+      "prompt_tps": 68.84060092561786,
+      "completion_tps": 37.10514423247589,
+      "tps": 46.62578124041848,
+      "error_message": null
+    },
+    {
+      "route_name": "base/summary",
+      "success": false,
+      "total_latency_ms": 5354.216575622559,
+      "time_to_first_token_ms": 1606.2649726867676,
+      "prompt_tps": 87.1587206224293,
+      "completion_tps": 68.30397697757725,
+      "tps": 73.96040007103285,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/quick",
+      "success": false,
+      "total_latency_ms": 5307.898998260498,
+      "time_to_first_token_ms": 1592.3696994781494,
+      "prompt_tps": 87.91928158761166,
+      "completion_tps": 68.90000842784262,
+      "tps": 74.60579037577334,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/main",
+      "success": false,
+      "total_latency_ms": 4753.265142440796,
+      "time_to_first_token_ms": 1425.9795427322388,
+      "prompt_tps": 98.178126547141,
+      "completion_tps": 76.93959304918806,
+      "tps": 83.31115309857394,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "success": false,
+      "total_latency_ms": 4609.102010726929,
+      "time_to_first_token_ms": 1382.7306032180786,
+      "prompt_tps": 101.2489343001254,
+      "completion_tps": 79.34610361479214,
+      "tps": 85.91695282039213,
+      "error_message": null
+    },
+    {
+      "route_name": "local/quick",
+      "success": false,
+      "total_latency_ms": 5233.003854751587,
+      "time_to_first_token_ms": 1569.901156425476,
+      "prompt_tps": 89.17758893736178,
+      "completion_tps": 69.8861105141774,
+      "tps": 75.67355404113272,
+      "error_message": null
+    },
+    {
+      "route_name": "local/main",
+      "success": false,
+      "total_latency_ms": 4865.066289901733,
+      "time_to_first_token_ms": 1459.51988697052,
+      "prompt_tps": 95.92195436993575,
+      "completion_tps": 75.17149077154147,
+      "tps": 81.39662985105976,
+      "error_message": null
+    },
+    {
+      "route_name": "local/deep",
+      "success": false,
+      "total_latency_ms": 4628.103017807007,
+      "time_to_first_token_ms": 1388.430905342102,
+      "prompt_tps": 100.83324957787852,
+      "completion_tps": 79.02034252633746,
+      "tps": 85.56421464179977,
+      "error_message": null
+    },
+    {
+      "route_name": "sys/memory",
+      "success": false,
+      "total_latency_ms": 5211.199045181274,
+      "time_to_first_token_ms": 1563.3597135543823,
+      "prompt_tps": 89.55072769638056,
+      "completion_tps": 70.17852946002068,
+      "tps": 75.99018893092864,
+      "error_message": null
+    },
+    {
+      "route_name": "sys/summary",
+      "success": false,
+      "total_latency_ms": 5249.299049377441,
+      "time_to_first_token_ms": 1574.7897148132324,
+      "prompt_tps": 88.90075842069096,
+      "completion_tps": 69.66916578274557,
+      "tps": 75.43864357412919,
+      "error_message": null
+    },
+    {
+      "route_name": "code/junior",
+      "success": false,
+      "total_latency_ms": 5250.006198883057,
+      "time_to_first_token_ms": 1575.001859664917,
+      "prompt_tps": 88.88878393437905,
+      "completion_tps": 69.65978169551337,
+      "tps": 75.42848236717307,
+      "error_message": null
+    },
+    {
+      "route_name": "code/senior",
+      "success": false,
+      "total_latency_ms": 4806.394338607788,
+      "time_to_first_token_ms": 1441.9183015823364,
+      "prompt_tps": 97.09287956631552,
+      "completion_tps": 76.08911378258196,
+      "tps": 82.39024351770202,
+      "error_message": null
+    },
+    {
+      "route_name": "code/architect",
+      "success": false,
+      "total_latency_ms": 4905.351161956787,
+      "time_to_first_token_ms": 1471.6053485870361,
+      "prompt_tps": 95.13420166243701,
+      "completion_tps": 74.55414987423634,
+      "tps": 80.72816541069653,
+      "error_message": null
+    },
+    {
+      "route_name": "base/deep",
+      "success": false,
+      "total_latency_ms": 4223.806619644165,
+      "time_to_first_token_ms": 1267.1419858932495,
+      "prompt_tps": 110.48485612392479,
+      "completion_tps": 86.58405051344309,
+      "tps": 93.7542921965876,
+      "error_message": null
+    },
+    {
+      "route_name": "base/main",
+      "success": false,
+      "total_latency_ms": 3778.430700302124,
+      "time_to_first_token_ms": 1133.5292100906372,
+      "prompt_tps": 123.5080655652496,
+      "completion_tps": 96.78999423888948,
+      "tps": 104.80541563679752,
+      "error_message": null
+    },
+    {
+      "route_name": "base/quick",
+      "success": false,
+      "total_latency_ms": 5412.497758865356,
+      "time_to_first_token_ms": 1623.749327659607,
+      "prompt_tps": 81.90919480884388,
+      "completion_tps": 67.56848723221492,
+      "tps": 71.87069950520362,
+      "error_message": null
+    },
+    {
+      "route_name": "base/alt",
+      "success": false,
+      "total_latency_ms": 8621.944427490234,
+      "time_to_first_token_ms": 2586.5833282470703,
+      "prompt_tps": 60.31122148526386,
+      "completion_tps": 42.41668324238337,
+      "tps": 47.78504471524752,
+      "error_message": null
+    },
+    {
+      "route_name": "base/fallback",
+      "success": false,
+      "total_latency_ms": 8562.755584716797,
+      "time_to_first_token_ms": 2568.826675415039,
+      "prompt_tps": 60.728114314989924,
+      "completion_tps": 42.709882595157744,
+      "tps": 48.1153521111074,
+      "error_message": null
+    },
+    {
+      "route_name": "base/summary",
+      "success": false,
+      "total_latency_ms": 5286.422491073608,
+      "time_to_first_token_ms": 1585.9267473220825,
+      "prompt_tps": 83.86263755534561,
+      "completion_tps": 69.1799201315848,
+      "tps": 73.58473535871303,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/quick",
+      "success": false,
+      "total_latency_ms": 5268.568754196167,
+      "time_to_first_token_ms": 1580.57062625885,
+      "prompt_tps": 84.146825070896,
+      "completion_tps": 69.41435193818273,
+      "tps": 73.83409387799672,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/main",
+      "success": false,
+      "total_latency_ms": 3946.2344646453857,
+      "time_to_first_token_ms": 1183.8703393936157,
+      "prompt_tps": 118.25619355554485,
+      "completion_tps": 92.67424148026372,
+      "tps": 100.34882710284806,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "success": false,
+      "total_latency_ms": 3764.716863632202,
+      "time_to_first_token_ms": 1129.4150590896606,
+      "prompt_tps": 123.95797176003995,
+      "completion_tps": 97.14257378745987,
+      "tps": 105.18719317923389,
+      "error_message": null
+    },
+    {
+      "route_name": "local/quick",
+      "success": false,
+      "total_latency_ms": 5264.636039733887,
+      "time_to_first_token_ms": 1579.390811920166,
+      "prompt_tps": 84.20968325015355,
+      "completion_tps": 69.4662048723071,
+      "tps": 73.88924838566103,
+      "error_message": null
+    },
+    {
+      "route_name": "local/main",
+      "success": false,
+      "total_latency_ms": 4015.8255100250244,
+      "time_to_first_token_ms": 1204.7476530075073,
+      "prompt_tps": 116.20690826872074,
+      "completion_tps": 91.06827096977298,
+      "tps": 98.60986215945732,
+      "error_message": null
+    },
+    {
+      "route_name": "local/deep",
+      "success": false,
+      "total_latency_ms": 4000.3926753997803,
+      "time_to_first_token_ms": 1200.117802619934,
+      "prompt_tps": 116.65521475839374,
+      "completion_tps": 91.41959687188407,
+      "tps": 98.99028223783696,
+      "error_message": null
+    },
+    {
+      "route_name": "sys/memory",
+      "success": false,
+      "total_latency_ms": 5198.206424713135,
+      "time_to_first_token_ms": 1559.4619274139404,
+      "prompt_tps": 85.28582690091974,
+      "completion_tps": 70.35393669162875,
+      "tps": 74.83350375441606,
+      "error_message": null
+    },
+    {
+      "route_name": "sys/summary",
+      "success": false,
+      "total_latency_ms": 5215.814590454102,
+      "time_to_first_token_ms": 1564.7443771362305,
+      "prompt_tps": 84.99790888746595,
+      "completion_tps": 70.11642752478394,
+      "tps": 74.58087193358855,
+      "error_message": null
+    },
+    {
+      "route_name": "code/junior",
+      "success": false,
+      "total_latency_ms": 5233.270168304443,
+      "time_to_first_token_ms": 1569.981050491333,
+      "prompt_tps": 84.71439827784992,
+      "completion_tps": 69.88255411105128,
+      "tps": 74.33210736109088,
+      "error_message": null
+    },
+    {
+      "route_name": "code/senior",
+      "success": false,
+      "total_latency_ms": 3935.534715652466,
+      "time_to_first_token_ms": 1180.6604146957397,
+      "prompt_tps": 118.57770300199189,
+      "completion_tps": 92.92619990360181,
+      "tps": 100.62165083311884,
+      "error_message": null
+    },
+    {
+      "route_name": "code/architect",
+      "success": false,
+      "total_latency_ms": 3761.6984844207764,
+      "time_to_first_token_ms": 1128.509545326233,
+      "prompt_tps": 124.05743538441084,
+      "completion_tps": 97.2205207910485,
+      "tps": 105.2715951690572,
+      "error_message": null
+    }
+  ]
+}

@@ -1,0 +1,518 @@
+{
+  "timestamp": "20260319_171050",
+  "total_routes": 51,
+  "successful": 0,
+  "failed": 51,
+  "results": [
+    {
+      "route_name": "base/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/alt",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/fallback",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/summary",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "sys/memory",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "sys/summary",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/junior",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/senior",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/architect",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/alt",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/fallback",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/summary",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "sys/memory",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "sys/summary",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/junior",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/senior",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/architect",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/alt",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/fallback",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "base/summary",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "chat/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/quick",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/main",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "local/deep",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "sys/memory",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "sys/summary",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/junior",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/senior",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    },
+    {
+      "route_name": "code/architect",
+      "success": false,
+      "total_latency_ms": 0.0,
+      "time_to_first_token_ms": 0.0,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "tps": 0.0,
+      "error_message": "Unexpected error: Timeout.__init__() got an unexpected keyword argument 'total'"
+    }
+  ]
+}

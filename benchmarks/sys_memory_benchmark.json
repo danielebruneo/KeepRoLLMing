@@ -1,0 +1,16 @@
+{
+  "route_name": "sys/memory",
+  "upstream_url": "http://arkai.local:1234",
+  "success": false,
+  "error_message": null,
+  "total_latency_ms": 5198.206424713135,
+  "time_to_first_token_ms": 1559.4619274139404,
+  "prompt_processing_time_ms": 1559.4619274139404,
+  "generation_time_ms": 3638.7444972991943,
+  "prompt_tokens": 133,
+  "completion_tokens": 256,
+  "total_tokens": 389,
+  "prompt_tps": 85.28582690091974,
+  "completion_tps": 70.35393669162875,
+  "tps": 74.83350375441606
+}

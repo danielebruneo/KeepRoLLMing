@@ -1,0 +1,16 @@
+{
+  "route_name": "base/fallback",
+  "upstream_url": "http://arkai.local:8000/api",
+  "success": false,
+  "error_message": null,
+  "total_latency_ms": 8562.755584716797,
+  "time_to_first_token_ms": 2568.826675415039,
+  "prompt_processing_time_ms": 2568.826675415039,
+  "generation_time_ms": 5993.928909301758,
+  "prompt_tokens": 156,
+  "completion_tokens": 256,
+  "total_tokens": 412,
+  "prompt_tps": 60.728114314989924,
+  "completion_tps": 42.709882595157744,
+  "tps": 48.1153521111074
+}

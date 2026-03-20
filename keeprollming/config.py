@@ -67,7 +67,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
                     reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
                     backend_model_pattern=get_or_unset("backend_model_pattern"),  # type: ignore
-                    upstream_url=get_or_unset("upstream_url"),  # type: ignore
+                    upstream_url=get_or_unset("upstream_url", None),  # Use _UNSET to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
                     circuit_breaker_enabled=get_or_unset("circuit_breaker_enabled", False),  # type: ignore
@@ -128,7 +128,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
                     reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
                     backend_model_pattern=get_or_unset("backend_model_pattern"),  # type: ignore
-                    upstream_url=get_or_unset("upstream_url"),  # type: ignore
+                    upstream_url=get_or_unset("upstream_url", None),  # Use _UNSET to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
                     circuit_breaker_enabled=get_or_unset("circuit_breaker_enabled", False),  # type: ignore
@@ -224,6 +224,10 @@ def load_config() -> Dict[str, Any]:
 
     # Set defaults for missing values (flat structure now)
     config.setdefault("upstream_base_url", "http://127.0.0.1:1234/v1")
+
+    # Allow UPSTREAM_BASE_URL env var to override the config file value
+    if "UPSTREAM_BASE_URL" in os.environ:
+        config["upstream_base_url"] = os.environ["UPSTREAM_BASE_URL"]
 
     # Parse flat default settings at root level
     config["defaults"] = {
