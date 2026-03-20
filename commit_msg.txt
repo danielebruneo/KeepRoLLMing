@@ -1,13 +1,12 @@
-Fix prompt_tps calculation for streaming and non-streaming requests
+Fix validate_config.py to only check public routes in health checks
 
-- Fixed performance.py: Changed prompt_tps formula from `prompt / ((ttft + (elapsed - ttft)) / 1000)` 
-  which simplified to elapsed time, to correct `prompt / (ttft / 1000)`
-  
-- Added TTFT estimation for non-streaming requests in app.py (~30% of total elapsed time)
-  since we can't measure actual first-token arrival without streaming
-  
-- Added prompt_tokens estimation for streaming requests when API doesn't provide them
-  (completion_tokens * 0.3 ratio), enabling prompt_tps calculation
+- Modified build_routes_by_name() to accept include_private and include_builtin flags
+- cmd_validate() validates ALL routes (including private) for completeness  
+- cmd_healthcheck() and cmd_full_check() Phase 2 only test PUBLIC user routes:
+  - Excludes private routes (is_private=True)
+  - Excludes builtin routes (builtin/*)
+- Added optional routes_to_check parameter to run_health_check() in healthcheck.py
 
-- Fixed healthcheck.py to use resolve_inherited_route() instead of resolve_route() 
-  for proper route inheritance resolution without pattern matching
+Result: 
+- Validation: 23 routes checked (all routes including private/builtin)
+- Health check: 17 routes checked (public user routes only)

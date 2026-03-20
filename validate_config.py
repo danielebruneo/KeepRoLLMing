@@ -50,41 +50,56 @@ def load_config(config_path: str) -> dict:
         sys.exit(1)
 
 
-def build_routes_by_name(config: dict) -> dict[str, Route]:
-    """Build dictionary of all routes by name."""
+def build_routes_by_name(config: dict, include_private: bool = False, include_builtin: bool = True) -> dict[str, Route]:
+    """Build dictionary of all routes by name.
+    
+    Args:
+        config: Configuration dictionary
+        include_private: If True, include private routes (default: False for health checks)
+        include_builtin: If True, include builtin routes (default: True for validation)
+    """
     user_routes = load_user_routes(config)
-    all_routes = user_routes + BUILTIN_ROUTES
+    # Filter out private routes unless explicitly requested
+    if not include_private:
+        user_routes = [r for r in user_routes if not getattr(r, "_is_private", False)]
+    
+    all_routes = user_routes + (BUILTIN_ROUTES if include_builtin else [])
     return {route.name: route for route in all_routes}
 
 
 def cmd_validate(args):
     """Run configuration validation."""
     config = load_config(args.config)
-    routes_by_name = build_routes_by_name(config)
-    
+    # Validate ALL routes including private ones for completeness
+    routes_by_name = build_routes_by_name(config, include_private=True)
+
     print(f"Validating configuration: {args.config}")
     print("-" * 60)
-    
+
     result = validate_config(config, routes_by_name)
     print_validation_report(result)
-    
+
     return 0 if result.is_valid else 1
 
 
 def cmd_healthcheck(args):
     """Run live health check on configured routes."""
     config = load_config(args.config)
-    
+
     print(f"Running health check on configuration: {args.config}")
     print("-" * 60)
     print(f"Timeout: {args.timeout}s, Max concurrent: {args.max_concurrent}\n")
     
+    # For health checks, only test public user routes (no private, no builtin)
+    public_routes_by_name = build_routes_by_name(config, include_private=False, include_builtin=False)
+
     try:
         results = run_health_check(
             config,
             timeout=args.timeout,
             max_concurrent=args.max_concurrent,
             verbose=args.verbose,
+            routes_to_check=public_routes_by_name.values(),
         )
         results.print_report()
         
@@ -100,32 +115,37 @@ def cmd_healthcheck(args):
 def cmd_full_check(args):
     """Run both validation and health check."""
     config = load_config(args.config)
-    routes_by_name = build_routes_by_name(config)
-    
+    # Validate ALL routes including private ones for completeness
+    routes_by_name = build_routes_by_name(config, include_private=True)
+
     print(f"Running full check on configuration: {args.config}")
     print("=" * 60)
-    
+
     # Phase 1: Validate structure
     print("\n[Phase 1/2] Validating configuration structure...")
     print("-" * 60)
-    
+
     struct_result = validate_config(config, routes_by_name)
     print_validation_report(struct_result)
-    
+
     if not struct_result.is_valid:
         print("\n⚠ Configuration has validation errors. Skipping health check.")
         return 1
-    
-    # Phase 2: Health check
+
+    # Phase 2: Health check (PUBLIC ROUTES ONLY, NO BUILTIN)
     print("\n[Phase 2/2] Running live health checks...")
     print("-" * 60)
     
+    # For health checks, only test public user routes (no private, no builtin)
+    public_routes_by_name = build_routes_by_name(config, include_private=False, include_builtin=False)
+
     try:
         health_results = run_health_check(
             config,
             timeout=args.timeout,
             max_concurrent=args.max_concurrent,
             verbose=args.verbose,
+            routes_to_check=public_routes_by_name.values(),
         )
         health_results.print_report()
         

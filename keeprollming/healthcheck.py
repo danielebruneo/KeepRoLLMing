@@ -128,34 +128,39 @@ def run_health_check(
     timeout: int = 10,
     max_concurrent: int = 5,
     verbose: bool = False,
+    routes_to_check: list[Route] | None = None,
 ) -> HealthCheckResults:
     """
     Run health checks on all non-private routes.
-    
+
     Args:
         config: Configuration dictionary
         timeout: Timeout in seconds for each request
         max_concurrent: Maximum number of concurrent requests
         verbose: If True, print progress during checks
-        
+        routes_to_check: Optional list of specific routes to check (overrides default filtering)
+
     Returns:
         HealthCheckResults object with all results
     """
     from keeprollming.config import load_user_routes
-    
+
     # Load routes
     user_routes = load_user_routes(config)
     all_routes = user_routes + BUILTIN_ROUTES
     
-    # Filter to non-private routes only
-    checkable_routes = [
-        route for route in all_routes 
-        if not getattr(route, "is_private", False) and not route.name.startswith("builtin/")
-    ]
-    
+    # Use provided routes or filter to non-private routes only
+    if routes_to_check is not None:
+        checkable_routes = list(routes_to_check)
+    else:
+        checkable_routes = [
+            route for route in all_routes
+            if not getattr(route, "is_private", False) and not route.name.startswith("builtin/")
+        ]
+
     if verbose:
         print(f"Checking {len(checkable_routes)} routes...")
-    
+
     # Run async health check
     return asyncio.run(_run_health_check_async(checkable_routes, all_routes, timeout, max_concurrent, verbose))
 
