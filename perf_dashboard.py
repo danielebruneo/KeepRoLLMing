@@ -12,10 +12,14 @@ import os
 import sys
 import time
 import yaml
+import shutil
+import select
+import fcntl
+import termios
+import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-
 
 # Terminal width configuration - adjust this to fit your terminal
 WIDTH = 120  # Total terminal width in characters
@@ -143,8 +147,37 @@ class PerformanceDashboard:
             print(f"\n📈 Total Requests: {total_requests}")
             print(f"📈 Avg TPS (all models): {avg_tps:.2f}")
 
-        print("\n💡 Press Ctrl+C to exit")
+        print("\n💡 Press Ctrl+C or 'q' to exit")
+        print("💡 Press 'c' to clear logs, 's' to save summary")
         print("=" * WIDTH)
+
+    def reset_logs(self):
+        """Clear the __perf_logs directory to reset data."""
+        logs_dir = os.getenv("PERFORMANCE_LOGS_DIR", "./__performance_logs")
+        if os.path.exists(logs_dir):
+            shutil.rmtree(logs_dir)
+            self.models = []  # Clear cached models
+            print(f"🗑️  Cleared logs directory: {logs_dir}")
+        else:
+            print(f"⚠️  Logs directory not found: {logs_dir}")
+
+    def save_summary(self):
+        """Save a copy of summary.yaml with timestamp in name."""
+        logs_dir = os.getenv("PERFORMANCE_LOGS_DIR", "./__performance_logs")
+        if not self.summary_path.exists():
+            print(f"⚠️  Summary file not found: {self.summary_path}")
+            return
+
+        # Create a backup directory inside the logs dir
+        backup_dir = Path(logs_dir) / "backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"summary_{timestamp}.yaml"
+        backup_path = backup_dir / filename
+
+        shutil.copy2(self.summary_path, backup_path)
+        print(f"💾 Saved summary to: {backup_path}")
 
     def render(self):
         """Render the complete dashboard."""
@@ -183,13 +216,37 @@ class PerformanceDashboard:
 
     def watch(self, interval: float = 1.0):
         """Continuously watch for changes and update the dashboard."""
+        # Save terminal settings
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        
         try:
-            while True:
-                self.render()
-                time.sleep(interval)
-        except KeyboardInterrupt:
-            print("\n\n👋 Dashboard stopped.")
-            sys.exit(0)
+            # Enable raw mode temporarily for key capture
+            new_settings = termios.tcgetattr(fd)
+            new_settings[3] &= ~(termios.ECHO | termios.ICANON)
+            new_settings[6][termios.VMIN] = 0
+            new_settings[6][termios.VTIME] = 0
+            termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
+            
+            try:
+                while True:
+                    self.render()
+                    # Check for keypress between renders (non-blocking)
+                    if select.select([fd], [], [], 0.05) == ([fd], [], []):
+                        ch = os.read(fd, 1).decode('utf-8', errors='ignore')
+                        if ch == 'q':
+                            print("\n\n👋 Dashboard stopped.")
+                            sys.exit(0)
+                        elif ch == 'c':
+                            self.reset_logs()
+                        elif ch == 's':
+                            self.save_summary()
+                    time.sleep(interval)
+            except KeyboardInterrupt:
+                print("\n\n👋 Dashboard stopped.")
+        finally:
+            # Restore terminal settings
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def main():
