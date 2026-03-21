@@ -91,7 +91,7 @@ class PerformanceDashboard:
 
     def draw_model_row(self, model: Dict[str, Any]):
         """Draw a single model row in the table."""
-        stats = model.get('total_tps', {})
+        stats = model.get('tps', {})
         comp_stats = model.get('completion_tps', {})
         prompt_stats = model.get('prompt_tps', {})
         ttft_stats = model.get('ttft_ms', {})
@@ -136,7 +136,7 @@ class PerformanceDashboard:
             total_tps_count = 0
 
             for model in successful:
-                tps = model.get('total_tps', {}).get('avg', 0)
+                tps = model.get('tps', {}).get('avg', 0)
                 requests = model.get('requests', 0)
                 if tps and requests > 0:
                     total_tps_weighted += tps * requests
