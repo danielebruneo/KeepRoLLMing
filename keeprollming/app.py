@@ -401,6 +401,11 @@ async def chat_completions(req: Request) -> Response:
     route_upstream_url = route_settings.get("upstream_url") or UPSTREAM_BASE_URL
     route_headers = route_settings.get("upstream_headers", {})
 
+    # Resolve ctx_len and max_tokens using 3-level hierarchy:
+    # Route > Model > Defaults
+    # Note: MODELS_CONFIG is now empty since models are defined inline in routes
+    resolved_ctx_len, resolved_max_tokens = resolve_route_settings(route, {}, DEFAULTS)
+
     # Log routing decision and configuration
     log(
         "INFO",
@@ -415,11 +420,6 @@ async def chat_completions(req: Request) -> Response:
         ctx_len=resolved_ctx_len,
         max_tokens_default=resolved_max_tokens,
     )
-
-    # Resolve ctx_len and max_tokens using 3-level hierarchy:
-    # Route > Model > Defaults
-    # Note: MODELS_CONFIG is now empty since models are defined inline in routes
-    resolved_ctx_len, resolved_max_tokens = resolve_route_settings(route, {}, DEFAULTS)
 
     # Check for custom prompt in request
     custom_prompt_type = payload.get("summary_prompt_type")
