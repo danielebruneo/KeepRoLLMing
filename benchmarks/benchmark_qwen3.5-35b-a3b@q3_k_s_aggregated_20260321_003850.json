@@ -1,0 +1,20 @@
+{
+  "timestamp": "20260321_003850",
+  "model": "qwen3.5-35b-a3b@q3_k_s",
+  "total_routes": 1,
+  "successful": 1,
+  "failed": 0,
+  "results": [
+    {
+      "route_name": "chat/deep",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 7473.973512649536,
+      "ttft_ms": 942.5485134124756,
+      "prompt_tps": 157.02109535366975,
+      "completion_tps": 39.1951220491552,
+      "total_tps": 54.05424561864434,
+      "error_message": null
+    }
+  ]
+}

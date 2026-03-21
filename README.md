@@ -94,10 +94,64 @@ python benchmark_routes.py --config config.yaml -t 120 -v
 - Measures latency, throughput (tokens/sec), and token counts
 - **New metrics:**
   - `prompt_tps` - Tokens per second during prompt processing (before first token)
-  - `completion_tps` - Tokens per second during generation (after first token)  
+  - `completion_tps` - Tokens per second during generation (after first token)
   - `tps` - Overall tokens per second for entire request (prompt + completion combined)
 - Saves individual route results as JSON files
 - Generates aggregated summary statistics
+
+### CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `--config` | Path to config file (default: `config.yaml`) |
+| `--filter` | Filter routes by name pattern (e.g., `"chat/"`, `"local/"`) |
+| `-n, --num-prompts` | Number of prompts to run per route (default: 3) |
+| `-t, --timeout` | Request timeout in seconds (default: 60) |
+| `-v, --verbose` | Enable verbose output |
+
+## Real-Time Performance Dashboard
+
+Monitor performance metrics in real-time with the terminal dashboard:
+
+```bash
+# Auto-detects PERFORMANCE_LOGS_DIR environment variable
+python perf_dashboard.py
+
+# Or specify custom summary path
+python perf_dashboard.py /path/to/summary.yaml
+```
+
+### Dashboard Features
+- **Per-model breakdown** - Metrics grouped by backend model
+- **Live updates** - Automatically refreshes when `summary.yaml` changes
+- **Key metrics displayed:**
+  - Requests count per model
+  - Overall TPS (total tokens/sec)
+  - Completion TPS (generation throughput)
+  - Prompt TPS (prompt processing throughput)
+  - TTFT (Time to First Token in ms)
+  - Average completion tokens
+
+### Example Output
+```
+================================================================================
+                       📊 PERFORMANCE MONITORING DASHBOARD                       
+                           Real-time metrics by model                           
+================================================================================
+
+📅 Last updated: 2026-03-21 01:15:42
+Model                          | Requests |      TPS |   Comp TPS |   Prompt TPS |  TTFT (ms) |  Comp Tokens
+--------------------------------------------------------------------------------
+qwen3.5-4B                     |       42 |    48.50 |      39.20 |       215.50 |     375.50 |          282
+qwen3.5-35b-a3b@q3_k_s         |       22 |    60.20 |      44.60 |       162.70 |    1020.50 |          285
+--------------------------------------------------------------------------------
+
+📈 Total Requests: 64
+📈 Avg TPS (all models): 52.52
+
+💡 Press Ctrl+C to exit
+================================================================================
+```
 
 ## Testing
 

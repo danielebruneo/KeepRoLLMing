@@ -1,0 +1,30 @@
+{
+  "timestamp": "20260320_235601",
+  "total_routes": 2,
+  "successful": 2,
+  "failed": 0,
+  "results": [
+    {
+      "route_name": "local/main",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 6629.393577575684,
+      "ttft_ms": 1074.2084980010986,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    },
+    {
+      "route_name": "local/deep",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 8413.45739364624,
+      "ttft_ms": 2643.516778945923,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    }
+  ]
+}

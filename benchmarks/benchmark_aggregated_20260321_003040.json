@@ -1,0 +1,30 @@
+{
+  "timestamp": "20260321_003040",
+  "total_routes": 2,
+  "successful": 2,
+  "failed": 0,
+  "results": [
+    {
+      "route_name": "chat/main",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 8367.839574813843,
+      "ttft_ms": 832.9453468322754,
+      "prompt_tps": 180.08384412069293,
+      "completion_tps": 26.808604591933516,
+      "total_tps": 42.06581601534,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 7285.713911056519,
+      "ttft_ms": 963.2959365844727,
+      "prompt_tps": 153.63918228987743,
+      "completion_tps": 40.49083768799346,
+      "total_tps": 55.45098324364688,
+      "error_message": null
+    }
+  ]
+}

@@ -993,13 +993,6 @@ async def chat_completions(req: Request) -> Response:
                     prompt_tokens_u, completion_tokens_u, total_tokens_u = _usage_tokens(final_usage)
                     completion_tokens_source = "usage"
                     
-                    # Estimate prompt tokens if not provided by API (for streaming requests)
-                    # Use ratio of TTFT to elapsed time as proxy for prompt processing vs generation
-                    if prompt_tokens_u is None and ttft_ms is not None and elapsed_ms > 0:
-                        # Assume prompt processing takes ~30% of total time (similar to non-streaming estimate)
-                        estimated_prompt_ratio = 0.3
-                        estimated_prompt_tokens = int(completion_tokens_u * estimated_prompt_ratio if completion_tokens_u else 10)
-                        prompt_tokens_u = max(1, estimated_prompt_tokens)
                     
                     if completion_tokens_u is None and full_text:
                         completion_tokens_u = _count_text_tokens_safe(full_text)
@@ -1013,7 +1006,7 @@ async def chat_completions(req: Request) -> Response:
                         elapsed_ms=elapsed_ms,
                         ttft_ms=ttft_ms,
                         completion_tokens=completion_tokens_u,
-                        prompt_tokens=prompt_tokens_u,
+                        prompt_tokens=prompt_tokens_for_log or prompt_tokens_u,
                         total_tokens=total_tokens_u,
                         finish_reason=finish_reason,
                         did_summarize=did_summarize,
@@ -1229,7 +1222,7 @@ async def chat_completions(req: Request) -> Response:
             elapsed_ms=elapsed_ms,
             ttft_ms=ttft_ms_non_stream,
             completion_tokens=completion_tokens_u,
-            prompt_tokens=prompt_tokens_u,
+            prompt_tokens=prompt_tokens_for_log or prompt_tokens_u,
             total_tokens=total_tokens_u,
             finish_reason=(data.get("choices") or [{}])[0].get("finish_reason") if isinstance(data, dict) and isinstance(data.get("choices"), list) and data.get("choices") else None,
             did_summarize=did_summarize,

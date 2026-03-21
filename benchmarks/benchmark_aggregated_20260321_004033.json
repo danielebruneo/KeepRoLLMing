@@ -1,0 +1,44 @@
+{
+  "timestamp": "20260321_004033",
+  "total_routes": 3,
+  "successful": 3,
+  "failed": 0,
+  "results": [
+    {
+      "route_name": "chat/quick",
+      "backend_model": "qwen3-vl-2b-thinking",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 5916.636943817139,
+      "ttft_ms": 438.0345344543457,
+      "prompt_tps": 328.74120342903797,
+      "completion_tps": 46.72724554030467,
+      "total_tps": 67.60597342684655,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/main",
+      "backend_model": "qwen3.5-4B",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 8403.516292572021,
+      "ttft_ms": 576.0135650634766,
+      "prompt_tps": 260.4105338794756,
+      "completion_tps": 25.934197287033573,
+      "total_tps": 42.00622545493502,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "backend_model": "qwen3.5-35b-a3b@q3_k_s",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 7615.727663040161,
+      "ttft_ms": 1057.845115661621,
+      "prompt_tps": 139.90705993611792,
+      "completion_tps": 39.03699069790964,
+      "total_tps": 53.04811540998896,
+      "error_message": null
+    }
+  ]
+}

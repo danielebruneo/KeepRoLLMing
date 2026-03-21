@@ -1,0 +1,20 @@
+{
+  "timestamp": "20260321_010451",
+  "total_routes": 1,
+  "successful": 1,
+  "failed": 0,
+  "results": [
+    {
+      "route_name": "chat/main",
+      "backend_model": "qwen3.5-4B",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 16387.47000694275,
+      "ttft_ms": 1444.061040878296,
+      "prompt_tps": 103.87372538543671,
+      "completion_tps": 14.722209671140384,
+      "total_tps": 22.578225915485735,
+      "error_message": null
+    }
+  ]
+}

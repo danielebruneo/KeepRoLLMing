@@ -1,0 +1,74 @@
+{
+  "timestamp": "20260321_000132",
+  "total_routes": 6,
+  "successful": 6,
+  "failed": 0,
+  "results": [
+    {
+      "route_name": "chat/main",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 5718.747615814209,
+      "ttft_ms": 221.26412391662598,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 6924.302101135254,
+      "ttft_ms": 1154.7136306762695,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/main",
+      "prompt_name": "technical_explanation",
+      "success": true,
+      "elapsed_ms": 5693.122386932373,
+      "ttft_ms": 209.6719741821289,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "prompt_name": "technical_explanation",
+      "success": true,
+      "elapsed_ms": 6729.7043800354,
+      "ttft_ms": 1035.0046157836914,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/main",
+      "prompt_name": "code_review",
+      "success": true,
+      "elapsed_ms": 5977.652549743652,
+      "ttft_ms": 476.38869285583496,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "prompt_name": "code_review",
+      "success": true,
+      "elapsed_ms": 6859.692573547363,
+      "ttft_ms": 1163.6683940887451,
+      "prompt_tps": 0.0,
+      "completion_tps": 0.0,
+      "total_tps": 0.0,
+      "error_message": null
+    }
+  ]
+}

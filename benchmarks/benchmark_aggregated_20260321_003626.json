@@ -1,0 +1,32 @@
+{
+  "timestamp": "20260321_003626",
+  "total_routes": 2,
+  "successful": 2,
+  "failed": 0,
+  "results": [
+    {
+      "route_name": "chat/main",
+      "backend_model": "qwen3.5-4B",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 10185.439348220825,
+      "ttft_ms": 545.5136299133301,
+      "prompt_tps": 274.97021481173925,
+      "completion_tps": 23.02922309643866,
+      "total_tps": 36.52272496865639,
+      "error_message": null
+    },
+    {
+      "route_name": "chat/deep",
+      "backend_model": "qwen3.5-35b-a3b@q3_k_s",
+      "prompt_name": "story",
+      "success": true,
+      "elapsed_ms": 7656.741380691528,
+      "ttft_ms": 1036.787509918213,
+      "prompt_tps": 142.7486332389122,
+      "completion_tps": 38.67096432955886,
+      "total_tps": 52.76396053010115,
+      "error_message": null
+    }
+  ]
+}

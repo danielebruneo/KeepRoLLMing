@@ -144,6 +144,7 @@ def _update_summary(base_dir: Path) -> None:
         
         # Collect all metrics
         tps_values = [v for v in (_safe_float(e.get("tps")) for e in entries) if v is not None]
+        total_tps_values = [v for v in (_safe_float(e.get("total_tps")) for e in entries) if v is not None]
         ttft_values = [v for v in (_safe_float(e.get("ttft_ms")) for e in entries) if v is not None]
         completion_tokens_values = [v for v in (_safe_int(e.get("completion_tokens")) for e in entries) if v is not None]
         prompt_tokens_values = [v for v in (_safe_int(e.get("prompt_tokens")) for e in entries) if v is not None]
@@ -156,6 +157,7 @@ def _update_summary(base_dir: Path) -> None:
         prompt_tokens_stats = _stats([float(v) for v in prompt_tokens_values]) if prompt_tokens_values else {"avg": None, "min": None, "max": None}
         completion_tps_stats = _stats(completion_tps_values)
         prompt_tps_stats = _stats(prompt_tps_values)
+        total_tps_stats = _stats(total_tps_values)
 
         lines.append("  -")
         lines.append(f"    model: {_format_scalar(model_name)}")
@@ -215,7 +217,10 @@ def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft
     # the first content token. TTFT is tracked separately.
     if elapsed is not None and elapsed > 0:
         if completion is not None and completion >= 0:
-            completion_tps = completion / (elapsed / 1000.0)
+            # Completion TPS based on generation time (elapsed - TTFT)
+            gen_time = elapsed - ttft if ttft is not None else elapsed
+            if gen_time > 0:
+                completion_tps = completion / (gen_time / 1000.0)
         
         if prompt is not None and prompt >= 0:
             # Prompt TPS based on TTFT if available, otherwise use elapsed time
@@ -225,15 +230,22 @@ def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft
             else:
                 prompt_tps = prompt / (elapsed / 1000.0)
         
-        # Overall TPS is completion tokens per second (standard metric)
-        tps = completion_tps
+        # Overall TPS is total tokens per second (standard metric for end-to-end throughput)
+        if prompt is not None and completion is not None:
+            total_tps = (prompt + completion) / (elapsed / 1000.0)
+        else:
+            total_tps = None
+        
+        # For backward compatibility, keep 'tps' as alias for completion_tps
+        # New code should use 'total_tps' for overall throughput
 
     return {
         "elapsed_ms": round(elapsed, 4) if elapsed is not None else None,
         "completion_tokens": completion,
         "prompt_tokens": prompt,
         "ttft_ms": round(ttft, 4) if ttft is not None else None,
-        "tps": round(tps, 4) if tps is not None else None,
+        "tps": round(completion_tps, 4) if completion_tps is not None else None,
+        "total_tps": round(total_tps, 4) if total_tps is not None else None,
         "completion_tps": round(completion_tps, 4) if completion_tps is not None else None,
         "prompt_tps": round(prompt_tps, 4) if prompt_tps is not None else None,
     }
@@ -265,6 +277,7 @@ def record_request_performance(
         "elapsed_ms": metrics["elapsed_ms"],
         "ttft_ms": metrics["ttft_ms"],
         "tps": metrics["tps"],
+        "total_tps": metrics["total_tps"],
         "completion_tps": metrics["completion_tps"],
         "prompt_tps": metrics["prompt_tps"],
         "completion_tokens": _safe_int(completion_tokens),

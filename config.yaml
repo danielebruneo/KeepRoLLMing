@@ -26,7 +26,7 @@ routes:
 
   # ========== MODELS ==========
 
-  arkai/GPU1/QWen3.5-35b-a3b:  # Runs on RTX 3090 24GB [LM Studio]
+  arkai/RTX3090/QWen3.5-35b-a3b:  # Runs on RTX 3090 24GB [LM Studio]
     is_private: true
     extends: arkai/lmstudio
     main_model: "qwen3.5-35b-a3b@q3_k_s"
@@ -36,6 +36,19 @@ routes:
       - chat
       - vision
       - tools
+      - thinking
+
+  arkai/RTX3090/QWen3.5-4B:  # Runs on RTX 3090 24GB [LM Studio]
+    is_private: true
+    extends: arkai/lmstudio
+    main_model: "qwen3.5-4B"
+    ctx_len: 64000
+    max_tokens: 8192
+    capabilities:
+      - chat
+      - vision
+      - tools
+      - thinking
 
   arkai/CPU/QWen3.5-VL-2B:  # Runs on CPU [LM Studio]
     is_private: true
@@ -49,7 +62,7 @@ routes:
       - tools
       - thinking
 
-  arkai/GPU1+NPU/Llama-3.2-3B:  # Runs on NPU+AMD-GPU [Lemonade]
+  arkai/AMD/Llama-3.2-3B:  # Runs on AMD(NPU+GPU) [Lemonade]
     is_private: true
     extends: arkai/lemonade
     main_model: "Llama-3.2-3B-Instruct-Hybrid"
@@ -59,19 +72,29 @@ routes:
       - chat
       - tools
 
+  arkai/AMDU/Qwen-2.5-1.5B:  # Runs on AMD(NPU+GPU) [Lemonade]
+    is_private: true
+    extends: arkai/lemonade
+    main_model: "Qwen-2.5-1.5B-Instruct-Hybrid"
+    ctx_len: 8192
+    max_tokens: 4096
+    capabilities:
+      - chat
+      - tools
+
   # ========== BASE ROUTES ==========
 
   base/deep:
-    extends: arkai/GPU1/QWen3.5-35b-a3b
+    extends: arkai/RTX3090/QWen3.5-35b-a3b
 
   base/main:
-    extends: arkai/GPU1/QWen3.5-35b-a3b
+    extends: arkai/RTX3090/QWen3.5-4B
 
   base/quick:
     extends: arkai/CPU/QWen3.5-VL-2B
 
   base/alt:
-    extends: arkai/GPU1+NPU/Llama-3.2-3B
+    extends: arkai/GPU0+NPU/Qwen-2.5-1.5B
 
   base/fallback:
     extends: base/alt

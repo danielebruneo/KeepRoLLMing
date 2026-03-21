@@ -1,16 +1,15 @@
 {
   "route_name": "local/main",
   "upstream_url": "http://arkai.local:1234",
-  "success": false,
+  "prompt_name": "story",
+  "success": true,
   "error_message": null,
-  "total_latency_ms": 4015.8255100250244,
-  "time_to_first_token_ms": 1204.7476530075073,
-  "prompt_processing_time_ms": 1204.7476530075073,
-  "generation_time_ms": 2811.077857017517,
-  "prompt_tokens": 140,
-  "completion_tokens": 256,
-  "total_tokens": 396,
-  "prompt_tps": 116.20690826872074,
-  "completion_tps": 91.06827096977298,
-  "tps": 98.60986215945732
+  "elapsed_ms": 6629.393577575684,
+  "ttft_ms": 1074.2084980010986,
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "total_tokens": 0,
+  "prompt_tps": 0.0,
+  "completion_tps": 0.0,
+  "total_tps": 0.0
 }

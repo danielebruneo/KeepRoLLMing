@@ -1,16 +1,16 @@
 {
   "route_name": "chat/quick",
+  "backend_model": "qwen3-vl-2b-thinking",
   "upstream_url": "http://arkai.local:1234",
-  "success": false,
+  "prompt_name": "story",
+  "success": true,
   "error_message": null,
-  "total_latency_ms": 5268.568754196167,
-  "time_to_first_token_ms": 1580.57062625885,
-  "prompt_processing_time_ms": 1580.57062625885,
-  "generation_time_ms": 3687.998127937317,
-  "prompt_tokens": 133,
+  "elapsed_ms": 6053.863763809204,
+  "ttft_ms": 556.2629699707031,
+  "prompt_tokens": 144,
   "completion_tokens": 256,
-  "total_tokens": 389,
-  "prompt_tps": 84.146825070896,
-  "completion_tps": 69.41435193818273,
-  "tps": 73.83409387799672
+  "total_tokens": 400,
+  "prompt_tps": 258.87036846544737,
+  "completion_tps": 46.56576743202506,
+  "total_tps": 66.07350538531323
 }
