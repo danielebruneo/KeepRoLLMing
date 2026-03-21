@@ -167,4 +167,3 @@ routes:
     # main_model: unsloth/qwen3.5-4b
     extends: [arkai/RTX3090/QWen3.5-35b-a3b]
     summary_enabled: true
-

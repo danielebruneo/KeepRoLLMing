@@ -322,9 +322,7 @@ def check_config_reload() -> bool:
             max_tokens = CONFIG["defaults"]["max_tokens"] if "defaults" in CONFIG else 4096
             summary_enabled = CONFIG["defaults"]["summary_enabled"] if "defaults" in CONFIG else True
             
-            DEFAULTS.ctx_len = ctx_len
-            DEFAULTS.max_tokens = max_tokens
-            DEFAULTS.summary_enabled = summary_enabled
+            DEFAULTS = DefaultSettings(ctx_len=ctx_len, max_tokens=max_tokens, summary_enabled=summary_enabled)
             
             # Update cached mtime
             _CONFIG_LAST_MTIME = current_mtime
@@ -332,6 +330,8 @@ def check_config_reload() -> bool:
             return True
         except Exception as e:
             print(f"Warning: Config reload failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     return False
