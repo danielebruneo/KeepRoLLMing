@@ -273,6 +273,31 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc):
+    """Custom 404 handler that logs the request details."""
+    from .logger import log_server_event
+    
+    # Extract client model from path if present
+    client_model = "unknown"
+    path = str(request.url.path)
+    if "/chat/completions" in path:
+        parts = path.split("/")
+        if len(parts) >= 3:
+            client_model = "/".join(parts[1:3])
+    
+    # Log the 404 with details
+    log_server_event("ERROR", "Route not found - request dropped",
+                     request_path=path,
+                     client_model=client_model,
+                     method=request.method)
+    
+    return JSONResponse(
+        {"detail": "Not Found"},
+        status_code=404
+    )
+
+
 @app.get("/metrics")
 async def get_metrics():
     """Get system and conversation metrics"""
@@ -306,8 +331,8 @@ async def list_models():
             
         settings = get_route_settings(route, route.name)
 
-        # Get main model context length
-        main_model = settings["main_model"]
+        # Get model context length
+        model = settings["model"]
         summary_model = settings["summary_model"]
         is_summary_enabled = settings.get("summary_enabled", True)
 
@@ -316,7 +341,7 @@ async def list_models():
         route_with_ctx = Route(
             name=route.name,
             pattern=route.pattern,
-            main_model=main_model,
+            model=settings["model"],
             summary_model=summary_model,
             ctx_len=_UNSET if route.ctx_len is None else route.ctx_len,  # type: ignore
             max_tokens=_UNSET if route.max_tokens is None else route.max_tokens,  # type: ignore
@@ -325,11 +350,11 @@ async def list_models():
         main_ctx_len = resolve_route_settings(route_with_ctx, {}, DEFAULTS)[0]
 
         # If summarization enabled and summary model has different ctx_len, use max
-        if is_summary_enabled and summary_model and summary_model != main_model:
+        if is_summary_enabled and summary_model and summary_model != settings["model"]:
             route_summary = Route(
                 name=route.name,
                 pattern=route.pattern,
-                main_model=summary_model,
+                model=summary_model,
                 summary_model=None,
                 ctx_len=_UNSET if route.ctx_len is None else route.ctx_len,  # type: ignore
                 max_tokens=_UNSET if route.max_tokens is None else route.max_tokens,  # type: ignore
@@ -388,12 +413,12 @@ async def chat_completions(req: Request) -> Response:
     client_model = payload.get("model")
 
     # Use new routing system to resolve route and backend model
-    route, backend_model = resolve_route(client_model)
-    route_settings = get_route_settings(route, backend_model)
+    route, model = resolve_route(client_model)
+    route_settings = get_route_settings(route, model)
     
     # Extract settings from route configuration
-    upstream_model = route_settings["backend_model"]
-    summary_model = route_settings["summary_model"] or route_settings["main_model"]
+    upstream_model = route_settings["model"]
+    summary_model = route_settings["summary_model"] or route_settings["model"]
     is_passthrough = route_settings["passthrough_enabled"]
     transform_reasoning_content = route_settings["transform_reasoning_content"]
     add_empty_content_when_reasoning_only = route_settings["add_empty_content_when_reasoning_only"]
@@ -415,7 +440,7 @@ async def chat_completions(req: Request) -> Response:
         req_id=req_id,
         client_model=client_model,
         resolved_route=route.name,
-        backend_model=backend_model,
+        model=model,
         upstream_model=upstream_model,
         summary_model=summary_model,
         passthrough_enabled=is_passthrough,
@@ -663,21 +688,24 @@ async def chat_completions(req: Request) -> Response:
     except Exception:
         prompt_tokens_for_log = None
 
-    max_tokens_upstream = max(64, int(ctx_eff) - int(prompt_tokens_for_log or 0) - int(SAFETY_MARGIN_TOK))
-    requested_out = int(max_tokens_req) if isinstance(max_tokens_req, int) and max_tokens_req > 0 else DEFAULT_MAX_COMPLETION_TOKENS
-    adjusted_out = min(requested_out, max_tokens_upstream)
-    upstream_payload["max_tokens"] = adjusted_out
-    if adjusted_out < requested_out:
-        log(
-            "WARN",
-            "max_tokens_clamped",
-            req_id=req_id,
-            requested=requested_out,
-            adjusted=adjusted_out,
-            ctx_len=ctx_eff,
-            prompt_tokens=prompt_tokens_for_log,
-            safety_margin=SAFETY_MARGIN_TOK,
-        )
+    # Only add max_tokens to upstream if explicitly configured (not _UNSET)
+    from .routing import _UNSET
+    if DEFAULT_MAX_COMPLETION_TOKENS is not _UNSET:  # type: ignore
+        max_tokens_upstream = max(64, int(ctx_eff) - int(prompt_tokens_for_log or 0) - int(SAFETY_MARGIN_TOK))
+        requested_out = int(max_tokens_req) if isinstance(max_tokens_req, int) and max_tokens_req > 0 else DEFAULT_MAX_COMPLETION_TOKENS  # type: ignore
+        adjusted_out = min(requested_out, max_tokens_upstream)
+        upstream_payload["max_tokens"] = adjusted_out
+        if adjusted_out < requested_out:
+            log(
+                "WARN",
+                "max_tokens_clamped",
+                req_id=req_id,
+                requested=requested_out,
+                adjusted=adjusted_out,
+                ctx_len=ctx_eff,
+                prompt_tokens=prompt_tokens_for_log,
+                safety_margin=SAFETY_MARGIN_TOK,
+            )
 
     req_summary = summarize_request_payload(upstream_payload)
 

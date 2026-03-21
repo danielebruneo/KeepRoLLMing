@@ -1,50 +1,76 @@
 # Example configuration for the new route-based system
 # This demonstrates how to use custom routes with fallback chains
 
+# Global defaults (applied to all routes unless overridden)
+defaults:
+  ctx_len: 8192
+  # max_tokens: 4096  # Optional: if set, sends this as default max_tokens upstream
+                       # If not set or commented out, max_tokens is NOT sent upstream
+
+# Other global settings (optional)
+upstream_base_url: http://localhost:1234/v1
+default_max_completion_tokens: 900  # Default when client doesn't specify (optional)
+summary_max_tokens: 512
+safety_margin_tok: 128
+
 routes:
   # Custom route for production API with fallback chain
   - name: prod-api
     pattern: "api/prod"
-    main_model: qwen3.5-35b-a3b
+    model: qwen3.5-35b-a3b
     summary_model: qwen2.5-7b-instruct
     ctx_len: 16384
-    
+
     # Fallback chain: if primary fails, try these in order
     fallback_chain:
       - "qwen2.5-27b-instruct"  # Try medium model first
       - "local/deep"            # Then local deep if available
       - "code/senior"           # Finally use senior code route
-    
+
     summary_enabled: true
     passthrough_enabled: false
 
   # Custom route for testing with simpler models
   - name: test-route
     pattern: "api/test"
-    main_model: qwen2.5-7b-instruct
+    model: qwen2.5-7b-instruct
     summary_model: qwen2.5-1.5b-instruct
     ctx_len: 8192
-    
+
     # Simple fallback to quick profile
     fallback_chain:
       - "local/quick"
-    
+
     summary_enabled: true
     passthrough_enabled: false
 
   # Custom code review route with specialized settings
   - name: code-review
     pattern: "code/review"
-    main_model: qwen3.5-35b-a3b
+    model: qwen3.5-35b-a3b
     summary_model: qwen2.5-7b-instruct
     ctx_len: 32768
-    
+
     # For code review, fall back to senior if primary unavailable
     fallback_chain:
       - "code/senior"
-    
+
     summary_enabled: true
     passthrough_enabled: false
+
+  # Route with explicit max_tokens limit (optional)
+  - name: limited-tokens
+    pattern: "api/limited"
+    model: qwen2.5-7b-instruct
+    ctx_len: 8192
+    max_tokens: 2048  # Limit response to 2048 tokens
+
+  # Route without max_tokens (upstream decides)
+  - name: no-max-tokens
+    pattern: "api/open"
+    model: qwen3.5-7b-instruct
+    ctx_len: 8192
+    # max_tokens not set - upstream will use its own defaults
 
 # Old profile-based configuration still works for backward compatibility
 profiles:

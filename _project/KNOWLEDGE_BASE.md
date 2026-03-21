@@ -48,23 +48,41 @@ routes:
   quick-base:
     pattern: "local/quick|quick"
     upstream_url: "http://arkai.local:1234/v1"
-    main_model: "qwen3.5-35b-a3b@q3_k_s"
+    model: "qwen3.5-35b-a3b@q3_k_s"
     ctx_len: 128000
-    max_tokens: 8192
+    max_tokens: 8192  # Optional: if set, sends this as default max_tokens upstream
 
   # Child route that extends base and overrides specific fields
   chat/quick:
     pattern: "chat/quick|c/q"
     extends: quick-base
-    main_model: "qwen2.5-3b-instruct"
-    max_tokens: 4096
+    model: "qwen2.5-3b-instruct"
+    max_tokens: 4096  # Override parent's max_tokens
 ```
+
+### Global Defaults
+Global settings can be defined at the root level and applied to all routes unless overridden:
+
+```yaml
+defaults:
+  ctx_len: 8192
+  # max_tokens: 4096  # Optional default for all routes
+
+# If default_max_completion_tokens is not set or is None, max_tokens is NOT sent upstream
+default_max_completion_tokens: 900  # Optional fallback when client doesn't specify
+```
+
+**max_tokens behavior:**
+- If `max_tokens` is configured at route level → use that value
+- If `max_tokens` is configured at root level (defaults.max_tokens) → use as default for all routes
+- If `default_max_completion_tokens` is set in config → use when client doesn't specify max_tokens
+- If no max_tokens configuration exists → **do NOT send max_tokens upstream** (upstream decides)
 
 ### Profile Categories (Current Setup)
 
 **Base Profiles:**
 - `quick-base`: ArkAI port 1234, ctx=128K, max_tokens=8K
-- `main-base`: ArkAI port 1234, ctx=128K, max_tokens=16K  
+- `main-base`: ArkAI port 1234, ctx=128K, max_tokens=16K
 - `deep-base`: ArkAI port 1234, ctx=128K, max_tokens=32K
 
 **Chat Routes (extend base profiles):**
@@ -80,6 +98,75 @@ routes:
 - `code/junior` → extends `quick-base`, uses qwen2.5-7b-instruct
 - `code/senior` → extends `main-base`, uses qwen3.5-35b-a3b
 - `code/architect` → extends `deep-base`, uses qwen3.5-35b-a3b
+
+### Configuration Hierarchy
+Configuration values are resolved in this priority order (highest to lowest):
+1. **Route-level settings** (e.g., `route.max_tokens`)
+2. **Model-level settings** (e.g., `model_cfg.max_tokens`)
+3. **Global defaults** (e.g., `defaults.max_tokens`)
+4. **Sentinel `_UNSET`** → if no configuration exists, field is not sent upstream
+
+### max_tokens Configuration
+
+The `max_tokens` parameter controls the maximum number of tokens the upstream model can generate in its response. This feature provides fine-grained control over response length.
+
+#### Configuration Hierarchy (Highest to Lowest Priority)
+1. **Route-level** (`routes[].max_tokens`) - Most specific, applies only to that route
+2. **Model-level** (`models[].max_tokens`) - Applies to all routes using that model
+3. **Global defaults** (`defaults.max_tokens`) - Fallback for all routes without explicit setting
+4. **Sentinel `_UNSET`** - If no configuration exists, max_tokens is NOT sent upstream (upstream decides)
+
+#### Behavior
+
+| Configuration Scenario | Result |
+|------------------------|--------|
+| `default_max_completion_tokens` set in config | Used when client doesn't specify max_tokens |
+| Route has `max_tokens` configured | Uses route value (overrides global) |
+| No max_tokens configuration anywhere | **max_tokens NOT sent upstream** - upstream uses its own defaults |
+
+#### Examples
+
+```yaml
+# Example 1: Global default for all routes
+defaults:
+  ctx_len: 8192
+  max_tokens: 4096  # All routes use 4096 unless overridden
+
+routes:
+  - name: limited-route
+    pattern: "api/limited"
+    model: qwen2.5-7b-instruct
+    max_tokens: 2048  # This route uses 2048 instead of global 4096
+```
+
+```yaml
+# Example 2: No global default - upstream decides
+defaults:
+  ctx_len: 8192
+  # max_tokens not set - upstream will use its own defaults
+
+routes:
+  - name: open-route
+    pattern: "api/open"
+    model: qwen3.5-7b-instruct
+    # No max_tokens specified - upstream decides
+```
+
+```yaml
+# Example 3: Per-route max_tokens limits
+routes:
+  - name: quick-chat
+    pattern: "chat/quick"
+    model: qwen2.5-3b-instruct
+    ctx_len: 8192
+    max_tokens: 1024  # Limit responses to 1K tokens
+
+  - name: long-response
+    pattern: "api/long"
+    model: qwen3.5-35b-a3b
+    ctx_len: 128000
+    max_tokens: 32768  # Allow up to 32K token responses
+```
 
 ### Environment Variables
 - `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)

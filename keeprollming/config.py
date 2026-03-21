@@ -59,14 +59,14 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     pattern=pattern,
                     summary_enabled=get_or_unset("summary_enabled", True),  # type: ignore
                     passthrough_enabled=get_or_unset("passthrough_enabled", False),  # type: ignore
-                    main_model=get_or_unset("main_model"),  # type: ignore
+                    model=get_or_unset("model"),  # type: ignore
                     summary_model=get_or_unset("summary_model"),  # type: ignore
                     ctx_len=get_or_unset("ctx_len", _UNSET),  # type: ignore
                     max_tokens=get_or_unset("max_tokens", _UNSET),  # type: ignore
                     transform_reasoning_content=get_or_unset("transform_reasoning_content", False),  # type: ignore
                     add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
                     reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
-                    backend_model_pattern=get_or_unset("backend_model_pattern"),  # type: ignore
+                    model_pattern=get_or_unset("model_pattern"),  # type: ignore
                     upstream_url=get_or_unset("upstream_url", None),  # Use _UNSET to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
@@ -115,19 +115,24 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                 # Extract is_private flag from config (default False for non-private routes)
                 is_private = route_data.get("is_private", False)
 
+                # Support both 'model' and 'main_model' (backward compatibility)
+                model = get_or_unset("model")
+                if model is _UNSET:
+                    model = get_or_unset("main_model")
+
                 route = Route(
                     name=name,
                     pattern=pattern,
                     summary_enabled=get_or_unset("summary_enabled", True),  # type: ignore
                     passthrough_enabled=get_or_unset("passthrough_enabled", False),  # type: ignore
-                    main_model=get_or_unset("main_model"),  # type: ignore
+                    model=model,  # type: ignore
                     summary_model=get_or_unset("summary_model"),  # type: ignore
                     ctx_len=get_or_unset("ctx_len", _UNSET),  # type: ignore
                     max_tokens=get_or_unset("max_tokens", _UNSET),  # type: ignore
                     transform_reasoning_content=get_or_unset("transform_reasoning_content", False),  # type: ignore
                     add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
                     reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
-                    backend_model_pattern=get_or_unset("backend_model_pattern"),  # type: ignore
+                    model_pattern=get_or_unset("model_pattern"),  # type: ignore
                     upstream_url=get_or_unset("upstream_url", None),  # Use _UNSET to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
@@ -167,15 +172,15 @@ def resolve_route_settings(
         Tuple of (resolved_ctx_len, resolved_max_tokens)
     """
     # Get main model name for lookup
-    main_model = route.main_model
+    model = route.model
 
     # Start with global defaults
     ctx_len = defaults.ctx_len
     max_tokens = defaults.max_tokens
 
     # Apply model-specific settings if available
-    if main_model and main_model in models_config:
-        model_cfg = models_config[main_model]
+    if model and model in models_config:
+        model_cfg = models_config[model]
 
         # Override with model values if set (not _UNSET)
         if model_cfg.ctx_len is not _UNSET:  # type: ignore
@@ -241,7 +246,14 @@ def load_config() -> Dict[str, Any]:
     config["default_ctx_len"] = int(os.getenv("DEFAULT_CTX_LEN", str(config["defaults"]["ctx_len"])))
     config["summary_max_tokens"] = int(os.getenv("SUMMARY_MAX_TOKENS", str(config.get("summary_max_tokens", "512"))))
     config["safety_margin_tok"] = int(os.getenv("SAFETY_MARGIN_TOK", str(config.get("safety_margin_tok", "128"))))
-    config["default_max_completion_tokens"] = int(os.getenv("DEFAULT_MAX_COMPLETION_TOKENS", str(config.get("default_max_completion_tokens", "900"))))
+    
+    # max_completion_tokens: if not set, use _UNSET to indicate "don't send upstream"
+    default_max_completion_tokens = config.get("default_max_completion_tokens")
+    if default_max_completion_tokens is None:
+        from .routing import _UNSET  # type: ignore
+        config["default_max_completion_tokens"] = _UNSET
+    else:
+        config["default_max_completion_tokens"] = int(default_max_completion_tokens)
 
     config["summary_mode"] = os.getenv("SUMMARY_MODE", config.get("summary_mode", "cache_append")).strip().lower()
     config["summary_cache_enabled"] = os.getenv("SUMMARY_CACHE_ENABLED", str(config.get("summary_cache_enabled", "1"))).strip().lower() not in {"0", "false", "no", "off"}
@@ -360,9 +372,9 @@ def resolve_route(client_model: str) -> Tuple[Optional[Route], str]:
         client_model: The model name from the client request (e.g., "local/quick", "pass/openai/gpt-4")
 
     Returns:
-        Tuple of (matched_route, backend_model_name)
+        Tuple of (matched_route, model_name)
         - route can be None if no match found (shouldn't happen with fallback)
-        - backend_model is the actual model to use for routing
+        - model is the actual model to use for routing
     """
     return _resolve_route(client_model, USER_ROUTES)
 
@@ -375,7 +387,7 @@ def resolve_fallback_chain(
     """
     Resolve a fallback chain for automatic rerouting when backend is unavailable.
 
-    This function returns the complete list of (route, backend_model) pairs to try,
+    This function returns the complete list of (route, model) pairs to try,
     starting with the primary route and following the fallback chain.
 
     Args:
@@ -384,24 +396,24 @@ def resolve_fallback_chain(
         client_request_id: Optional request ID for tracking/debugging
 
     Returns:
-        List of (route, backend_model) tuples in order to try
+        List of (route, model) tuples in order to try
         Each tuple represents a routing attempt
     """
     return _resolve_fallback_chain(primary_route, primary_backend, client_request_id)
 
 
-def get_route_settings(route: Route, backend_model: str) -> Dict[str, Any]:
+def get_route_settings(route: Route, model: str) -> Dict[str, Any]:
     """
     Extract all settings from a matched route for use in the application.
 
     Args:
         route: The matched route
-        backend_model: The resolved backend model name
+        model: The resolved backend model name
 
     Returns:
         Dictionary of all route settings
     """
-    return _get_route_settings(route, backend_model)
+    return _get_route_settings(route, model)
 
 
 # Extract values from config (no environment variable overrides - all in YAML now)
@@ -427,7 +439,7 @@ LOG_PAYLOAD_MAX_CHARS = CONFIG["log_payload_max_chars"]
 class Profile:
     """Legacy profile class - kept for backward compatibility during transition."""
     name: str
-    main_model: str
+    model: str
     summary_model: str
     transform_reasoning_content: bool = False
     add_empty_content_when_reasoning_only: bool = False
@@ -440,7 +452,7 @@ def create_profiles_from_config(config: Dict[str, Any]) -> Dict[str, Profile]:
     for name, profile_data in config.get("profiles", {}).items():
         profiles[name] = Profile(
             name,
-            profile_data["main_model"],
+            profile_data["model"],
             profile_data["summary_model"],
             transform_reasoning_content=profile_data.get("transform_reasoning_content", False),
             add_empty_content_when_reasoning_only=profile_data.get("add_empty_content_when_reasoning_only", False),
@@ -465,8 +477,8 @@ def get_private_routes() -> set:
 def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], str, str, bool, bool, bool, str]:
     """Legacy function - deprecated. Use resolve_route() instead."""
     # For backward compatibility, delegate to new routing system
-    route, backend_model = resolve_route(client_model)
-    settings = get_route_settings(route, backend_model)
+    route, model = resolve_route(client_model)
+    settings = get_route_settings(route, model)
 
     profile = None
     if MODEL_ALIASES.get(client_model) in PROFILES:
@@ -474,8 +486,8 @@ def resolve_profile_and_models(client_model: str) -> Tuple[Optional[Profile], st
 
     return (
         profile,
-        settings["backend_model"],
-        settings["summary_model"] or settings["main_model"],
+        settings["model"],
+        settings["summary_model"] or settings["model"],
         settings["passthrough_enabled"],
         settings["transform_reasoning_content"],
         settings["add_empty_content_when_reasoning_only"],
