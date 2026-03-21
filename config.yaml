@@ -84,7 +84,7 @@ routes:
       - chat
       - tools
 
-  arkai/AMDU/Qwen-2.5-1.5B:  # Runs on AMD(NPU+GPU) [Lemonade]
+  arkai/AMD/Qwen-2.5-1.5B:  # Runs on AMD(NPU+GPU) [Lemonade]
     is_private: true
     extends: arkai/lemonade
     main_model: "Qwen-2.5-1.5B-Instruct-Hybrid"
@@ -106,7 +106,7 @@ routes:
     extends: arkai/CPU/QWen3.5-VL-2B
 
   base/alt:
-    extends: arkai/AMDU/Qwen-2.5-1.5B
+    extends: arkai/AMD/Qwen-2.5-1.5B 
 
   base/fallback:
     extends: base/alt
@@ -171,17 +171,19 @@ routes:
   # ========== ROUTE TRANSFORMATION RULES ==========
   
   # Strip v1/ prefix from routes (e.g., v1/chat/completions → chat/completions)
+  # Only matches v1 at the top level, not nested like v1/v1/...
   v1:
-    patterns: "v1/(.+)"
+    patterns: "v1/(?!(v1|pass|api)/)(.+)"
     is_private: true
     passthrough_enabled: true
     summary_enabled: false
-    backend_model_pattern: "${1}"
+    backend_model_pattern: "${2}"
 
   # Strip pass/ prefix from routes (e.g., pass/foo/bar → foo/bar)
+  # Only matches pass at the top level, not nested like pass/pass/...
   pass:
-    patterns: "pass/(.+)"
+    patterns: "pass/(?!(v1|pass|api)/)(.+)"
     is_private: true
     passthrough_enabled: true
     summary_enabled: false
-    backend_model_pattern: "${1}"
+    backend_model_pattern: "${2}"

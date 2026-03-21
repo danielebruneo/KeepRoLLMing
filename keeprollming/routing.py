@@ -198,7 +198,7 @@ def _parse_pattern(pattern: str) -> Tuple[re.Pattern[str], bool]:
     Parse a route pattern into a compiled regex and check if it's wildcard-based.
 
     Args:
-        pattern: Pattern string (e.g., "pass/*", "local/quick", "pass/(?P<group>.+)/(?P<name>.+)")
+        pattern: Pattern string (e.g., "pass/*", "local/quick", "v1/(?!(v1|pass)/)(.+)")
 
     Returns:
         Tuple of (compiled_regex, is_wildcard)
@@ -211,18 +211,17 @@ def _parse_pattern(pattern: str) -> Tuple[re.Pattern[str], bool]:
         return compiled, True
 
     # For multiple patterns separated by |, create alternation
-    if "|" in pattern:
-        # Split and escape special regex characters for each part
+    # Only treat | as alternation if it's at the top level (not inside parentheses)
+    if "|" in pattern and "(" not in pattern:
         parts = [re.escape(p.strip()) for p in pattern.split("|")]
         regex_pattern = f"^({'|'.join(parts)})$"
         compiled = re.compile(regex_pattern)
         return compiled, False
 
-    # Check if pattern already contains regex syntax (parentheses, groups, etc.)
-    # If it has (, ), [, ], ?, +, *, or (?P<, don't escape it
-    has_regex_chars = any(c in pattern for c in "()[]{}?+*|")
-    
-    if has_regex_chars:
+    # Check if pattern already contains advanced regex syntax (groups, lookahead, etc.)
+    has_advanced_regex = any(c in pattern for c in "()[]{}?+*|^$")
+
+    if has_advanced_regex:
         # Assume it's already a valid regex pattern
         try:
             compiled = re.compile(f"^{pattern}$")
