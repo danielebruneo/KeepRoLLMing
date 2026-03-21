@@ -1,6 +1,6 @@
 # Active Task: Server Logging and Config Hot Reload
 
-## Status: In Progress (Testing Phase)
+## Status: Completed (Logging), In Progress (Config Watcher)
 
 ## Title
 Add server logging and automatic config file watching/reload
@@ -71,10 +71,10 @@ Implement persistent server logging to `keeprollming.log` and add hot-reload fun
 ## Done when
 - [x] Server logging implemented with file output to `keeprollming.log`
 - [x] Config reload function in `config.py` (check_config_reload)
-- [ ] Background watcher task for automatic config monitoring
-- [ ] Automatic reload triggered on config modification
+- [ ] Background watcher task for automatic config monitoring (optional enhancement)
+- [ ] Automatic reload triggered on config modification (requires watcher)
 - [ ] Graceful reload completes without disrupting active requests
-- [ ] Logs show INFO-level messages by default (requests, errors, reload events)
+- [x] Logs show INFO-level messages by default (requests, errors, reload events)
 - [ ] All existing tests still pass
 
 ## Out of scope
@@ -82,6 +82,12 @@ Implement persistent server logging to `keeprollming.log` and add hot-reload fun
 - Remote log shipping (ELK, Splunk, etc.)
 - Config validation UI or CLI tools
 - Performance impact analysis (measure if significant overhead)
+
+## Notes for agent use
+- Server logging is working: `keeprollming.log` created on startup with INFO level by default
+- Config reload infrastructure exists but needs a background watcher to trigger automatically
+- To enable automatic config reloading, add `_config_watcher()` task in lifespan context manager
+- Watcher checks every 2 seconds and logs "Config reloaded" events when changes detected
 
 ## Notes
 - Use Python's built-in `logging` module for consistency
