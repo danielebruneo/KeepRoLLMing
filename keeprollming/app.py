@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -226,15 +227,55 @@ def _try_cache_append_repack(
     return repacked, append_until_idx, fingerprint, best
 
 
+async def _config_watcher():
+    """Background task to watch for config file changes."""
+    from .logger import log_config_reload as log_reload_event, log_config_error
+    from .config import check_config_reload, get_config_mtime
+    
+    # Log watcher startup
+    try:
+        logger = setup_server_logging()
+        if logger:
+            logger.info("Config watcher started")
+    except Exception as e:
+        print(f"Warning: Could not log watcher startup: {e}")
+    
+    while True:
+        try:
+            result = check_config_reload()
+            if result:
+                current = get_config_mtime() or 0.0
+                log_reload_event(current - 1.0, current)
+        except Exception as e:
+            log_config_error(str(e))
+        
+        # Check every 2 seconds
+        await asyncio.sleep(2)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # startup: nothing special
-    yield
-    # shutdown
-    await close_http_client()
+    # Startup: Initialize server logging and config watcher
+    from .logger import setup_server_logging, log_config_reload as log_reload_event
+    from .config import check_config_reload
+    
+    # Setup file-based server logging
+    logger = setup_server_logging()
+    
+    # Initial config reload check (in case config changed before startup)
+    if check_config_reload():
+        log_reload_event(0.0, 0.0)
+    
+    try:
+        yield
+    finally:
+        # Shutdown: Close HTTP client
+        await close_http_client()
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Note: Config watcher can be added later as a background task if needed
 
 
 @app.get("/metrics")

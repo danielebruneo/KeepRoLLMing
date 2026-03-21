@@ -1,28 +1,93 @@
-# Active Task: None
+# Active Task: Server Logging and Config Hot Reload
 
-## Status: Ready for New Task
+## Status: In Progress (Testing Phase)
 
-The Route-Based Configuration System task has been completed. All phases (1-5) are finished with full implementation, testing, and documentation.
+## Title
+Add server logging and automatic config file watching/reload
 
-### What Was Completed
-✅ Design & Planning - Design document created
-✅ Core Infrastructure - Route dataclass, built-in routes, pattern matching, fallback chains
-✅ Integration with App - Full integration, profile system removed
-✅ Cleanup - Old config format removed, README updated
-✅ Testing - Unit tests, integration tests, E2E benchmarks
+## User request
+- Write a server log (i.e., keeprollming.log)
+- Watch for config file changes and reload the new config if updated
 
-### Recent Additions (Outside Original Task Scope)
-- **Performance Dashboard** (`perf_dashboard.py`) - Real-time monitoring with interactive controls
-- **Benchmarking Tool** (`benchmark_routes.py`) - Route performance measurement
-- **Validation & Health Check Tools** - Configuration validation and backend connectivity testing
+## Goal
+Implement persistent server logging to `keeprollming.log` and add hot-reload functionality that automatically detects and applies configuration changes without requiring server restart.
 
-### Next Steps
-Ready for new task assignment. All documentation updated:
-- `_agent/state/HANDOFF.md` - Detailed handoff notes (21/03/2026 14:30:00)
-- `_agent/state/COMPLETED_TASKS.md` - Task summary added
-- `_agent/knowledge/MEMORY.md` - Lessons learned saved
-- `_docs/PERFORMANCE.md` - Monitoring tools documented
-- `_project/KNOWLEDGE_BASE.md` - Performance section updated
+## Why this matters
+1. **Debugging & Monitoring**: Server logs provide visibility into runtime behavior, errors, and performance issues
+2. **Operational Efficiency**: Config hot reload eliminates downtime during configuration updates
+3. **Production Readiness**: Both features are essential for a robust, maintainable server deployment
+
+## Clarifications
+- Log file location: `keeprollming.log` in project root (or configurable via env var)
+- Logging level: INFO by default, DEBUG available for troubleshooting
+- Config watch interval: Check every 1-5 seconds for changes
+- Reload behavior: Graceful reload - finish current requests before applying new config
+- Supported config formats: `config.yaml`, `config.json`
+
+## Likely files
+- `keeprollming/app.py` — Add logging setup and config watcher integration
+- `keeprollming/config.py` — Add config file modification tracking
+- `keeprollming/logger.py` (new) — Centralized logging configuration
+- `config.example.yaml` — Document new logging options
+
+## Constraints
+- Preserve external behavior unless task says otherwise
+- Keep patch minimal - implement core functionality first
+- Avoid unrelated refactors
+- Log rotation for production use (optional, can be added later)
+- Thread-safe config reload to prevent race conditions
+
+## Proposed approach
+1. **Logging Setup** ✅ DONE
+   - Created `keeprollming/logger.py` with standard logging configuration
+   - Added file handler writing to `keeprollming.log` (rotating, 10MB max)
+   - Added console handler for errors only
+   - Configurable via LOG_FILE and SERVER_LOG_LEVEL env vars
+
+2. **Config File Watching** ✅ DONE
+   - Track config file modification time in `config.py`
+   - Implement polling-based watcher (checks every 2 seconds)
+   - Compare current mtime with cached mtime on each cycle
+   - Trigger reload when change detected
+
+3. **Graceful Config Reload** ✅ DONE
+   - Update global state atomically during config reload
+   - Validate new config before applying (basic check for routes/upstream_base_url)
+   - Log reload events and any errors to server log
+
+4. **Integration** ✅ DONE
+   - Added `_config_watcher()` background task in `app.py`
+   - Integrated into FastAPI lifespan context manager
+   - Watcher starts on startup, stops on shutdown
+
+## Test plan
+- Start server and verify `keeprollming.log` is created
+- Generate some requests and confirm logs contain expected entries (requests, errors)
+- Modify `config.yaml` while server is running
+- Verify server detects change within 5 seconds
+- Confirm new config takes effect without request failures
+- Check logs show "Config reloaded" message
+
+## Done when
+- [x] Server logging implemented with file output to `keeprollming.log`
+- [x] Config reload function in `config.py` (check_config_reload)
+- [ ] Background watcher task for automatic config monitoring
+- [ ] Automatic reload triggered on config modification
+- [ ] Graceful reload completes without disrupting active requests
+- [ ] Logs show INFO-level messages by default (requests, errors, reload events)
+- [ ] All existing tests still pass
+
+## Out of scope
+- Log rotation/archiving (can be handled by external tools like logrotate)
+- Remote log shipping (ELK, Splunk, etc.)
+- Config validation UI or CLI tools
+- Performance impact analysis (measure if significant overhead)
+
+## Notes
+- Use Python's built-in `logging` module for consistency
+- Consider using `watchdog` library for more robust file watching (optional enhancement)
+- Polling approach is simpler and sufficient for typical deployment scenarios
+- Add `LOG_LEVEL` environment variable support for flexibility
 
 ---
-*Last updated: 21/03/2026 14:35:00*
+*Creation Timestamp: 21/03/2026 15:50:00*

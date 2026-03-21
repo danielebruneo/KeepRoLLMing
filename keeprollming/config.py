@@ -260,6 +260,83 @@ def load_config() -> Dict[str, Any]:
 # Load configuration
 CONFIG = load_config()
 
+# Track config file modification time for hot reload
+_CONFIG_FILE_PATH: str | None = None
+try:
+    _config_path = os.getenv("CONFIG_FILE", "config.yaml")
+    if os.path.exists(_config_path):
+        _CONFIG_FILE_PATH = _config_path
+except Exception:
+    pass
+
+# Store initial modification time
+_CONFIG_LAST_MTIME: float = 0.0
+if _CONFIG_FILE_PATH and os.path.exists(_CONFIG_FILE_PATH):
+    try:
+        _CONFIG_LAST_MTIME = os.path.getmtime(_CONFIG_FILE_PATH)
+    except Exception:
+        pass
+
+
+def get_config_mtime() -> float | None:
+    """Get the current modification time of the config file."""
+    if _CONFIG_FILE_PATH and os.path.exists(_CONFIG_FILE_PATH):
+        try:
+            return os.path.getmtime(_CONFIG_FILE_PATH)
+        except Exception:
+            return None
+    return None
+
+
+def check_config_reload() -> bool:
+    """
+    Check if the config file has been modified and needs reloading.
+    
+    Returns:
+        True if config was reloaded, False otherwise or on error
+    """
+    global CONFIG, USER_ROUTES, DEFAULTS, _CONFIG_LAST_MTIME
+    
+    current_mtime = get_config_mtime()
+    if current_mtime is None:
+        return False
+    
+    # Check if file has been modified
+    if current_mtime > _CONFIG_LAST_MTIME:
+        try:
+            # Reload configuration
+            new_config = load_config()
+            
+            # Validate before applying (basic check)
+            if "routes" not in new_config and "upstream_base_url" not in new_config:
+                return False
+            
+            # Update global state atomically
+            CONFIG.clear()
+            CONFIG.update(new_config)
+            USER_ROUTES.clear()
+            USER_ROUTES.extend(load_user_routes(CONFIG))
+            
+            # Update DEFAULTS
+            ctx_len = CONFIG["defaults"]["ctx_len"] if "defaults" in CONFIG else 8192
+            max_tokens = CONFIG["defaults"]["max_tokens"] if "defaults" in CONFIG else 4096
+            summary_enabled = CONFIG["defaults"]["summary_enabled"] if "defaults" in CONFIG else True
+            
+            DEFAULTS.ctx_len = ctx_len
+            DEFAULTS.max_tokens = max_tokens
+            DEFAULTS.summary_enabled = summary_enabled
+            
+            # Update cached mtime
+            _CONFIG_LAST_MTIME = current_mtime
+            
+            return True
+        except Exception as e:
+            print(f"Warning: Config reload failed: {e}")
+            return False
+    
+    return False
+
+
 # Parse user-defined routes from config
 USER_ROUTES: List[Route] = load_user_routes(CONFIG)
 

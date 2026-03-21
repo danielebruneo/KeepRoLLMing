@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
+import logging.handlers
 import os
 import re
 import time
 import textwrap
+from datetime import datetime
 from typing import Any, Dict
 
 import httpx
@@ -667,3 +670,96 @@ async def log_streaming_response(
         body=body,
         note=f"streamed-chunk (bytes {len(captured_bytes)})",
     )
+
+
+# ----------------------------
+# Server File Logging Setup
+# ----------------------------
+
+_SERVER_LOGGER: logging.Logger | None = None
+_LOG_FILE_PATH = os.getenv("LOG_FILE", "keeprollming.log")
+_LOG_LEVEL = os.getenv("SERVER_LOG_LEVEL", "INFO").upper()
+
+
+def setup_server_logging() -> logging.Logger:
+    """
+    Initialize server file logging.
+    
+    Creates a logger that writes to keeprollming.log with INFO level by default.
+    Returns the configured logger instance.
+    
+    Call this function at application startup (e.g., in app.py main entry point).
+    """
+    global _SERVER_LOGGER
+    
+    if _SERVER_LOGGER is not None:
+        return _SERVER_LOGGER  # Already initialized
+    
+    _SERVER_LOGGER = logging.getLogger("keeprollming.server")
+    _SERVER_LOGGER.setLevel(getattr(logging, _LOG_LEVEL, "INFO"))
+    
+    # Avoid duplicate handlers
+    if _SERVER_LOGGER.handlers:
+        return _SERVER_LOGGER
+    
+    # File handler with rotation (10MB max, 3 backup files)
+    try:
+        file_handler = logging.handlers.RotatingFileHandler(
+            _LOG_FILE_PATH,
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=3,
+            encoding="utf-8"
+        )
+        file_handler.setLevel(getattr(logging, _LOG_LEVEL, "INFO"))
+    except Exception as e:
+        print(f"Warning: Could not create log file {_LOG_FILE_PATH}: {e}")
+        return _SERVER_LOGGER
+    
+    # Console handler (only for errors by default)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.ERROR)
+    
+    # Formatter with timestamp, level, and message
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    _SERVER_LOGGER.addHandler(file_handler)
+    _SERVER_LOGGER.addHandler(console_handler)
+    
+    # Log startup info
+    _SERVER_LOGGER.info(f"Server logging initialized: {_LOG_FILE_PATH} (level={_LOG_LEVEL})")
+    
+    return _SERVER_LOGGER
+
+
+def get_server_logger() -> logging.Logger | None:
+    """Get the server logger instance, initializing it if needed."""
+    global _SERVER_LOGGER
+    if _SERVER_LOGGER is None:
+        return setup_server_logging()
+    return _SERVER_LOGGER
+
+
+def log_server_event(level: str, message: str, **kwargs) -> None:
+    """Log a server event to the file logger."""
+    logger = get_server_logger()
+    if logger:
+        extra_msg = " | ".join(f"{k}={v}" for k, v in kwargs.items()) if kwargs else ""
+        full_message = f"{message} {extra_msg}".strip()
+        getattr(logger, level.lower(), "info")(full_message)
+
+
+def log_config_reload(old_mtime: float, new_mtime: float) -> None:
+    """Log a config reload event."""
+    log_server_event("INFO", "Config reloaded", 
+                     old_mtime=old_mtime, 
+                     new_mtime=new_mtime)
+
+
+def log_config_error(error: str) -> None:
+    """Log a config error during reload."""
+    log_server_event("ERROR", f"Config reload failed: {error}")
