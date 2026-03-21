@@ -169,6 +169,11 @@ def _update_summary(base_dir: Path) -> None:
         lines.append(f"      min: {_format_scalar(tps_stats['min'])}")
         lines.append(f"      max: {_format_scalar(tps_stats['max'])}")
         
+        lines.append("    total_tps:")
+        lines.append(f"      avg: {_format_scalar(total_tps_stats['avg'])}")
+        lines.append(f"      min: {_format_scalar(total_tps_stats['min'])}")
+        lines.append(f"      max: {_format_scalar(total_tps_stats['max'])}")
+
         lines.append("    completion_tps:")
         lines.append(f"      avg: {_format_scalar(completion_tps_stats['avg'])}")
         lines.append(f"      min: {_format_scalar(completion_tps_stats['min'])}")

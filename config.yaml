@@ -163,8 +163,8 @@ routes:
 
   code/architect:
     # extends: [base/deep]
-    extends: [arkai/RTX3090/QWen3.5-4B]
-    main_model: unsloth/qwen3.5-9b
-    # extends: [arkai/RTX3090/QWen3.5-35b-a3b]
+    # extends: [arkai/RTX3090/QWen3.5-4B]
+    # main_model: unsloth/qwen3.5-4b
+    extends: [arkai/RTX3090/QWen3.5-35b-a3b]
     summary_enabled: true
 
