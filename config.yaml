@@ -106,7 +106,7 @@ routes:
     extends: arkai/CPU/QWen3.5-VL-2B
 
   base/alt:
-    extends: arkai/GPU0+NPU/Qwen-2.5-1.5B
+    extends: arkai/AMDU/Qwen-2.5-1.5B
 
   base/fallback:
     extends: base/alt
