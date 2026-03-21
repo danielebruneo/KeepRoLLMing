@@ -513,24 +513,39 @@ def log(level: str, msg: str, **fields: Any) -> None:
 def _log_to_file(level: str, msg: str, **fields: Any) -> None:
     """Log to keeprollming.log file in server log format (one line per entry)."""
     try:
-        # Build a concise message for the file logger
+        # Build a concise message for the file logger with all fields
         extra_parts = []
         for k, v in fields.items():
-            if k in ("req_id", "model", "endpoint", "upstream_url", "status"):
+            # Skip internal fields and None values
+            if k in ("_truncated",) or v is None:
+                continue
+            # Convert to string representation
+            if isinstance(v, (dict, list)):
+                try:
+                    extra_parts.append(f"{k}={json.dumps(v)}")
+                except Exception:
+                    extra_parts.append(f"{k}={type(v).__name__}")
+            elif hasattr(v, '__dict__'):
+                # Handle custom objects
+                try:
+                    extra_parts.append(f"{k}={v.__class__.__name__}")
+                except Exception:
+                    extra_parts.append(f"{k}=object")
+            else:
                 extra_parts.append(f"{k}={v}")
-        
+
         extra_str = " | ".join(extra_parts) if extra_parts else ""
         full_msg = f"{msg}" + (f" | {extra_str}" if extra_str else "")
-        
+
         # Map log levels
         level_map = {
             "DEBUG": "debug",
-            "INFO": "info", 
+            "INFO": "info",
             "WARN": "warning",
             "ERROR": "error"
         }
         log_level = level_map.get(level, "info")
-        
+
         server_logger = get_server_logger()
         if server_logger:
             getattr(server_logger, log_level, server_logger.info)(full_msg)
