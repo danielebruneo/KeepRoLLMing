@@ -365,6 +365,21 @@ async def chat_completions(req: Request) -> Response:
     # Se abbiamo gli header, li usiamo per il fingerprint
     has_headers = bool(user_id or conv_id)
 
+    client_model = payload.get("model")
+
+    # Log request entry with key details
+    log(
+        "INFO",
+        "http_in",
+        req_id=req_id,
+        client_model=client_model,
+        stream=payload.get("stream", False),
+        max_tokens=payload.get("max_tokens"),
+        message_count=len(payload.get("messages", [])),
+        user_id=user_id or None,
+        conv_id=conv_id or None,
+    )
+
     if LOG_MODE == "DEBUG":
         log("INFO", "request_received", header=headers, req_id=req_id, body_json=snip_json(payload))
 
@@ -385,6 +400,21 @@ async def chat_completions(req: Request) -> Response:
     # Get route-specific upstream URL (if defined, otherwise use global default)
     route_upstream_url = route_settings.get("upstream_url") or UPSTREAM_BASE_URL
     route_headers = route_settings.get("upstream_headers", {})
+
+    # Log routing decision and configuration
+    log(
+        "INFO",
+        "route_resolved",
+        req_id=req_id,
+        client_model=client_model,
+        resolved_route=route.name,
+        backend_model=backend_model,
+        upstream_model=upstream_model,
+        summary_model=summary_model,
+        passthrough_enabled=is_passthrough,
+        ctx_len=resolved_ctx_len,
+        max_tokens_default=resolved_max_tokens,
+    )
 
     # Resolve ctx_len and max_tokens using 3-level hierarchy:
     # Route > Model > Defaults
@@ -448,9 +478,23 @@ async def chat_completions(req: Request) -> Response:
     summary_tokens = 0
 
     if is_passthrough:
-        log("INFO", "summary_bypassed", req_id=req_id, reason="passthrough_model")
+        log(
+            "INFO",
+            "summary_bypassed",
+            req_id=req_id,
+            reason="passthrough_model",
+            prompt_tok_est=plan.prompt_tok_est or 0,
+            threshold=plan.threshold or 0,
+        )
     elif skip_summary_for_tools:
-        log("INFO", "summary_bypassed", req_id=req_id, reason="memory_payload")
+        log(
+            "INFO",
+            "summary_bypassed",
+            req_id=req_id,
+            reason="memory_payload",
+            prompt_tok_est=plan.prompt_tok_est or 0,
+            threshold=plan.threshold or 0,
+        )
     elif not plan.should:
         log(
             "INFO",
@@ -651,10 +695,15 @@ async def chat_completions(req: Request) -> Response:
     url = f"{route_upstream_url}/v1/chat/completions"
     client = await http_client()
 
-    # Get fallback chain if available
-    fallback_attempts = []
+    # Log fallback chain availability with primary model
     if route.fallback_chain:
-        log("INFO", "fallback_chain_available", req_id=req_id, chain=route.fallback_chain)
+        log(
+            "INFO",
+            "fallback_chain_available",
+            req_id=req_id,
+            chain=route.fallback_chain,
+            primary_model=upstream_model,
+        )
         fallback_attempts = resolve_fallback_chain(route, upstream_model, req_id)
 
     if stream:
@@ -1118,10 +1167,49 @@ async def chat_completions(req: Request) -> Response:
                             completion_tokens=completion_tokens_u,
                             assistant_text=_snip_obj_active(full_text, BASIC_SNIP_CHARS),
                         )
+
+                    # Log streaming request completion summary
+                    log(
+                        "INFO",
+                        "request_completed_streaming",
+                        req_id=req_id,
+                        status=200,
+                        elapsed_ms=elapsed_ms,
+                        did_summarize=did_summarize,
+                        passthrough=is_passthrough,
+                        prompt_tokens=prompt_tokens_for_log or prompt_tokens_u,
+                        completion_tokens=completion_tokens_u or 0,
+                        total_tokens=total_tokens_u or 0,
+                        finish_reason=finish_reason,
+                        event_count=stream_event_count,
+                    )
                 except Exception as _e:
+                    # Log streaming request completion with exception error
+                    log(
+                        "ERROR",
+                        "request_completed_streaming_error",
+                        req_id=req_id,
+                        status=502,
+                        elapsed_ms=(time.perf_counter() - t0) * 1000.0,
+                        did_summarize=did_summarize,
+                        passthrough=is_passthrough,
+                        error_type="stream_reconstruction_error",
+                    )
                     log("WARN", "stream_reconstruct_log_failed", req_id=req_id, err=str(_e))
 
         log("INFO", "upstream_stream_start", req_id=req_id, did_summarize=did_summarize, passthrough=is_passthrough)
+        
+        # Log streaming response start
+        log(
+            "INFO",
+            "request_started_streaming",
+            req_id=req_id,
+            upstream_url=url,
+            model=upstream_model,
+            did_summarize=did_summarize,
+            passthrough=is_passthrough,
+        )
+        
         headers = {
             "content-type": "text/event-stream; charset=utf-8",
             "cache-control": "no-cache",
@@ -1327,6 +1415,22 @@ async def chat_completions(req: Request) -> Response:
                 completion_tokens=completion_tokens_u,
                 **resp_summary,
             )
+
+        # Log non-streaming request completion summary
+        log(
+            "INFO",
+            "request_completed",
+            req_id=req_id,
+            status=200,
+            elapsed_ms=round(elapsed_ms, 2),
+            did_summarize=did_summarize,
+            passthrough=is_passthrough,
+            prompt_tokens=prompt_tokens_for_log or completion_tokens_u,
+            completion_tokens=completion_tokens_u or 0,
+            total_tokens=resp_summary.get("total_tokens", 0),
+            finish_reason=resp_summary.get("finish_reason"),
+        )
+
         return JSONResponse(data, status_code=200)
     except Exception as e:
         elapsed_ms = (time.time() - t0) * 1000.0
@@ -1334,6 +1438,19 @@ async def chat_completions(req: Request) -> Response:
         # Estimate TTFT for non-streaming: assume ~30% of total time spent on prompt processing
         if ttft_ms_non_stream is None and elapsed_ms > 0:
             ttft_ms_non_stream = elapsed_ms * 0.3
+        # Log non-streaming request completion with error
+        log(
+            "ERROR",
+            "request_completed_error",
+            req_id=req_id,
+            status=502,
+            elapsed_ms=round(elapsed_ms, 2),
+            did_summarize=did_summarize,
+            passthrough=is_passthrough,
+            error_type="proxy_exception",
+            err=str(e)[:500],
+        )
+
         log(
             "ERROR",
             "proxy_exception",
