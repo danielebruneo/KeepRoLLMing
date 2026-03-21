@@ -76,3 +76,6 @@
 - Create migration guide for users still using old config format
 - Add deprecation warnings during transition period
 - Expand e2e test coverage for edge cases
+
+---
+*Handoff created: 21/03/2026 14:30:00*
