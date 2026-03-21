@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .config import (
@@ -1618,8 +1618,10 @@ async def chat_completions(req: Request) -> Response:
             "proxy_exception",
             req_id=req_id,
             elapsed_ms=round(elapsed_ms, 2),
-            err=str(e),
+            err=err_msg,
             did_summarize=did_summarize,
             passthrough=is_passthrough,
         )
-        raise e
+        
+        # Raise a clean exception without httpx traceback
+        raise HTTPException(status_code=502, detail={"error": err_msg, "error_type": error_type})
