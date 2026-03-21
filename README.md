@@ -179,6 +179,36 @@ export UPSTREAM_BASE_URL="http://127.0.0.1:1234"   # LM Studio base (no /v1)
 uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000
 ```
 
+### Logging
+
+All logs are written to both stdout (JSON format) and `keeprollming.log` (plain text server log format).
+
+**Log File:** `keeprollming.log` (rotating, 10MB max, 3 backup files)
+
+**Key Log Events:**
+- `http_in`: Request entry with model, stream flag, message count
+- `route_resolved`: Route selection details (client model → backend model)
+- `summary_bypassed`: When summarization is skipped with reasons
+- `summary_needed`: When summarization is performed
+- `fallback_chain_available`: Shows configured fallback models
+- `connection_error`: Connection failures with upstream URL and error type
+- `request_completed_streaming`: Successful streaming completion metrics
+- `request_completed`: Successful non-streaming completion metrics
+- `request_completed_error`: Error responses with categorization
+
+**Error Log Format Example:**
+```
+2026-03-21 14:32:15 | ERROR    | keeprollming | connection_error | req_id=abc123 | model=gpt-4 | upstream_url=https://api.example.com | err=All connection attempts failed
+```
+
+**Error Categories:**
+- `connection_failed`: Upstream server unreachable (httpx.ConnectError)
+- `connection_timeout`: Connection timed out (httpx.ConnectTimeout)
+- `timeout`: Request timeout (httpx.TimeoutException)
+- `http_status_error`: HTTP errors from upstream (4xx, 5xx)
+
+**Fallback Chain:** On connection errors, the orchestrator automatically attempts fallback models if configured. Each failed attempt is logged with a `fallback_error` event.
+
 Then call:
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \

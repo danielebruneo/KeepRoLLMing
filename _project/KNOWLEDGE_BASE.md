@@ -248,6 +248,49 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
 - Supports multiple logging modes: DEBUG, MEDIUM, BASIC, BASIC_PLAIN
 - Provides detailed logging for debugging purposes
 - Includes streaming response handling capabilities
+- All logs written to both stdout (JSON) and keeprollming.log (plain text)
+
+### Error Handling
+The orchestrator implements comprehensive error handling with automatic fallback chains:
+
+**Error Categories:**
+- `connection_failed`: httpx.ConnectError - upstream server unreachable
+- `connection_timeout`: httpx.ConnectTimeout - connection timed out
+- `timeout`: httpx.TimeoutException - request timeout
+- `http_status_error`: HTTP errors from upstream (4xx, 5xx)
+- `stream_reconstruction_error`: Errors during streaming response processing
+
+**Error Log Format (keeprollming.log):**
+```
+2026-03-21 14:32:15 | ERROR    | keeprollming | connection_error | req_id=abc123 | model=gpt-4 | upstream_url=https://api.example.com | err=All connection attempts failed
+```
+
+**Key Fields:**
+- `req_id`: Unique request identifier (6-char hex)
+- `model`: Requested client model
+- `endpoint`: Route endpoint being used
+- `upstream_url`: Target upstream server URL
+- `status`: HTTP status code (if applicable)
+- `error_type`: Categorized error type
+- `err`: Error message (truncated to 500 chars)
+
+**Fallback Chain Behavior:**
+- On connection errors, the orchestrator automatically attempts fallback models
+- Each failed attempt is logged with `fallback_error` event
+- If all fallbacks exhausted, returns error to client with details
+
+**Common Error Scenarios:**
+1. **Connection Failed**: Upstream server down or network unreachable
+   - Logs: `connection_error` with `error_type=connection_failed`
+   - Falls back to next model in chain if available
+   
+2. **Connection Timeout**: Server not responding within timeout
+   - Logs: `connection_error` with `error_type=connection_timeout`
+   - Falls back to next model in chain if available
+   
+3. **HTTP Status Error**: Upstream returns 4xx/5xx
+   - Logs: `upstream_http_error_stream` (streaming) or `upstream_http_error_sync` (non-streaming)
+   - Falls back to next model if configured
 
 ## Cross-referencing
 
