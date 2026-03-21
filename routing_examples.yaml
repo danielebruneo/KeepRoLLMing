@@ -1,0 +1,53 @@
+# Example: Regex capture group support for route transformation
+# 
+# The backend_model_pattern field supports regex capture groups to transform
+# client-facing model names into backend model names.
+#
+# Supported formats:
+#   - ${1}, ${2}...    : Positional groups from pattern
+#   - ${group_name}    : Named groups from (?P<name>...) syntax
+#   - $1, $2...        : Shorthand positional
+#   - $group_name      : Shorthand named group
+
+routes:
+  # Example 1: Strip v1/ prefix from all routes
+  # Request: /v1/chat/completions with model="v1/my-model"
+  # Becomes: backend model "my-model"
+  - name: v1-prefix-stripped
+    pattern: "v1/(.+)"
+    passthrough_enabled: true
+    summary_enabled: false
+    backend_model_pattern: "${1}"
+
+  # Example 2: Named groups for structured routes
+  # Request: pass/meta/llama-3.5
+  # Becomes: backend model "meta/llama-3.5"
+  - name: pass-structured
+    pattern: "pass/(?P<org>[^/]+)/(?P<model>.+)"
+    passthrough_enabled: true
+    summary_enabled: false
+    backend_model_pattern: "${org}/${model}"
+
+  # Example 3: Multiple path segments
+  # Request: api/v1/models/gpt-4
+  # Becomes: backend model "v1/models/gpt-4"
+  - name: api-v1-stripped
+    pattern: "api/v1/(.+)"
+    passthrough_enabled: true
+    summary_enabled: false
+    backend_model_pattern: "${1}"
+
+  # Example 4: Complex transformation with suffix
+  # Request: legacy/api/users/123
+  # Becomes: backend model "api/users/123/current"
+  - name: legacy-api-transform
+    pattern: "legacy/api/(.+)"
+    passthrough_enabled: true
+    summary_enabled: false
+    backend_model_pattern: "${1}/current"
+
+# Built-in examples (already available without config):
+# - v1/(.+) with ${1} → strips v1/ prefix
+# - pass/(.+) with ${1} → strips pass/ prefix  
+# - api/(.+) with ${1} → strips api/ prefix
+# - pass/(?P<group>[^/]+)/(?P<name>.+) with ${group}/${name} → named groups

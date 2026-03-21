@@ -53,7 +53,7 @@ routes:
   arkai/RTX3090/QWen3.5-4B:  # Runs on RTX 3090 24GB [LM Studio]
     is_private: true
     extends: arkai/lmstudio
-    main_model: "qwen3.5-4B"
+    main_model: "qwen3.5-4b"
     ctx_len: 64000
     max_tokens: 8192
     capabilities:
@@ -167,3 +167,21 @@ routes:
     # main_model: unsloth/qwen3.5-4b
     extends: [arkai/RTX3090/QWen3.5-35b-a3b]
     summary_enabled: true
+
+  # ========== ROUTE TRANSFORMATION RULES ==========
+  
+  # Strip v1/ prefix from routes (e.g., v1/chat/completions → chat/completions)
+  v1:
+    patterns: "v1/(.+)"
+    is_private: true
+    passthrough_enabled: true
+    summary_enabled: false
+    backend_model_pattern: "${1}"
+
+  # Strip pass/ prefix from routes (e.g., pass/foo/bar → foo/bar)
+  pass:
+    patterns: "pass/(.+)"
+    is_private: true
+    passthrough_enabled: true
+    summary_enabled: false
+    backend_model_pattern: "${1}"
