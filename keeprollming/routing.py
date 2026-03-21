@@ -138,10 +138,46 @@ BUILTIN_ROUTES: List[Route] = [
     # Passthrough - bypass summarization, forward directly (fallback when no user config)
     Route(
         name="builtin/passthrough-default",
+        pattern="pass/(.+)",
+        passthrough_enabled=True,
+        summary_enabled=False,
+        backend_model_pattern="${1}",  # Extract everything after pass/
+    ),
+
+    # v1 API prefix stripping - transforms v1/route → route
+    Route(
+        name="builtin/v1-prefix-stripped",
+        pattern="v1/(.+)",
+        passthrough_enabled=True,
+        summary_enabled=False,
+        backend_model_pattern="${1}",  # Strip v1/ prefix
+    ),
+
+    # api version prefix stripping - transforms api/v1/route → v1/route  
+    Route(
+        name="builtin/api-prefix-stripped",
+        pattern="api/(.+)",
+        passthrough_enabled=True,
+        summary_enabled=False,
+        backend_model_pattern="${1}",  # Strip api/ prefix
+    ),
+
+    # Named group support - transforms pass/group/name → group/name
+    Route(
+        name="builtin/passthrough-named",
+        pattern="pass/(?P<group>[^/]+)/(?P<name>.+)",
+        passthrough_enabled=True,
+        summary_enabled=False,
+        backend_model_pattern="${group}/${name}",  # Extract both groups
+    ),
+
+    # Simple wildcard passthrough - pass/* → *
+    Route(
+        name="builtin/passthrough-wildcard",
         pattern="pass/*",
         passthrough_enabled=True,
         summary_enabled=False,
-        backend_model_pattern="${1}",  # Extract model from pass/(.*)
+        backend_model_pattern="${1}",  # Extract everything after pass/
     ),
 ]
 
@@ -160,10 +196,10 @@ DEFAULT_FALLBACK_ROUTE = Route(
 def _parse_pattern(pattern: str) -> Tuple[re.Pattern[str], bool]:
     """
     Parse a route pattern into a compiled regex and check if it's wildcard-based.
-    
+
     Args:
-        pattern: Pattern string (e.g., "pass/*", "local/quick")
-        
+        pattern: Pattern string (e.g., "pass/*", "local/quick", "pass/(?P<group>.+)/(?P<name>.+)")
+
     Returns:
         Tuple of (compiled_regex, is_wildcard)
     """
@@ -173,7 +209,7 @@ def _parse_pattern(pattern: str) -> Tuple[re.Pattern[str], bool]:
         regex_pattern = pattern.replace("*", "(.*)")
         compiled = re.compile(f"^{regex_pattern}$")
         return compiled, True
-    
+
     # For multiple patterns separated by |, create alternation
     if "|" in pattern:
         # Split and escape special regex characters for each part
@@ -181,7 +217,22 @@ def _parse_pattern(pattern: str) -> Tuple[re.Pattern[str], bool]:
         regex_pattern = f"^({'|'.join(parts)})$"
         compiled = re.compile(regex_pattern)
         return compiled, False
+
+    # Check if pattern already contains regex syntax (parentheses, groups, etc.)
+    # If it has (, ), [, ], ?, +, *, or (?P<, don't escape it
+    has_regex_chars = any(c in pattern for c in "()[]{}?+*|")
     
+    if has_regex_chars:
+        # Assume it's already a valid regex pattern
+        try:
+            compiled = re.compile(f"^{pattern}$")
+            return compiled, False
+        except re.error:
+            # If invalid regex, fall back to escaped literal match
+            escaped = re.escape(pattern)
+            compiled = re.compile(f"^{escaped}$")
+            return compiled, False
+
     # Exact match - escape special characters
     escaped = re.escape(pattern)
     compiled = re.compile(f"^{escaped}$")
@@ -203,9 +254,8 @@ def _extract_backend_model(route: Route, matched_model: str) -> Tuple[str, Dict[
     if route.main_model is not _UNSET and route.main_model:
         return route.main_model, {}
 
-    # For passthrough routes with pattern extraction
-    if not route.backend_model_pattern or route.backend_model_pattern is _UNSET or not route.pattern.startswith("pass/"):
-        # No extraction needed - use the matched model as-is
+    # No extraction pattern - use matched model as-is
+    if not route.backend_model_pattern or route.backend_model_pattern is _UNSET:
         return matched_model, {}
 
     # Extract capture groups from regex match
@@ -215,12 +265,66 @@ def _extract_backend_model(route: Route, matched_model: str) -> Tuple[str, Dict[
     if not match:
         return matched_model, {}
 
-    # Handle ${1} style capture group extraction
-    if route.backend_model_pattern == "${1}" and match.groups():
-        backend = match.group(1).strip()
-        return backend, {"extracted": match.group(1)}
+    # Handle various capture group extraction formats
+    backend = _apply_capture_pattern(matched_model, match, route.backend_model_pattern)
+    return backend, dict(match.groupdict())
 
-    return matched_model, {}
+
+def _apply_capture_pattern(original: str, match: re.Match, pattern: str) -> str:
+    """
+    Apply a capture group pattern to extract/transform the backend model.
+
+    Supports multiple formats:
+    - ${1}, ${2}, ... : Positional groups
+    - ${group_name}   : Named groups
+    - $1, $2, ...     : Shorthand positional
+    - $group_name     : Shorthand named group
+    - ${1}/suffix     : Group with suffix
+    - prefix_${1}     : Prefix with group
+
+    Args:
+        original: The original matched model string
+        match: The regex match object
+        pattern: The extraction pattern (e.g., "${1}", "$1", "${api_version}/route")
+
+    Returns:
+        Transformed backend model name
+    """
+    # Handle positional groups ${1}, ${2}, etc. FIRST (before named groups)
+    def replace_pos_group(match_obj):
+        group_num = int(match_obj.group(1)) - 1  # Convert to 0-indexed
+        try:
+            return match.group(group_num + 1)  # regex groups are 1-indexed
+        except IndexError:
+            return ""
+
+    result = re.sub(r'\$\{(\d+)\}', replace_pos_group, pattern)
+
+    # Handle $1, $2, etc. shorthand (convert to ${1} format first)
+    def replace_shorthand_pos(match_obj):
+        group_num = int(match_obj.group(1)) - 1
+        try:
+            return match.group(group_num + 1)
+        except IndexError:
+            return ""
+
+    result = re.sub(r'\$(\d+)(?!\{)', lambda m: match.group(int(m.group(1))), result)
+
+    # Handle ${group} or $group format with named groups (after positional)
+    def replace_named_group(match_obj):
+        group_name = match_obj.group(1)
+        try:
+            return match.group(group_name)
+        except (IndexError, KeyError):
+            return ""
+
+    # Replace ${name} patterns
+    result = re.sub(r'\$\{([a-zA-Z_]\w*)\}', replace_named_group, result)
+    
+    # Replace $name shorthand patterns
+    result = re.sub(r'\$([a-zA-Z_]\w*)(?!\d|\{)', lambda m: match.group(m.group(1)), result)
+
+    return result
 
 
 def _match_route(client_model: str, routes: List[Route]) -> Optional[RouteMatch]:
