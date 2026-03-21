@@ -1,5 +1,45 @@
 # Memory and Lessons Learned
 
+## Terminal Handling for Interactive Dashboards
+
+### Key Learning:
+When implementing interactive terminal UIs with key bindings, raw terminal mode must be applied **temporarily within the main loop** (not in a background thread) to preserve `Ctrl+C` signal handling.
+
+**Why Background Thread Failed:** Setting terminal mode in a background thread conflicts with the main loop's keyboard interrupt handling, breaking `Ctrl+C`.
+
+**Working Pattern:**
+1. Save original terminal settings before entering loop
+2. Apply non-canonical mode (`ICANON`, `ECHO` disabled) temporarily
+3. Use `os.read(fd, 1)` with `select.select()` for non-blocking key capture
+4. Always restore original settings in `finally` block
+
+This ensures:
+- Key presses captured immediately without waiting for Enter
+- `Ctrl+C` still works (terminal signals aren't disabled)
+- Terminal returns to normal state on exit
+
+### Implementation Pattern:
+```python
+fd = sys.stdin.fileno()
+old_settings = termios.tcgetattr(fd)
+try:
+    new_settings = termios.tcgetattr(fd)
+    new_settings[3] &= ~(termios.ECHO | termios.ICANON)
+    new_settings[6][termios.VMIN] = 0
+    new_settings[6][termios.VTIME] = 0
+    termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
+    
+    try:
+        while True:
+            # render() + key capture with select()
+    except KeyboardInterrupt:
+        print("\n\n👋 Dashboard stopped.")
+finally:
+    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+```
+
+This pattern applies to any terminal UI requiring both real-time key capture and signal handling.
+
 ## Configuration-Based Prompt Templates Implementation
 
 ### Key Learning:

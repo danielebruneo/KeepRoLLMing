@@ -1,12 +1,9 @@
-Fix validate_config.py to only check public routes in health checks
+perf_dashboard: Add real-time terminal dashboard with prompt tokens column
 
-- Modified build_routes_by_name() to accept include_private and include_builtin flags
-- cmd_validate() validates ALL routes (including private) for completeness  
-- cmd_healthcheck() and cmd_full_check() Phase 2 only test PUBLIC user routes:
-  - Excludes private routes (is_private=True)
-  - Excludes builtin routes (builtin/*)
-- Added optional routes_to_check parameter to run_health_check() in healthcheck.py
-
-Result: 
-- Validation: 23 routes checked (all routes including private/builtin)
-- Health check: 17 routes checked (public user routes only)
+- Created perf_dashboard.py to monitor performance metrics in real-time
+- Added --filter and --num-prompts arguments to benchmark_routes.py  
+- Updated benchmark results to group by backend_model instead of route
+- Fixed TTFT/TPS calculations using streaming responses for accuracy
+- Dashboard displays: Reqs, TPS, Comp TPS, Prompt TPS, TTFT, Comp Tks, Prompt Tks
+- Configurable terminal width (WIDTH=120) with shortened column labels
+- Added demo_dashboard.py for testing dashboard functionality

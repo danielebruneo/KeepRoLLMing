@@ -100,8 +100,8 @@ It is NOT responsible for:
 - `config.yaml` - Configuration file
 - `requirements.txt` - Production dependencies
 - `requirements-dev.txt` - Development dependencies
-- `_docs/` - Documentation directory
-- `_prompts/` - Summary prompt templates
+- `_docs/` - Documentation directory (including CONFIGURATION.md)
+- `_prompts/` - Summary prompt templates (classic, curated, structured, incremental)
 - `_project/TODOS.md` - Project enhancement wishlist for long-term goals
 
 ## Key Environment Variables

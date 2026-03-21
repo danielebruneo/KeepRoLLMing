@@ -147,6 +147,50 @@ routes:
 - `keeprollming/logger.py` - Logging functionality
 - `keeprollming/performance.py` - Performance tracking utilities
 
+## Performance Monitoring
+
+### Dashboard (`perf_dashboard.py`)
+Real-time terminal dashboard for monitoring model performance metrics.
+
+**Usage:**
+```bash
+python perf_dashboard.py                    # Auto-detects PERFORMANCE_LOGS_DIR
+python perf_dashboard.py /path/to/summary   # Specify custom path
+```
+
+**Key Bindings:**
+- `Ctrl+C` or `q`: Quit dashboard
+- `c`: Clear logs (removes `__perf_logs` directory)
+- `s`: Save timestamped backup of `summary.yaml` to `__perf_logs/backups/`
+
+**Displayed Metrics:**
+- Model name
+- Total requests
+- TPS (tokens per second)
+- Completion TPS
+- Prompt TPS
+- TTFT (Time to First Token in ms)
+- Completion tokens
+- Prompt tokens
+
+**Data Source:**
+- Reads from `summary.yaml` in the performance logs directory
+- Default path: `./__performance_logs/summary.yaml`
+- Can be customized via `PERFORMANCE_LOGS_DIR` environment variable
+
+### Benchmarking (`benchmark_routes.py`)
+Route benchmarking tool for measuring performance across different routes.
+
+**Usage:**
+```bash
+python benchmark_routes.py --num-prompts 5 --filter "chat/main"
+```
+
+**Arguments:**
+- `--num-prompts`: Number of prompt iterations per route (default: varies)
+- `--filter`: Filter routes by pattern (e.g., "chat/main", "code/*")
+- Output groups results by backend_model instead of route
+
 ## Usage Examples
 
 ### Basic Route Matching

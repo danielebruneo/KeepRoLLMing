@@ -26,6 +26,18 @@ routes:
 
   # ========== MODELS ==========
 
+  arkai/RTX3090/Nemotron-3:  # Runs on RTX 3090 24GB [LM Studio]
+    is_private: true
+    extends: arkai/lmstudio
+    main_model: "nvidia/nemotron-3-nano"
+    ctx_len: 100000
+    max_tokens: 32768
+    capabilities:
+      - chat
+      - vision
+      - tools
+      - thinking
+
   arkai/RTX3090/QWen3.5-35b-a3b:  # Runs on RTX 3090 24GB [LM Studio]
     is_private: true
     extends: arkai/lmstudio
@@ -150,6 +162,9 @@ routes:
     summary_enabled: false
 
   code/architect:
-    extends: [base/deep]
+    # extends: [base/deep]
+    extends: [arkai/RTX3090/QWen3.5-4B]
+    main_model: unsloth/qwen3.5-9b
+    # extends: [arkai/RTX3090/QWen3.5-35b-a3b]
     summary_enabled: true
 

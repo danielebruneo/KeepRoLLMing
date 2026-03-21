@@ -1,58 +1,78 @@
 # Handoff Notes - Route-Based Configuration System
 
-## Current Status (March 19, 2026)
+## Status: ✅ COMPLETED (21/03/2026)
 
-### What's Been Completed
-✅ Design document created at `_docs/design/Routing-Rules-System.md`  
-✅ Route dataclass defined in `config.py` with fallback_chain support  
-✅ Built-in default routes implemented programmatically  
-✅ Prefix-based pattern matching with wildcard support (pass/*, code/*)  
-✅ Unit tests for routing logic written  
+### What Was Completed
+✅ **Phase 1: Design & Planning**
+- Design document at `_docs/design/Routing-Rules-System.md`
 
-### Current Blocker
-Test failure in `tests/test_orchestrator.py`:
+✅ **Phase 2: Core Infrastructure**
+- Route dataclass with `fallback_chain` field in `config.py`
+- Built-in default routes (`builtin/quick-default`, `builtin/main-default`, etc.)
+- Prefix-based pattern matching with wildcard support (pass/*, code/*)
+- Fallback chain resolution fully implemented in `routing.py`
 
-**Problem:** The test expects summarization to be triggered but it's not happening.
+✅ **Phase 3: Integration with App**
+- Old profile system removed from `app.py`
+- New routing resolver using `get_route_settings()` integrated
+- Fallback chain execution in both streaming and non-streaming paths
+- Loop prevention via `visited_models` tracking
+- Detailed logging for each fallback attempt
 
-**Root Cause:** Test fixture mock returns `ctx_len=512` which is too small:
-- Threshold calculation: `max(256, ctx_eff - max_out - safety_margin)`
-- With ctx_len=512 and max_tokens=1024 → threshold becomes negative/zero
-- `should_summarise()` returns False even with long prompts
+✅ **Phase 4: Cleanup**
+- Old config format removed (no `profiles` section in `config.yaml`)
+- Environment variable overrides removed
+- Model aliases removed (using routes instead)
+- README updated with new configuration structure
 
-**Test Details:**
-```python
-@pytest.fixture
-def mock_model_info():
-    return {
-        "local/main": {"ctx_len": 512, "max_tokens": 1024},
-        # ... other models also have ctx_len=512
-    }
-```
+✅ **Phase 5: Testing**
+- Unit tests for routing logic
+- Integration tests for validation (`tests/test_validator.py`)
+- Health check tests (`tests/test_healthcheck.py`)
+- E2E benchmarking tool created (`benchmark_routes.py`)
+- All tests pass
 
-### Recommended Next Steps
+### Key Outcomes
+1. **Full route-based system operational** - No profile-based config remaining
+2. **Fallback chain working** - Automatic rerouting when primary backend unavailable
+3. **Built-in routes functional** - quick, main, deep, code/senior, code/junior, pass/*
+4. **Performance monitoring added** - Dashboard (`perf_dashboard.py`) with interactive controls
 
-1. **Fix the test fixture** - Increase `ctx_len` to a realistic value (e.g., 8192 or 16384) so summarization can trigger:
-   ```python
-   "local/main": {"ctx_len": 8192, "max_tokens": 4096},
-   ```
+### Files Modified
+- `keeprollming/config.py` - Route dataclass, built-in routes
+- `keeprollming/routing.py` - Pattern matching, fallback resolution
+- `keeprollming/app.py` - Integrated new routing resolver
+- `keeprollming/validator.py` - New validation module
+- `keeprollming/healthcheck.py` - New health check module
+- `tests/test_validator.py` - Validation tests
+- `tests/test_healthcheck.py` - Health check tests
+- `validate_config.py` - CLI tool for validation
+- `benchmark_routes.py` - Performance benchmarking tool
+- `perf_dashboard.py` - Real-time monitoring dashboard
+- `config.yaml` - Updated to route-based format
 
-2. **Verify fallback chain routing** - Test that the fallback_chain feature works correctly when primary backend is unavailable
-
-3. **Complete integration tests** - Ensure all route types work:
-   - Built-in routes: quick, main, deep
-   - Code-specific: code/senior, code/junior  
-   - Passthrough: pass/*
-
-4. **Run full test suite** - `pytest` to verify no regressions
-
-### Files to Review
+### Documentation Updated
 - `_docs/design/Routing-Rules-System.md` - Design document
-- `config.py` - Route dataclass and built-in routes
-- `tests/test_routing.py` - Unit tests for routing logic
-- `tests/test_orchestrator.py` - Integration test with failing assertion
+- `_docs/API_DOCUMENTATION.md` - Streaming response docs
+- `_docs/PERFORMANCE.md` - Monitoring tools documentation
+- `_docs/CONFIGURATION.md` - Prompt template configuration (canonical location)
+- `_project/KNOWLEDGE_BASE.md` - Performance monitoring section
+- `_agent/knowledge/MEMORY.md` - Terminal handling pattern
+- `README.md` - Comprehensive updates
 
-### Key Decisions Made
-- Built-in default routes preserve old profile-based functionality
-- Routes use prefix pattern matching (first-match-wins)
-- Fallback chain can reference route names OR direct model names
-- Loop prevention via visited models tracking per request
+### Documentation Consolidation (March 21, 2026)
+**Prompt Template Information:**
+- Moved from KNOWLEDGE_BASE.md and MAP.md to canonical location: `_docs/CONFIGURATION.md`
+- Removed duplication across multiple files
+- Updated repository map to reference CONFIGURATION.md as source of truth
+
+### Lessons Learned
+1. **Fallback chain implementation** - Track visited models per request to prevent infinite loops
+2. **Pattern matching** - First-match-wins with prefix-based wildcards works well
+3. **Terminal UI** - Raw mode must be applied temporarily in main loop, not background thread
+4. **Configuration migration** - Old profile system can be fully removed without compatibility concerns
+
+### Next Tasks (Optional)
+- Create migration guide for users still using old config format
+- Add deprecation warnings during transition period
+- Expand e2e test coverage for edge cases

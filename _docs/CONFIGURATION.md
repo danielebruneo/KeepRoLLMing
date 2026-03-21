@@ -2,7 +2,9 @@
 
 ## Environment Variables
 
-- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1` is accepted, but recommended to provide without `/v1`)
+- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
+- `SUMMARY_PROMPT_DIR` - Directory containing summary prompt templates (default: `./_prompts`)
+- `SUMMARY_PROMPT_TYPE` - Prompt type to use (classic, curated, structured, incremental)
 - `MAIN_MODEL`, `SUMMARY_MODEL`
 - `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
 - `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
@@ -10,6 +12,42 @@
 - `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
 - `DEFAULT_CTX_LEN` - Default context length when no model info is available
 - `SUMMARY_MAX_TOKENS` - Maximum tokens for summary generation
+
+## Prompt Template Configuration
+
+Summary prompts are loaded from external template files in the `_prompts/` directory.
+
+### Available Templates
+- `classic.summary_prompt.txt` - Classic summarization format
+- `curated.summary_prompt.txt` - Curated context compaction (default)
+- `structured.summary_prompt.txt` - Structured bullet-point format
+- `incremental.txt` - Incremental summary updates
+
+### Custom Prompts in config.yaml
+
+Custom prompts can be defined in the `custom_summary_prompts` section:
+
+```yaml
+custom_summary_prompts:
+  classic: "./_prompts/classic.summary_prompt.txt"
+  curated: "./_prompts/curated.summary_prompt.txt"
+  structured: "./_prompts/structured.summary_prompt.txt"
+  incremental: "./_prompts/incremental.txt"
+```
+
+Or use direct text prompts (no file path):
+
+```yaml
+custom_summary_prompts:
+  custom-prompt: |
+    You are a context compaction engine.
+    {{TRANSCRIPT}}
+    Output in Italian with {{LANG_HINT}} language hint.
+```
+
+### Template Variables
+- `{{TRANSCRIPT}}` - The conversation transcript to summarize
+- `{{LANG_HINT}}` - Language hint for output (default: "italiano")
 
 ## Configuration Files
 
