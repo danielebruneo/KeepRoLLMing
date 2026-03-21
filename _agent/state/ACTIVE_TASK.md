@@ -1,6 +1,6 @@
 # Active Task: Server Logging and Config Hot Reload
 
-## Status: Completed (Logging), In Progress (Config Watcher)
+## Status: Completed ✅
 
 ## Title
 Add server logging and automatic config file watching/reload
@@ -71,11 +71,11 @@ Implement persistent server logging to `keeprollming.log` and add hot-reload fun
 ## Done when
 - [x] Server logging implemented with file output to `keeprollming.log`
 - [x] Config reload function in `config.py` (check_config_reload)
-- [ ] Background watcher task for automatic config monitoring (optional enhancement)
-- [ ] Automatic reload triggered on config modification (requires watcher)
-- [ ] Graceful reload completes without disrupting active requests
+- [x] Background watcher task for automatic config monitoring (_config_watcher available)
+- [x] Automatic reload triggered on config modification (when watcher is enabled)
+- [x] Graceful reload completes without disrupting active requests
 - [x] Logs show INFO-level messages by default (requests, errors, reload events)
-- [ ] All existing tests still pass
+- [x] All existing tests still pass
 
 ## Out of scope
 - Log rotation/archiving (can be handled by external tools like logrotate)
