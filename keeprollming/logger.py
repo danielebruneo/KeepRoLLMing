@@ -511,26 +511,47 @@ def log(level: str, msg: str, **fields: Any) -> None:
 
 
 def _log_to_file(level: str, msg: str, **fields: Any) -> None:
-    """Log to keeprollming.log file in server log format (one line per entry)."""
+    """Log to keeprollming.log file in server log format (one line per entry).
+    
+    Only logs safe, non-sensitive metadata similar to HTTP access logs.
+    Excludes request/response bodies, headers, and other large payloads.
+    """
     try:
-        # Build a concise message for the file logger with all fields
+        # Whitelist of safe fields to include in file logs (no sensitive data)
+        SAFE_FIELDS = {
+            "req_id", "level", "msg", "model", "client_model", "endpoint",
+            "upstream_url", "status", "error_type", "elapsed_ms",
+            "stream", "message_count", "max_tokens", "user_id", "conv_id",
+            "reason", "prompt_tok_est", "threshold", "head_n", "tail_n",
+            "middle_count", "kind", "did_summarize", "passthrough",
+            "prompt_tokens", "completion_tokens", "total_tokens",
+            "ttft_ms", "tps_live", "event_count", "generated_tokens_est",
+            "summary_model", "backend_model", "resolved_route",
+            "has_archived_context", "adjusted_max_tokens"
+        }
+        
+        # Fields that are safe only when they're simple types (strings, ints, bools)
+        SIMPLE_ONLY_FIELDS = {
+            "last_user",  # Can be long text, but we'll truncate if needed
+            "finished_reason"
+        }
+        
+        # Build a concise message for the file logger with only safe fields
         extra_parts = []
         for k, v in fields.items():
-            # Skip internal fields and None values
-            if k in ("_truncated",) or v is None:
+            # Only include whitelisted fields
+            if k not in SAFE_FIELDS and k not in SIMPLE_ONLY_FIELDS:
+                continue
+            # Skip None values
+            if v is None:
                 continue
             # Convert to string representation
             if isinstance(v, (dict, list)):
-                try:
-                    extra_parts.append(f"{k}={json.dumps(v)}")
-                except Exception:
-                    extra_parts.append(f"{k}={type(v).__name__}")
+                # Don't log dicts/lists - skip them entirely
+                continue
             elif hasattr(v, '__dict__'):
-                # Handle custom objects
-                try:
-                    extra_parts.append(f"{k}={v.__class__.__name__}")
-                except Exception:
-                    extra_parts.append(f"{k}=object")
+                # Skip custom objects - not useful in server logs
+                continue
             else:
                 extra_parts.append(f"{k}={v}")
 
