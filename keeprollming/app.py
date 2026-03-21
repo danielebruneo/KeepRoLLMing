@@ -39,6 +39,8 @@ from .logger import (
     classify_messages,
     extract_last_user_text,
     log,
+    log_connection_error,
+    log_fallback_error,
     log_streaming_response,
     summarize_request_payload,
     summarize_response_payload,
@@ -968,6 +970,129 @@ async def chat_completions(req: Request) -> Response:
                                 )
 
                         yield transformed_chunk
+            except httpx.ConnectError as e:
+                # Connection error - upstream server unreachable
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                log_connection_error(
+                    req_id=req_id,
+                    error_type="connection_failed",
+                    upstream_url=url,
+                    model=upstream_model,
+                    elapsed_ms=elapsed_ms,
+                    err=str(e)[:300],
+                )
+                
+                # Try fallback chain if available
+                if fallback_attempts and upstream_model not in visited_models:
+                    log(
+                        "INFO",
+                        "connection_error_fallback_attempt",
+                        req_id=req_id,
+                        original_model=upstream_model,
+                        upstream_url=url,
+                    )
+                    
+                    for route_opt, fallback_model in fallback_attempts:
+                        if fallback_model not in visited_models:
+                            log(
+                                "INFO",
+                                "fallback_to_next_model",
+                                req_id=req_id,
+                                from_model=upstream_model,
+                                to_model=fallback_model,
+                            )
+                            
+                            upstream_payload["model"] = fallback_model
+                            visited_models.add(fallback_model)
+                            
+                            try:
+                                async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
+                                    r = resp_retry
+                                    resp_retry.raise_for_status()
+                                    
+                                    async for chunk in resp_retry.aiter_bytes():
+                                        if not chunk:
+                                            continue
+                                        yield chunk
+                                    
+                                    return
+                            except Exception as retry_err:
+                                log_fallback_error(
+                                    req_id=req_id,
+                                    from_model=upstream_model,
+                                    to_model=fallback_model,
+                                    error_type="connection_failed",
+                                    err_msg=str(retry_err)[:300],
+                                )
+                                visited_models.add(fallback_model)
+                    
+                    yield (f"data: {json.dumps({'error': {'message': 'Connection failed - all upstreams unreachable'}})}\n\n").encode("utf-8")
+                    yield b"data: [DONE]\n\n"
+                else:
+                    yield (f"data: {json.dumps({'error': {'message': 'Connection failed', 'details': str(e)[:200]}})}\n\n").encode("utf-8")
+                    yield b"data: [DONE]\n\n"
+                    
+            except httpx.ConnectTimeout as e:
+                # Connection timeout
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                log_connection_error(
+                    req_id=req_id,
+                    error_type="connection_timeout",
+                    upstream_url=url,
+                    model=upstream_model,
+                    elapsed_ms=elapsed_ms,
+                    err=str(e)[:300],
+                )
+                
+                if fallback_attempts and upstream_model not in visited_models:
+                    log(
+                        "INFO",
+                        "timeout_error_fallback_attempt",
+                        req_id=req_id,
+                        original_model=upstream_model,
+                        upstream_url=url,
+                    )
+                    
+                    for route_opt, fallback_model in fallback_attempts:
+                        if fallback_model not in visited_models:
+                            log(
+                                "INFO",
+                                "fallback_to_next_model",
+                                req_id=req_id,
+                                from_model=upstream_model,
+                                to_model=fallback_model,
+                            )
+                            
+                            upstream_payload["model"] = fallback_model
+                            visited_models.add(fallback_model)
+                            
+                            try:
+                                async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
+                                    r = resp_retry
+                                    resp_retry.raise_for_status()
+                                    
+                                    async for chunk in resp_retry.aiter_bytes():
+                                        if not chunk:
+                                            continue
+                                        yield chunk
+                                    
+                                    return
+                            except Exception as retry_err:
+                                log_fallback_error(
+                                    req_id=req_id,
+                                    from_model=upstream_model,
+                                    to_model=fallback_model,
+                                    error_type="connection_timeout",
+                                    err_msg=str(retry_err)[:300],
+                                )
+                                visited_models.add(fallback_model)
+                    
+                    yield (f"data: {json.dumps({'error': {'message': 'Connection timeout - all upstreams timed out'}})}\n\n").encode("utf-8")
+                    yield b"data: [DONE]\n\n"
+                else:
+                    yield (f"data: {json.dumps({'error': {'message': 'Connection timeout', 'details': str(e)[:200]}})}\n\n").encode("utf-8")
+                    yield b"data: [DONE]\n\n"
+                    
             except httpx.HTTPStatusError as e:
                 err_text = e.response.text
                 log(
@@ -1438,7 +1563,44 @@ async def chat_completions(req: Request) -> Response:
         # Estimate TTFT for non-streaming: assume ~30% of total time spent on prompt processing
         if ttft_ms_non_stream is None and elapsed_ms > 0:
             ttft_ms_non_stream = elapsed_ms * 0.3
-        # Log non-streaming request completion with error
+        
+        # Categorize the error type
+        import httpx
+        error_type = "unknown"
+        err_msg = str(e)[:500]
+        
+        if isinstance(e, httpx.ConnectError):
+            error_type = "connection_failed"
+            err_msg = f"Connection failed to {url}"
+            log_connection_error(
+                req_id=req_id,
+                error_type=error_type,
+                upstream_url=url,
+                model=upstream_model,
+                elapsed_ms=elapsed_ms,
+                err=str(e)[:300],
+            )
+        elif isinstance(e, httpx.ConnectTimeout):
+            error_type = "connection_timeout"
+            err_msg = f"Connection timeout to {url}"
+            log_connection_error(
+                req_id=req_id,
+                error_type=error_type,
+                upstream_url=url,
+                model=upstream_model,
+                elapsed_ms=elapsed_ms,
+                err=str(e)[:300],
+            )
+        elif isinstance(e, httpx.TimeoutException):
+            error_type = "timeout"
+            err_msg = str(e)[:200]
+        elif isinstance(e, httpx.HTTPStatusError):
+            error_type = "http_status_error"
+            status = getattr(e, 'response', None)
+            if status:
+                err_msg = f"HTTP {status.status_code}: {str(e)[:150]}"
+        
+        # Log generic request error
         log(
             "ERROR",
             "request_completed_error",
@@ -1447,8 +1609,8 @@ async def chat_completions(req: Request) -> Response:
             elapsed_ms=round(elapsed_ms, 2),
             did_summarize=did_summarize,
             passthrough=is_passthrough,
-            error_type="proxy_exception",
-            err=str(e)[:500],
+            error_type=error_type,
+            err=err_msg,
         )
 
         log(
@@ -1461,4 +1623,3 @@ async def chat_completions(req: Request) -> Response:
             passthrough=is_passthrough,
         )
         raise e
-        return JSONResponse({"error": {"message": "Proxy exception", "details": str(e)}}, status_code=500)

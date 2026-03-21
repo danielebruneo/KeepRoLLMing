@@ -495,15 +495,48 @@ def _ensure_serializable(obj: Any) -> Any:
 def log(level: str, msg: str, **fields: Any) -> None:
     if not _should_log(msg):
         return
+    
+    # Also write to keeprollming.log file (server log format)
+    _log_to_file(level, msg, **fields)
+    
     rec = {"ts": _ts(), "level": level.upper(), "msg": msg}
     # Ensure all fields are JSON serializable
     for k, v in fields.items():
         rec[k] = _ensure_serializable(v)
-    
+
     if LOG_MODE == "BASIC_PLAIN":
         print(_format_plain(rec))
         return
     print_json(data=rec)
+
+
+def _log_to_file(level: str, msg: str, **fields: Any) -> None:
+    """Log to keeprollming.log file in server log format (one line per entry)."""
+    try:
+        # Build a concise message for the file logger
+        extra_parts = []
+        for k, v in fields.items():
+            if k in ("req_id", "model", "endpoint", "upstream_url", "status"):
+                extra_parts.append(f"{k}={v}")
+        
+        extra_str = " | ".join(extra_parts) if extra_parts else ""
+        full_msg = f"{msg}" + (f" | {extra_str}" if extra_str else "")
+        
+        # Map log levels
+        level_map = {
+            "DEBUG": "debug",
+            "INFO": "info", 
+            "WARN": "warning",
+            "ERROR": "error"
+        }
+        log_level = level_map.get(level, "info")
+        
+        server_logger = get_server_logger()
+        if server_logger:
+            getattr(server_logger, log_level, server_logger.info)(full_msg)
+    except Exception:
+        # Never let file logging failures break the app
+        pass
 
 
 MAX_BODY_CHARS = 4000
@@ -755,11 +788,120 @@ def log_server_event(level: str, message: str, **kwargs) -> None:
 
 def log_config_reload(old_mtime: float, new_mtime: float) -> None:
     """Log a config reload event."""
-    log_server_event("INFO", "Config reloaded", 
-                     old_mtime=old_mtime, 
+    log_server_event("INFO", "Config reloaded",
+                     old_mtime=old_mtime,
                      new_mtime=new_mtime)
 
 
 def log_config_error(error: str) -> None:
     """Log a config error during reload."""
     log_server_event("ERROR", f"Config reload failed: {error}")
+
+
+def categorize_httpx_error(e: Exception) -> tuple[str, str]:
+    """
+    Categorize an httpx exception and return (error_type, error_message).
+    
+    Returns:
+        Tuple of (error_type string, truncated error message)
+    """
+    import httpx
+    
+    err_type = "unknown"
+    err_msg = str(e)[:500]
+    
+    if isinstance(e, httpx.ConnectError):
+        err_type = "connection_failed"
+        # Try to extract target URL from error
+        err_msg = _extract_connection_target(str(e)) or f"Connection failed: {str(e)[:200]}"
+    elif isinstance(e, httpx.ConnectTimeout):
+        err_type = "connection_timeout"
+        err_msg = _extract_connection_target(str(e)) or f"Connection timeout"
+    elif isinstance(e, httpx.TimeoutException):
+        err_type = "timeout"
+        err_msg = str(e)[:200]
+    elif isinstance(e, httpx.NetworkError):
+        err_type = "network_error"
+        err_msg = str(e)[:200]
+    elif isinstance(e, httpx.HTTPStatusError):
+        err_type = "http_status_error"
+        status = getattr(e, 'response', None)
+        if status:
+            err_msg = f"HTTP {status.status_code}: {str(e)[:150]}"
+    
+    return err_type, err_msg
+
+
+def _extract_connection_target(error_str: str) -> str | None:
+    """Extract target URL/host from connection error string."""
+    import re
+    
+    # Try to find a URL pattern
+    url_match = re.search(r'([a-zA-Z]+://[^\s\)]+)', error_str)
+    if url_match:
+        return url_match.group(1)[:200]
+    
+    # Try to find a host:port pattern
+    host_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)', error_str)
+    if host_match:
+        return host_match.group(1)
+    
+    return None
+
+
+def log_request_error(req_id: str, error_type: str, endpoint: str | None = None,
+                      model: str | None = None, upstream_url: str | None = None,
+                      status_code: int | None = None, elapsed_ms: float | None = None,
+                      **extra_fields) -> None:
+    """
+    Centralized error logging function for request errors.
+    
+    Logs errors with consistent categorization and context.
+    """
+    log(
+        "ERROR",
+        "request_error",
+        req_id=req_id,
+        error_type=error_type,
+        endpoint=endpoint,
+        model=model,
+        upstream_url=upstream_url,
+        status=status_code,
+        elapsed_ms=elapsed_ms,
+        **extra_fields
+    )
+
+
+def log_connection_error(req_id: str, error_type: str, upstream_url: str,
+                         model: str | None = None, elapsed_ms: float | None = None,
+                         **extra_fields) -> None:
+    """
+    Centralized connection error logging function.
+    
+    Specifically for httpx.ConnectError, ConnectTimeout, and similar errors.
+    """
+    log(
+        "ERROR",
+        "connection_error",
+        req_id=req_id,
+        error_type=error_type,
+        upstream_url=upstream_url,
+        model=model,
+        elapsed_ms=elapsed_ms,
+        **extra_fields
+    )
+
+
+def log_fallback_error(req_id: str, from_model: str, to_model: str,
+                       error_type: str, err_msg: str, **extra_fields) -> None:
+    """Centralized fallback chain error logging."""
+    log(
+        "WARN",
+        "fallback_error",
+        req_id=req_id,
+        from_model=from_model,
+        to_model=to_model,
+        error_type=error_type,
+        err_msg=err_msg[:500],
+        **extra_fields
+    )
