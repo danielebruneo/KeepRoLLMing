@@ -9,7 +9,7 @@ This document contains performance metrics, analysis, and optimization details f
 Real-time terminal dashboard for monitoring model performance metrics.
 
 **Features:**
-- Live display of TPS, TTFT, completion tokens, prompt tokens
+- Live display of **Tot TPS** (total throughput), completion_tps, prompt_tps, TTFT, token counts
 - Model-by-model breakdown with sorting by request count
 - Interactive controls: `q` (quit), `c` (clear logs), `s` (save backup)
 - Automatic refresh on summary.yaml changes
@@ -23,6 +23,16 @@ python perf_dashboard.py /path/to/summary   # Specify custom path
 **Data Source:**
 - Reads from `summary.yaml` in `__performance_logs/` directory
 - Backup directory created automatically: `__performance_logs/backups/`
+
+### Summary Generation (`keeprollming/performance.py`)
+The `_update_summary()` function generates `summary.yaml` by aggregating performance data from individual request logs. It calculates statistics (avg, min, max) for all metrics including the new `total_tps` field.
+
+**Metrics in summary.yaml:**
+- `tps` - Completion TPS (backward compatibility alias)
+- `total_tps` - Overall throughput metric
+- `completion_tps` - Generation speed
+- `prompt_tps` - Prompt processing speed
+- Token counts and TTFT statistics
 
 ### Benchmarking Tool (`benchmark_routes.py`)
 Route benchmarking for measuring performance across different configurations.
@@ -56,8 +66,23 @@ python benchmark_routes.py --num-prompts 5 --filter "chat/main"
 - Streaming response times
 - Token accounting accuracy
 - TTFT (Time to First Token)
-- TPS (Tokens Per Second) - overall, completion, and prompt-specific
+- **TPS metrics:**
+  - `total_tps` - Overall throughput: `(prompt_tokens + completion_tokens) / elapsed_time`
+  - `completion_tps` - Generation speed: `completion_tokens / (elapsed_time - ttft)`
+  - `prompt_tps` - Prompt processing speed: `prompt_tokens / ttft`
 - Token counts for both input and output
+
+### How total_tps is Calculated:
+The `total_tps` metric represents end-to-end throughput, calculated as:
+
+```python
+total_tps = (prompt_tokens + completion_tokens) / (elapsed_ms / 1000.0)
+```
+
+This measures the total number of tokens processed per second from request start to finish, including both prompt processing and completion generation time. It's the standard metric for overall system throughput.
+
+**Example:** If a request takes 5 seconds and processes 30,000 prompt tokens + 400 completion tokens:
+- `total_tps = (30000 + 400) / 5 = 6080 tokens/second`
 
 ### Optimization Techniques:
 1. Parallel test execution using pytest-xdist

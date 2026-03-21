@@ -83,3 +83,27 @@ When creating or modifying skills, always ensure both files exist and are proper
 
 **Relevant files:** [keeprollming/routing.py](keeprollming/routing.py), [keeprollming/app.py](keeprollming/app.py)  
 **Category:** Implementation Pattern
+
+---
+
+## Total TPS Metric Calculation
+
+**Date/session:** 21/03/2026 15:45:00  
+**Topic:** End-to-end throughput calculation for performance monitoring  
+**Lesson:** The `total_tps` metric represents overall system throughput, calculated as `(prompt_tokens + completion_tokens) / elapsed_time`. This differs from `completion_tps` which only measures generation speed.
+
+**Formula:**
+```python
+total_tps = (prompt_tokens + completion_tokens) / (elapsed_ms / 1000.0)
+```
+
+This metric is crucial for understanding real-world performance because it accounts for both prompt processing time and generation time, giving a complete picture of tokens processed per second from request start to finish.
+
+**Implementation:**
+- Calculated in `keeprollming/performance.py::compute_request_performance()`
+- Aggregated with avg/min/max stats in `_update_summary()` function
+- Displayed as "Tot TPS" column in `perf_dashboard.py`
+- Stored in `summary.yaml` alongside other TPS metrics (completion_tps, prompt_tps)
+
+**Relevant files:** [keeprollming/performance.py](keeprollming/performance.py), [perf_dashboard.py](perf_dashboard.py), [_docs/PERFORMANCE.md](_docs/PERFORMANCE.md)  
+**Category:** Performance Monitoring
