@@ -163,6 +163,17 @@ def _update_summary(base_dir: Path) -> None:
         lines.append("  -")
         lines.append(f"    route_name: {_format_scalar(model_name)}")
         lines.append(f"    model: {_format_scalar(entries[-1].get('model'))}")
+        # Add route_hierarchy if available
+        last_entry = entries[-1]
+        if 'route_hierarchy' in last_entry and last_entry['route_hierarchy']:
+            hierarchy_list = last_entry['route_hierarchy']
+            if isinstance(hierarchy_list, list):
+                # Format as YAML list
+                lines.append("    route_hierarchy:")
+                for item in hierarchy_list:
+                    lines.append(f"      - {_format_scalar(item)}")
+            else:
+                lines.append(f"    route_hierarchy: {_format_scalar(str(hierarchy_list))}")
         lines.append(f"    requests: {_format_scalar(len(entries))}")
         
         # TPS stats (overall, completion, prompt)
@@ -262,6 +273,7 @@ def record_request_performance(
     *,
     model: str,
     route_name: str | None = None,
+    route_hierarchy: List[str] | None = None,
     req_id: str,
     stream: bool,
     elapsed_ms: Any,
@@ -282,6 +294,7 @@ def record_request_performance(
         "req_id": req_id,
         "model": model,
         "route_name": route_name or _safe_slug(model),
+        "route_hierarchy": route_hierarchy or [route_name or _safe_slug(model)],
         "stream": bool(stream),
         "elapsed_ms": metrics["elapsed_ms"],
         "ttft_ms": metrics["ttft_ms"],

@@ -38,7 +38,7 @@ class Route:
     passthrough_enabled: bool = False
 
     # Model configuration - can reference models dict or specify directly
-    main_model: Optional[str] = None
+    model: Optional[str] = None
     summary_model: Optional[str] = None
 
     # Settings that can be overridden at route level (will fall back to model config)
@@ -50,10 +50,10 @@ class Route:
     add_empty_content_when_reasoning_only: bool = False
     reasoning_placeholder_content: str = ""
 
-    # Backend configuration (for passthrough) - use sentinel for inheritance detection, but provide defaults
-    backend_model_pattern: Optional[str] = None
+    # Model pattern for passthrough - extracts model from matched path
+    model_pattern: Optional[str] = None
 
-    # Upstream configuration - allows different upstreams per route - use sentinel
+    # Upstream configuration (for passthrough) - use sentinel
     upstream_url: Optional[str] = _UNSET  # type: ignore
     upstream_headers: Dict[str, str] = field(default_factory=dict)  # Custom headers for this route
 
@@ -70,16 +70,19 @@ class Route:
 
     # Route composition - extend another route and override settings
     extends: Optional[str] = None
-    
+
     # Track if this route is private (@private decorator)
     _is_private: bool = False
+
+    # Track the full route hierarchy path (e.g., "arkai/lmstudio -> arkai/RTX3090/Qwen3.5-35b")
+    _route_hierarchy: List[str] = field(default_factory=list, repr=False)
 
 
 @dataclass(frozen=True)
 class RouteMatch:
-    """Result of route matching - contains matched route and extracted backend model."""
+    """Result of route matching - contains matched route and extracted model."""
     route: Route
-    backend_model: str  # The actual model to use (extracted from pattern if needed)
+    model: str  # The actual model to use (extracted from pattern if needed)
     capture_groups: Dict[str, str] = field(default_factory=dict)
 
 
@@ -89,7 +92,7 @@ BUILTIN_ROUTES: List[Route] = [
     Route(
         name="builtin/quick-default",
         pattern="builtin/quick|quick-fallback",
-        main_model="qwen2.5-3b-instruct",
+        model="qwen2.5-3b-instruct",
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
         max_tokens=4096,
@@ -99,7 +102,7 @@ BUILTIN_ROUTES: List[Route] = [
     Route(
         name="builtin/main-default",
         pattern="builtin/main|main-fallback",
-        main_model="qwen2.5-v1-7b-instruct",
+        model="qwen2.5-v1-7b-instruct",
         summary_model="qwen2.5-3b-instruct",
         ctx_len=8192,
         max_tokens=4096,
@@ -109,7 +112,7 @@ BUILTIN_ROUTES: List[Route] = [
     Route(
         name="builtin/deep-default",
         pattern="builtin/deep|deep-fallback",
-        main_model="qwen2.5-27b-instruct",
+        model="qwen2.5-27b-instruct",
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
         max_tokens=8192,
@@ -119,7 +122,7 @@ BUILTIN_ROUTES: List[Route] = [
     Route(
         name="builtin/code-senior-default",
         pattern="builtin/code/senior|senior-fallback",
-        main_model="qwen3.5-35b-a3b",
+        model="qwen3.5-35b-a3b",
         summary_model="qwen2.5-7b-instruct",
         ctx_len=16384,
         max_tokens=8192,
@@ -129,7 +132,7 @@ BUILTIN_ROUTES: List[Route] = [
     Route(
         name="builtin/code-junior-default",
         pattern="builtin/code/junior|junior-fallback",
-        main_model="qwen2.5-7b-instruct",
+        model="qwen2.5-7b-instruct",
         summary_model="qwen2.5-1.5b-instruct",
         ctx_len=8192,
         max_tokens=4096,
@@ -141,7 +144,7 @@ BUILTIN_ROUTES: List[Route] = [
         pattern="pass/(.+)",
         passthrough_enabled=True,
         summary_enabled=False,
-        backend_model_pattern="${1}",  # Extract everything after pass/
+        model_pattern="${1}",  # Extract everything after pass/
     ),
 
     # v1 API prefix stripping - transforms v1/route → route
@@ -150,7 +153,7 @@ BUILTIN_ROUTES: List[Route] = [
         pattern="v1/(.+)",
         passthrough_enabled=True,
         summary_enabled=False,
-        backend_model_pattern="${1}",  # Strip v1/ prefix
+        model_pattern="${1}",  # Strip v1/ prefix
     ),
 
     # api version prefix stripping - transforms api/v1/route → v1/route  
@@ -159,7 +162,7 @@ BUILTIN_ROUTES: List[Route] = [
         pattern="api/(.+)",
         passthrough_enabled=True,
         summary_enabled=False,
-        backend_model_pattern="${1}",  # Strip api/ prefix
+        model_pattern="${1}",  # Strip api/ prefix
     ),
 
     # Named group support - transforms pass/group/name → group/name
@@ -168,7 +171,7 @@ BUILTIN_ROUTES: List[Route] = [
         pattern="pass/(?P<group>[^/]+)/(?P<name>.+)",
         passthrough_enabled=True,
         summary_enabled=False,
-        backend_model_pattern="${group}/${name}",  # Extract both groups
+        model_pattern="${group}/${name}",  # Extract both groups
     ),
 
     # Simple wildcard passthrough - pass/* → *
@@ -177,7 +180,7 @@ BUILTIN_ROUTES: List[Route] = [
         pattern="pass/*",
         passthrough_enabled=True,
         summary_enabled=False,
-        backend_model_pattern="${1}",  # Extract everything after pass/
+        model_pattern="${1}",  # Extract everything after pass/
     ),
 ]
 
@@ -185,7 +188,7 @@ BUILTIN_ROUTES: List[Route] = [
 DEFAULT_FALLBACK_ROUTE = Route(
     name="builtin/fallback-default",
     pattern="*",
-    main_model="qwen2.5-v1-7b-instruct",
+    model="qwen2.5-v1-7b-instruct",
     summary_model="qwen2.5-3b-instruct",
     ctx_len=8192,
     max_tokens=4096,
@@ -238,23 +241,23 @@ def _parse_pattern(pattern: str) -> Tuple[re.Pattern[str], bool]:
     return compiled, False
 
 
-def _extract_backend_model(route: Route, matched_model: str) -> Tuple[str, Dict[str, str]]:
+def _extract_model(route: Route, matched_model: str) -> Tuple[str, Dict[str, str]]:
     """
-    Extract the actual backend model from a matched pattern.
+    Extract the actual model from a matched pattern.
 
     Args:
         route: The matched route
         matched_model: The original client-facing model name
 
     Returns:
-        Tuple of (backend_model, capture_groups)
+        Tuple of (model, capture_groups)
     """
-    # If route has a main_model defined (not _UNSET), use it as the backend
-    if route.main_model is not _UNSET and route.main_model:
-        return route.main_model, {}
+    # If route has a model defined (not _UNSET), use it as the backend
+    if route.model is not _UNSET and route.model:
+        return route.model, {}
 
     # No extraction pattern - use matched model as-is
-    if not route.backend_model_pattern or route.backend_model_pattern is _UNSET:
+    if not route.model_pattern or route.model_pattern is _UNSET:
         return matched_model, {}
 
     # Extract capture groups from regex match
@@ -265,7 +268,7 @@ def _extract_backend_model(route: Route, matched_model: str) -> Tuple[str, Dict[
         return matched_model, {}
 
     # Handle various capture group extraction formats
-    backend = _apply_capture_pattern(matched_model, match, route.backend_model_pattern)
+    backend = _apply_capture_pattern(matched_model, match, route.model_pattern)
     return backend, dict(match.groupdict())
 
 
@@ -342,10 +345,10 @@ def _match_route(client_model: str, routes: List[Route]) -> Optional[RouteMatch]
         match = pattern_regex.match(client_model)
         
         if match:
-            backend_model, capture_groups = _extract_backend_model(route, client_model)
+            model, capture_groups = _extract_model(route, client_model)
             return RouteMatch(
                 route=route,
-                backend_model=backend_model,
+                model=model,
                 capture_groups=capture_groups,
             )
     
@@ -364,9 +367,9 @@ def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) 
         user_routes: Optional list of user-defined routes (from config.yaml)
 
     Returns:
-        Tuple of (matched_route, backend_model_name)
+        Tuple of (matched_route, model_name)
         - route can be None if no match found (shouldn't happen with fallback)
-        - backend_model is the actual model to use for routing
+        - model is the actual model to use for routing
     """
     # Combine user routes and built-in routes
     all_routes = []
@@ -388,8 +391,8 @@ def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) 
         # Resolve inheritance - merge with parent settings
         resolved_route = resolve_inherited_route(matched_route, routes_by_name)
         
-        extracted_backend_model, _ = _extract_backend_model(resolved_route, client_model)
-        return resolved_route, extracted_backend_model
+        extracted_model, _ = _extract_model(resolved_route, client_model)
+        return resolved_route, extracted_model
 
     # No match found - use default fallback
     return DEFAULT_FALLBACK_ROUTE, "qwen2.5-v1-7b-instruct"
@@ -428,7 +431,11 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
 
     # If no parent, return as-is
     if not extends_list:
-        return route
+        # Initialize hierarchy with just this route's name
+        route_with_hierarchy = Route(
+            **{**route.__dict__, '_route_hierarchy': [route.name]}
+        )
+        return route_with_hierarchy
 
     visited.add(route.name)
 
@@ -438,14 +445,14 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         "pattern": route.pattern,
         "summary_enabled": route.summary_enabled,
         "passthrough_enabled": route.passthrough_enabled,
-        "main_model": route.main_model,
+        "model": route.model,
         "summary_model": route.summary_model,
         "ctx_len": route.ctx_len,
         "max_tokens": route.max_tokens,
         "transform_reasoning_content": route.transform_reasoning_content,
         "add_empty_content_when_reasoning_only": route.add_empty_content_when_reasoning_only,
         "reasoning_placeholder_content": route.reasoning_placeholder_content,
-        "backend_model_pattern": route.backend_model_pattern,
+        "model_pattern": route.model_pattern,
         "upstream_url": route.upstream_url,
         "upstream_headers": route.upstream_headers,
         "fallback_chain": route.fallback_chain,
@@ -473,10 +480,10 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
 
         # Merge this parent's settings into merged_settings
         new_merged = {}
-        for key in ["summary_enabled", "passthrough_enabled", "main_model", "summary_model",
+        for key in ["summary_enabled", "passthrough_enabled", "model", "summary_model",
                     "ctx_len", "max_tokens", "transform_reasoning_content", 
                     "add_empty_content_when_reasoning_only", "reasoning_placeholder_content",
-                    "backend_model_pattern", "upstream_url", "upstream_headers",
+                    "model_pattern", "upstream_url", "upstream_headers",
                     "fallback_chain", "circuit_breaker_enabled", "failure_threshold",
                     "recovery_timeout", "cost_priority"]:
             child_val = merged_settings[key]
@@ -502,6 +509,11 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
     merged_settings["recovery_timeout"] = apply_default(merged_settings["recovery_timeout"], 60)
     merged_settings["cost_priority"] = apply_default(merged_settings["cost_priority"], 999)
 
+    # Build route hierarchy path: parent -> ... -> child
+    # Start with parent's hierarchy, then add current route name
+    parent_hierarchy = getattr(resolved_parent, '_route_hierarchy', [])
+    merged_settings["_route_hierarchy"] = parent_hierarchy + [route.name]
+
     return Route(**merged_settings)
 
 
@@ -513,7 +525,7 @@ def resolve_fallback_chain(
     """
     Resolve a fallback chain for automatic rerouting when backend is unavailable.
 
-    This function returns the complete list of (route, backend_model) pairs to try,
+    This function returns the complete list of (route, model) pairs to try,
     starting with the primary route and following the fallback chain.
 
     Args:
@@ -522,7 +534,7 @@ def resolve_fallback_chain(
         client_request_id: Optional request ID for tracking/debugging
         
     Returns:
-        List of (route, backend_model) tuples in order to try
+        List of (route, model) tuples in order to try
         Each tuple represents a routing attempt
     """
     attempts = [(primary_route, primary_backend)]
@@ -573,23 +585,22 @@ def resolve_fallback_chain(
     return attempts
 
 
-def get_route_settings(route: Route, backend_model: str) -> Dict[str, Any]:
+def get_route_settings(route: Route, model: str) -> Dict[str, Any]:
     """
     Extract all settings from a matched route for use in the application.
 
     Args:
         route: The matched route (should already be resolved with inheritance applied)
-        backend_model: The resolved backend model name
+        model: The resolved model name
 
     Returns:
         Dictionary of all route settings including upstream configuration
     """
     return {
         "route_name": route.name,
-        "backend_model": backend_model,
+        "model": model,
         "summary_enabled": route.summary_enabled,
         "passthrough_enabled": route.passthrough_enabled,
-        "main_model": route.main_model or backend_model,
         "summary_model": route.summary_model,
         "ctx_len": route.ctx_len,
         "max_tokens": route.max_tokens,

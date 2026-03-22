@@ -1,146 +1,179 @@
-{
-  "ts": 1773927082.0944498,
-  "level": "INFO",
-  "msg": "startup",
-  "upstream": "http://arkai.local",
-  "default_ctx": 8000,
-  "routes": 23
-}
-INFO:     Started server process [3144365]
+INFO:     Started server process [5951]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 {
-  "ts": 1773927086.1876135,
+  "ts": 1774146616.4455009,
+  "level": "INFO",
+  "msg": "http_in",
+  "req_id": "059080726786",
+  "client_model": "base/alt",
+  "stream": false,
+  "max_tokens": 50,
+  "message_count": 1,
+  "user_id": null,
+  "conv_id": null
+}
+{
+  "ts": 1774146616.4485464,
   "level": "INFO",
   "msg": "request_received",
   "header": {
     "host": "localhost:8000",
-    "user-agent": "curl/7.81.0",
+    "user-agent": "curl/7.88.1",
     "accept": "*/*",
     "content-type": "application/json",
-    "content-length": "100"
+    "content-length": "140"
   },
-  "req_id": "f993a94f1bc5",
-  "body_json": "{\"model\": \"local/quick\", \"messages\": [{\"role\": \"user\", \"content\": \"What model are you?\"}], \"max_tokens\": 30}"
+  "req_id": "059080726786",
+  "body_json": "{\"model\": \"base/alt\", \"messages\": [{\"role\": \"user\", \"content\": \"Test hierarchy\"}], \"max_tokens\": 50, \"temperature\": 0.7}"
 }
 {
-  "ts": 1773927086.190208,
+  "ts": 1774146616.4510272,
+  "level": "INFO",
+  "msg": "route_resolved",
+  "req_id": "059080726786",
+  "client_model": "base/alt",
+  "resolved_route": "base/alt",
+  "model": "Qwen-2.5-1.5B-Instruct-Hybrid",
+  "upstream_model": "Qwen-2.5-1.5B-Instruct-Hybrid",
+  "summary_model": "<object object at 0x7fc8b9cdfe40>",
+  "passthrough_enabled": false,
+  "ctx_len": 8192,
+  "max_tokens_default": 4096
+}
+{
+  "ts": 1774146616.4521434,
   "level": "INFO",
   "msg": "summary_bypassed",
-  "req_id": "f993a94f1bc5",
+  "req_id": "059080726786",
   "reason": "prompt_within_threshold",
-  "prompt_tok_est": 8,
-  "threshold": 62936
+  "prompt_tok_est": 7,
+  "threshold": 8000
 }
 {
-  "ts": 1773927086.1910577,
+  "ts": 1774146616.4529953,
   "level": "INFO",
   "msg": "upstream_req_repacked",
-  "req_id": "f993a94f1bc5",
+  "req_id": "059080726786",
   "did_summarize": false,
   "passthrough": false,
-  "upstream_url": "http://arkai.local:1234/v1/chat/completions",
-  "prompt_tokens": 8,
+  "upstream_url": "http://192.168.8.249:8000/api/v1/chat/completions",
+  "prompt_tokens": 7,
   "kind": "chat",
-  "model": "qwen3-vl-2b-thinking",
+  "model": "Qwen-2.5-1.5B-Instruct-Hybrid",
   "stream": false,
   "message_count": 1,
   "tool_count": 0,
-  "max_tokens": 30,
-  "last_user": "What model are you?",
+  "max_tokens": 50,
+  "last_user": "Test hierarchy",
   "has_archived_context": false,
-  "adjusted_max_tokens": 30,
-  "body_json": "{\"model\": \"qwen3-vl-2b-thinking\", \"messages\": [{\"role\": \"user\", \"content\": \"What model are you?\"}], \"max_tokens\": 30}"
+  "adjusted_max_tokens": 50,
+  "body_json": "{\"model\": \"Qwen-2.5-1.5B-Instruct-Hybrid\", \"messages\": [{\"role\": \"user\", \"content\": \"Test hierarchy\"}], \"max_tokens\": 50, \"temperature\": 0.7}"
 }
 {
-  "ts": 1773927086.3374398,
+  "ts": 1774146616.5455625,
   "level": "DEBUG",
   "msg": "request_sent",
-  "url": "http://arkai.local:1234/v1/chat/completions",
+  "url": "http://192.168.8.249:8000/api/v1/chat/completions",
   "method": "POST",
   "headers": {
-    "host": "arkai.local:1234",
+    "host": "192.168.8.249:8000",
     "accept": "*/*",
     "accept-encoding": "gzip, deflate",
     "connection": "keep-alive",
     "user-agent": "python-httpx/0.28.1",
-    "content-length": "109",
+    "content-length": "131",
     "content-type": "application/json"
   },
   "body": {
-    "model": "qwen3-vl-2b-thinking",
+    "model": "Qwen-2.5-1.5B-Instruct-Hybrid",
     "messages": [
       {
         "role": "user",
-        "content": "What model are you?"
+        "content": "Test hierarchy"
       }
     ],
-    "max_tokens": 30
+    "max_tokens": 50,
+    "temperature": 0.7
   }
 }
 {
-  "ts": 1773927092.1401472,
+  "ts": 1774146617.7308798,
   "level": "DEBUG",
   "msg": "response_received",
-  "url": "http://arkai.local:1234/v1/chat/completions",
+  "url": "http://192.168.8.249:8000/api/v1/chat/completions",
   "method": "POST",
   "status": 200,
-  "elapsed_ms": 5802.719769999385,
+  "elapsed_ms": 1185.355433030054,
   "headers": {
-    "x-powered-by": "Express",
-    "content-type": "application/json; charset=utf-8",
-    "content-length": "658",
-    "etag": "W/\"292-urIqJ/6UGqe5QvgKX0e29spMnIY\"",
-    "date": "Thu, 19 Mar 2026 13:29:59 GMT",
-    "connection": "keep-alive",
-    "keep-alive": "timeout=5"
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "access-control-allow-headers": "Content-Type, Authorization",
+    "content-type": "application/json",
+    "content-length": "645",
+    "keep-alive": "timeout=5, max=100"
   },
   "body": null
 }
 {
-  "ts": 1773927092.374259,
+  "ts": 1774146617.7358391,
   "level": "INFO",
   "msg": "http_out",
-  "req_id": "f993a94f1bc5",
+  "req_id": "059080726786",
   "status": 200,
-  "elapsed_ms": 5805.23,
+  "elapsed_ms": 1189.0,
   "did_summarize": false,
   "passthrough": false,
   "usage": {
-    "prompt_tokens": 15,
-    "completion_tokens": 30,
-    "total_tokens": 45
+    "completion_time_ms": 1151.0,
+    "completion_tokens": 50,
+    "decoding_speed_tps": 55.49263873159683,
+    "prefill_duration_ttft": 0.268,
+    "prompt_tokens": 10,
+    "total_tokens": 60
   },
-  "tps": 5.1678,
-  "ttft_ms": null,
+  "tps": 60.0747,
+  "ttft_ms": 356.699,
   "completion_tokens_source": "usage",
-  "completion_tokens": 30,
+  "completion_tokens": 50,
   "data": {
-    "id": "chatcmpl-nh5dh1ze5cj08xuvs6lcrr4",
-    "object": "chat.completion",
-    "created": 1773926999,
-    "model": "qwen3-vl-2b-thinking",
     "choices": [
       {
+        "finish_reason": "stop",
         "index": 0,
         "message": {
-          "role": "assistant",
-          "content": "",
-          "reasoning_content": "Okay, the user is asking, \"What model are you?\" I need to clarify what they're referring to. First, I should check if",
-          "tool_calls": []
-        },
-        "logprobs": null,
-        "finish_reason": "length"
+          "content": "I understand you want to test the hierarchical structure of something. Could you please provide more details about what you're testing and how it's organized? That way, I can give a more accurate response on how to create tests for such structures. For example",
+          "role": "assistant"
+        }
       }
     ],
+    "created": 1774146529,
+    "id": "chatcmpl-1774146529",
+    "model": "ea4dc5c6efa39ec68918eea7fd4da448f3e406ca",
+    "object": "chat.completion",
     "usage": {
-      "prompt_tokens": 15,
-      "completion_tokens": 30,
-      "total_tokens": 45
-    },
-    "stats": {},
-    "system_fingerprint": "qwen3-vl-2b-thinking"
+      "completion_time_ms": 1151.0,
+      "completion_tokens": 50,
+      "decoding_speed_tps": 55.49263873159683,
+      "prefill_duration_ttft": 0.268,
+      "prompt_tokens": 10,
+      "total_tokens": 60
+    }
   }
 }
-INFO:     127.0.0.1:49612 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+{
+  "ts": 1774146617.7394145,
+  "level": "INFO",
+  "msg": "request_completed",
+  "req_id": "059080726786",
+  "status": 200,
+  "elapsed_ms": 1189.0,
+  "did_summarize": false,
+  "passthrough": false,
+  "prompt_tokens": 7,
+  "completion_tokens": 50,
+  "total_tokens": 0,
+  "finish_reason": "stop"
+}
+INFO:     127.0.0.1:35202 - "POST /v1/chat/completions HTTP/1.1" 200 OK

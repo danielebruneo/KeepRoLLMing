@@ -48,6 +48,64 @@ File-based references should be identified by strings that start with "./", "/",
 
 ---
 
+## Server State Awareness After Code Changes
+
+**Date/session:** 22/03/2026 01:35:00  
+**Topic:** Verifying running processes before testing code changes  
+**Lesson:** When modifying Python files that affect runtime behavior (app.py, config.py), the server process must be restarted for changes to take effect. Simply saving files does not trigger reload in uvicorn without `--reload` flag.
+
+**Verification Pattern:**
+1. Before testing changes: `ps aux | grep uvicorn` to check if process is running
+2. After modifying code: Restart server with `pkill -f uvicorn && sleep 1 && uvicorn ... &`
+3. Wait for startup logs before sending test requests
+
+**Common Pitfall:** Assuming "unknown" in dashboard means code bug, when actually the issue is stale process running old code.
+
+**Relevant files:** [keeprollming/app.py](keeprollming/app.py), [keeprollming/config.py](keeprollming/config.py), [perf_dashboard.py](perf_dashboard.py)  
+**Category:** Runtime State Management
+
+---
+
+## Virtual Environment Context for Project Scripts
+
+**Date/session:** 22/03/2026 01:35:00  
+**Topic:** Using venv Python vs system Python for project tools  
+**Lesson:** Project scripts (dashboard, benchmark tools) require dependencies installed in the virtual environment. Running with system `python3` causes ModuleNotFoundError.
+
+**Correct Usage:**
+```bash
+# Option 1: Direct venv path (recommended)
+/home/daniele/LLM/orchestrator/.venv/bin/python3 perf_dashboard.py
+
+# Option 2: Activate venv first
+cd /home/daniele/LLM/orchestrator && source .venv/bin/activate && python3 perf_dashboard.py
+```
+
+**Why This Happens:** Project dependencies (pyyaml, rich, etc.) are installed in `.venv`, not system Python.
+
+**Relevant files:** [perf_dashboard.py](perf_dashboard.py), [benchmark_routes.py](benchmark_routes.py)  
+**Category:** Environment Management
+
+---
+
+## Route Name vs Upstream Model Name Separation
+
+**Date/session:** 22/03/2026 01:35:00  
+**Topic:** Handling hash IDs from upstream services  
+**Lesson:** When upstream services (like Lemonade) return hash IDs instead of readable model names, display the route name separately in UI. This clarifies that "base/alt" is the orchestrator's route while "ea4dc5c6..." is what upstream returned.
+
+**Implementation Pattern:**
+1. Track `route_name` separately from `model` field
+2. In performance logs: store both fields
+3. In dashboard: show Route column (human-readable) and Model column (upstream response)
+
+**Why This Matters:** Users need to know which route they hit, not just what hash ID upstream returned.
+
+**Relevant files:** [keeprollming/performance.py](keeprollming/performance.py), [keeprollming/app.py](keeprollming/app.py), [perf_dashboard.py](perf_dashboard.py)  
+**Category:** Data Model Design
+
+---
+
 ## Documentation Consolidation Best Practices
 
 **Date/session:** 21/03/2026 14:35:00  

@@ -190,9 +190,9 @@ async def _run_health_check_async(
                 # Resolve the route with inheritance (don't use resolve_route which matches by pattern)
                 resolved_route = resolve_inherited_route(route, routes_by_name)
                 
-                # For backend model, use main_model if set, otherwise fall back to route name
-                backend_model = resolved_route.main_model or route.name
-                settings = get_route_settings(resolved_route, backend_model)
+                # For backend model, use model if set, otherwise fall back to route name
+                model = resolved_route.model or route.name
+                settings = get_route_settings(resolved_route, model)
                 
                 upstream_url = settings.get("upstream_url")
                 if not upstream_url:
@@ -202,9 +202,9 @@ async def _run_health_check_async(
                         error_message="No upstream URL configured"
                     )
                 
-                # Build test payload - use backend_model (actual model name) not route name
+                # Build test payload - use model (actual model name) not route name
                 test_payload = {
-                    "model": settings.get("backend_model"),
+                    "model": settings.get("model"),
                     "messages": [{"role": "user", "content": "Health check"}],
                     "max_tokens": 10,
                 }
@@ -226,7 +226,7 @@ async def _run_health_check_async(
                         route_name=route.name,
                         status="unhealthy",
                         upstream_url=upstream_url,
-                        expected_model=settings.get("main_model"),
+                        expected_model=settings.get("model"),
                         error_message=f"HTTP {response.status_code}: {response.text[:100]}",
                         latency_ms=latency_ms,
                     )
@@ -241,7 +241,7 @@ async def _run_health_check_async(
                             route_name=route.name,
                             status="unhealthy",
                             upstream_url=upstream_url,
-                            expected_model=settings.get("main_model"),
+                            expected_model=settings.get("model"),
                             error_message=data["error"].get("message", str(data["error"])),
                             latency_ms=latency_ms,
                         )
@@ -250,7 +250,7 @@ async def _run_health_check_async(
                         route_name=route.name,
                         status="healthy",
                         upstream_url=upstream_url,
-                        expected_model=settings.get("main_model"),
+                        expected_model=settings.get("model"),
                         actual_model=actual_model,
                         latency_ms=latency_ms,
                     )
@@ -259,7 +259,7 @@ async def _run_health_check_async(
                         route_name=route.name,
                         status="unhealthy",
                         upstream_url=upstream_url,
-                        expected_model=settings.get("main_model"),
+                        expected_model=settings.get("model"),
                         error_message=f"Failed to parse response: {str(e)}",
                         latency_ms=latency_ms,
                     )

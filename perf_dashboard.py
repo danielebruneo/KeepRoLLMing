@@ -74,11 +74,14 @@ class PerformanceDashboard:
     def draw_table_header(self):
         """Draw table header row."""
         # Calculate column widths to fit within WIDTH
-        route_width = WIDTH // 6 - 2
-        model_width = WIDTH // 6 - 2
+        route_width = 18
+        hierarchy_width = 42
+        model_width = 24
+        
         
         header = (
             f"{'Route':<{route_width}} | "
+            f"{'Hierarchy':<{hierarchy_width}} | "
             f"{'Model':<{model_width}} | "
             f"{'Reqs':>6} | "
             f"{'Tot TPS':>7} | "
@@ -101,9 +104,17 @@ class PerformanceDashboard:
         prompt_tokens_stats = model.get('prompt_tokens', {})
 
         # Truncate model name to fit column width
-        route_width = WIDTH // 6 - 2
-        model_width = WIDTH // 6 - 2
+        route_width = 18
+        hierarchy_width = 42
+        model_width = 24
+        
         route_name = model.get('route_name', 'unknown')[:route_width]
+        route_hierarchy = model.get('route_hierarchy', [route_name])
+        if isinstance(route_hierarchy, list):
+            hierarchy_str = " -> ".join(route_hierarchy)
+        else:
+            hierarchy_str = str(route_hierarchy)
+        hierarchy_str = hierarchy_str[:hierarchy_width]
         model_name = model.get('model', 'unknown')[:model_width]
         requests = model.get('requests', 0)
 
@@ -116,6 +127,7 @@ class PerformanceDashboard:
 
         row = (
             f"{route_name:<{route_width}} | "
+            f"{hierarchy_str:<{hierarchy_width}} | "
             f"{model_name:<{model_width}} | "
             f"{requests:>6} | "
             f"{tps_avg:>7.2f} | "

@@ -270,11 +270,11 @@ def print_validation_report(result: ValidationResult):
         
         for route_name, route in result.valid_routes:  # Show ALL routes
             upstream = getattr(route, "upstream_url", None)
-            main_model = getattr(route, "main_model", None)
+            model = getattr(route, "model", None)
             
             # Format values nicely - check against _UNSET sentinel
             upstream_str = "N/A" if upstream is _UNSET or not upstream else str(upstream)
-            model_str = "N/A" if main_model is _UNSET or not main_model else str(main_model)
+            model_str = "N/A" if model is _UNSET or not model else str(model)
             
             print(f"  • {route_name}")
             print(f"    → upstream: {upstream_str}")

@@ -526,7 +526,7 @@ def _log_to_file(level: str, msg: str, **fields: Any) -> None:
             "middle_count", "kind", "did_summarize", "passthrough",
             "prompt_tokens", "completion_tokens", "total_tokens",
             "ttft_ms", "tps_live", "event_count", "generated_tokens_est",
-            "summary_model", "backend_model", "resolved_route",
+            "summary_model", "model", "resolved_route",
             "has_archived_context", "adjusted_max_tokens"
         }
         
