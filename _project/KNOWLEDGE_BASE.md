@@ -431,3 +431,46 @@ The preferred cognitive sequence is:
 - [FEEDBACK](../../_skills/FEEDBACK/SKILL-FEEDBACK.md) analyzes recent friction and should recommend an explicit outcome.
 - [LEARN](../../_skills/LEARN/SKILL-LEARN.md) handles broader consolidation and may recommend THINK or ADAPT.
 - [ADAPT](../../_skills/ADAPT/SKILL-ADAPT.md) is allowed to change CATALYST repository artifacts when the current scope is `CATALYST` or `META`, as long as the change is small, local, and low-risk.
+## Route Hierarchy Tracking (2026-03-22)
+
+Routes can now track their full inheritance chain using the `extends` field in config.yaml.
+
+### How It Works
+
+When a route extends another route:
+1. The child route inherits settings from the parent
+2. The full hierarchy path is tracked in `_route_hierarchy` field
+3. Performance logs include both `route_name` and `route_hierarchy`
+4. Dashboard displays the full chain for debugging
+
+### Example Configuration
+
+```yaml
+routes:
+  arkai/lmstudio:  # Base route with upstream URL
+    upstream_url: "http://arkai.local:1234"
+
+  arkai/RTX3090/QWen3.5-35b:  # Extends lmstudio, adds model and ctx_len
+    extends: arkai/lmstudio
+    model: "qwen3.5-35b-a3b@q3_k_s"
+    ctx_len: 100000
+
+  local/deep:  # Extends the RTX3090 route
+    extends: arkai/RTX3090/QWen3.5-35b
+    pattern: "local/deep"
+```
+
+### Hierarchy Display
+
+For `local/deep`, the hierarchy would be:
+`arkai/lmstudio -> arkai/RTX3090/QWen3.5-35b -> local/deep`
+
+This shows the complete chain from base route to final route.
+
+### Files Modified
+
+- `keeprollming/routing.py`: Added `_route_hierarchy` field to Route dataclass
+- `keeprollming/performance.py`: Track and store hierarchy in logs
+- `perf_dashboard.py`: Display hierarchy column
+- `keeprollming/app.py`: Pass hierarchy to performance tracking
+
