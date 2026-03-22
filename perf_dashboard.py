@@ -22,7 +22,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # Terminal width configuration - adjust this to fit your terminal
-WIDTH = 120  # Total terminal width in characters
+WIDTH = 160  # Total terminal width in characters
 
 
 class PerformanceDashboard:
@@ -74,9 +74,11 @@ class PerformanceDashboard:
     def draw_table_header(self):
         """Draw table header row."""
         # Calculate column widths to fit within WIDTH
-        model_width = WIDTH // 3 - 2
+        route_width = WIDTH // 6 - 2
+        model_width = WIDTH // 6 - 2
         
         header = (
+            f"{'Route':<{route_width}} | "
             f"{'Model':<{model_width}} | "
             f"{'Reqs':>6} | "
             f"{'Tot TPS':>7} | "
@@ -99,8 +101,10 @@ class PerformanceDashboard:
         prompt_tokens_stats = model.get('prompt_tokens', {})
 
         # Truncate model name to fit column width
-        model_width = WIDTH // 3 - 2
-        name = model.get('model', 'unknown')[:model_width]
+        route_width = WIDTH // 6 - 2
+        model_width = WIDTH // 6 - 2
+        route_name = model.get('route_name', 'unknown')[:route_width]
+        model_name = model.get('model', 'unknown')[:model_width]
         requests = model.get('requests', 0)
 
         tps_avg = stats.get('avg', 0) or 0
@@ -111,7 +115,8 @@ class PerformanceDashboard:
         prompt_tokens_avg = prompt_tokens_stats.get('avg', 0) or 0
 
         row = (
-            f"{name:<{model_width}} | "
+            f"{route_name:<{route_width}} | "
+            f"{model_name:<{model_width}} | "
             f"{requests:>6} | "
             f"{tps_avg:>7.2f} | "
             f"{comp_tps_avg:>9.2f} | "
@@ -146,6 +151,31 @@ class PerformanceDashboard:
 
             print(f"\n📈 Total Requests: {total_requests}")
             print(f"📈 Avg TPS (all models): {avg_tps:.2f}")
+            
+            # Calculate weighted average TTFT and prompt tokens
+            total_ttft_weighted = 0
+            total_ttft_count = 0
+            total_prompt_weighted = 0
+            total_prompt_count = 0
+
+            for model in successful:
+                ttft = model.get('ttft_ms', {}).get('avg', 0)
+                requests = model.get('requests', 0)
+                if ttft and requests > 0:
+                    total_ttft_weighted += ttft * requests
+                    total_ttft_count += requests
+
+                prompt = model.get('prompt_tokens', {}).get('avg', 0)
+                requests = model.get('requests', 0)
+                if prompt and requests > 0:
+                    total_prompt_weighted += prompt * requests
+                    total_prompt_count += requests
+
+            avg_ttft = total_ttft_weighted / total_ttft_count if total_ttft_count > 0 else 0
+            avg_prompt = total_prompt_weighted / total_prompt_count if total_prompt_count > 0 else 0
+
+            print(f"📈 Avg TTFT (all models): {avg_ttft:.2f} ms")
+            print(f"📈 Avg Prompt Tokens (all models): {avg_prompt:.0f}")
 
         print("\n💡 Press Ctrl+C or 'q' to exit")
         print("💡 Press 'c' to clear logs, 's' to save summary")

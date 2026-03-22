@@ -140,8 +140,9 @@ def _update_summary(base_dir: Path) -> None:
         if not entries:
             continue
 
-        model_name = str(entries[-1].get("model") or path.stem.replace(".requests", "")).strip() or "unknown"
-        
+        # Use route_name as primary identifier, fallback to model name
+        model_name = str(entries[-1].get("route_name") or entries[-1].get("model") or path.stem.replace(".requests", "")).strip() or "unknown"
+
         # Collect all metrics
         tps_values = [v for v in (_safe_float(e.get("tps")) for e in entries) if v is not None]
         total_tps_values = [v for v in (_safe_float(e.get("total_tps")) for e in entries) if v is not None]
@@ -150,7 +151,7 @@ def _update_summary(base_dir: Path) -> None:
         prompt_tokens_values = [v for v in (_safe_int(e.get("prompt_tokens")) for e in entries) if v is not None]
         completion_tps_values = [v for v in (_safe_float(e.get("completion_tps")) for e in entries) if v is not None]
         prompt_tps_values = [v for v in (_safe_float(e.get("prompt_tps")) for e in entries) if v is not None]
-        
+
         tps_stats = _stats(tps_values)
         ttft_stats = _stats(ttft_values)
         completion_tokens_stats = _stats([float(v) for v in completion_tokens_values]) if completion_tokens_values else {"avg": None, "min": None, "max": None}
@@ -160,7 +161,8 @@ def _update_summary(base_dir: Path) -> None:
         total_tps_stats = _stats(total_tps_values)
 
         lines.append("  -")
-        lines.append(f"    model: {_format_scalar(model_name)}")
+        lines.append(f"    route_name: {_format_scalar(model_name)}")
+        lines.append(f"    model: {_format_scalar(entries[-1].get('model'))}")
         lines.append(f"    requests: {_format_scalar(len(entries))}")
         
         # TPS stats (overall, completion, prompt)
@@ -259,6 +261,7 @@ def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft
 def record_request_performance(
     *,
     model: str,
+    route_name: str | None = None,
     req_id: str,
     stream: bool,
     elapsed_ms: Any,
@@ -278,6 +281,7 @@ def record_request_performance(
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "req_id": req_id,
         "model": model,
+        "route_name": route_name or _safe_slug(model),
         "stream": bool(stream),
         "elapsed_ms": metrics["elapsed_ms"],
         "ttft_ms": metrics["ttft_ms"],

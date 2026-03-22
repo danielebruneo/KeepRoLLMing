@@ -1237,6 +1237,7 @@ async def chat_completions(req: Request) -> Response:
                         completion_tokens_source = "missing"
                     perf_entry = record_request_performance(
                         model=model_for_metrics or "unknown",
+                        route_name=route.name,
                         req_id=req_id,
                         stream=True,
                         elapsed_ms=elapsed_ms,
@@ -1492,6 +1493,7 @@ async def chat_completions(req: Request) -> Response:
             completion_tokens_source = "missing"
         perf_entry = record_request_performance(
             model=str(data.get("model") or upstream_model),
+            route_name=route.name,
             req_id=req_id,
             stream=False,
             elapsed_ms=elapsed_ms,
