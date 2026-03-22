@@ -22,7 +22,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # Terminal width configuration - adjust this to fit your terminal
-WIDTH = 160  # Total terminal width in characters
+WIDTH = 180  # Total terminal width in characters
 
 
 class PerformanceDashboard:
