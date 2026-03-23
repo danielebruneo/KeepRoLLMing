@@ -4,11 +4,12 @@ This project uses **CATALYST**.
 
 Before doing substantial work, read:
 1. [AGENTS.md](AGENTS.md)
-2. [_agent/state/SCOPE.md](_agent/state/SCOPE.md)
-3. [_agent/state/ACTIVE_TASK.md](_agent/state/ACTIVE_TASK.md)
-4. [_agent/state/HANDOFF.md](_agent/state/HANDOFF.md)
-5. [_agent/self/MEMORY.md](_agent/self/MEMORY.md)
-6. [_project/KNOWLEDGE_BASE.md](_project/KNOWLEDGE_BASE.md) when relevant
+2. [_agent/knowledge/MAP.md](_agent/knowledge/MAP.md) - Agent navigation guide for CATALYST framework
+3. [_agent/state/SCOPE.md](_agent/state/SCOPE.md)
+4. [_agent/state/ACTIVE_TASK.md](_agent/state/ACTIVE_TASK.md)
+5. [_agent/state/HANDOFF.md](_agent/state/HANDOFF.md)
+6. [_agent/self/MEMORY.md](_agent/self/MEMORY.md)
+7. [_project/KNOWLEDGE_BASE.md](_project/KNOWLEDGE_BASE.md) when relevant
 
 Skills visible at runtime are projected into `.qwen/skills/`.
 Those skills are markdown procedures, not Python executables.

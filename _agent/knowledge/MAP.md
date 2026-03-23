@@ -1,130 +1,153 @@
-# Keeprollming Orchestrator - Repository Map
+# Agent Navigation Guide - CATALYST Framework
 
-## Project Purpose
-A small FastAPI proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow.
+## Entry Points
 
-## Boundary
-This project is responsible for:
-- Handling incoming requests through the `/v1/chat/completions` endpoint
-- Managing conversation history to prevent context overflow by applying rolling summaries
-- Providing passthrough mode for direct routing without summarization
-- Supporting streaming proxy (SSE) responses
-- Token accounting and context management
+### Primary Entry Points
+- **[QWEN.md](../QWEN.md)** - Qwen-specific bootstrap entrypoint
+- **[AGENTS.md](../AGENTS.md)** - Canonical workflow specification for coding agents
+- **[CATALYST.md](../CATALYST.md)** - CATALYST framework specification
 
-It is NOT responsible for:
-- Model inference itself (delegates to upstream backend)
-- User authentication or access control
-- Storage of conversation history beyond runtime memory
-- Database operations or persistence mechanisms
+### Secondary Entry Points
+- **[README.md](../README.md)** - Human-facing project overview with brief agent section
+- **[_project/KNOWLEDGE_BASE.md](../_project/KNOWLEDGE_BASE.md)** - Comprehensive project knowledge (main knowledge entry)
+- **[_project/MAP.md](../_project/MAP.md)** - Project repository structure map
 
-## Main Components
-1. **FastAPI Application (`keeprollming/app.py`)**
-   - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
-   - Implements request routing with passthrough mode support.
+## Knowledge Hierarchy
 
-2. **Configuration Management (`keeprollming/config.py`)**
-   - Uses a dataclass-based system for profiles with different main and summary models.
-   - Supports multiple profiles: `local/quick`, `local/main`, `local/deep` with different model configurations.
-   - Provides environment variable override capabilities.
+### Runtime State (`_agent/state/`)
+Files that change frequently during agent sessions:
+- **`SCOPE.md`** - Current session scope and boundaries
+- **`ACTIVE_TASK.md`** - Currently active task details
+- **`HANDOFF.md`** - Handoff information between sessions
+- **`STATE_SNAPSHOT.md`** - Current state snapshot
 
-3. **Orchestrator Logic (`keeprollming/rolling_summary.py`)**
-   - Handles token counting, message splitting, and summarization as needed.
-   - Implements the rolling summary mechanism to manage context overflow.
-   - Supports various summary prompt types (classic, structured, curated).
+**Usage:** Read first to understand current context before making changes.
 
-4. **Upstream Client (`keeprollming/upstream.py`)**
-   - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
-   - Fetches context length information from the upstream model.
+### Durable Knowledge (`_agent/knowledge/`)
+Persistent knowledge that agents should reference:
+- **`MAP.md`** - This navigation guide (you are here)
+- **`MEMORY.md`** - Implementation patterns, lessons learned, configuration
+- **`SKILL_PROPOSAL.md`** - Skill improvement proposals
 
-5. **Summary Cache (`keeprollming/summary_cache.py`)**
-   - Provides caching mechanisms to reuse previously generated summaries for efficiency.
-   - Handles fingerprinting, loading and saving of cache entries.
-   - Supports incremental summary consolidation.
+**Usage:** Reference as needed for project-specific patterns and conventions.
 
-6. **Token Counter (`keeprollming/token_counter.py`)**
-   - Provides token estimation capabilities for messages and text content.
-   - Fallback to character-based counting when tiktoken is not available.
+### Project Documentation (`_project/`)
+Project-level documentation and metadata:
+- **`KNOWLEDGE_BASE.md`** - Comprehensive project knowledge (main entry point)
+- **`MAP.md`** - Repository structure and file organization
+- **`TODOS.md`** - Project enhancement wishlist
+- **`COMMANDS.md`** - Available commands and scripts
+- **`CONSTRAINTS.md`** - Project constraints and guidelines
+- **`DECISIONS.md`** - Architecture decision records
+- **`_skills/`** - Project-specific skills
+  - `IMPROVE-SKILLS/` - Skill enhancement procedures
+  - `SKILLS-INDEX.md` - Complete skills catalog
 
-7. **Logging (`keeprollming/logger.py`)**
-   - Implements logging functionality with different modes (DEBUG, MEDIUM, BASIC).
-   - Supports detailed logging for debugging and monitoring purposes.
-   - Includes streaming response handling capabilities.
+**Usage:** Primary source for project-specific knowledge and structure.
 
-8. **Performance Tracking (`keeprollming/performance.py`)**
-   - Implements performance measurement utilities for tracking request processing time and resource usage.
-   - Records metrics like TPS (tokens per second) and TTFT (time to first token).
+### Agent Overlay (`_agent/overlay/`)
+Local customizations that extend core CATALYST:
+- **`_skills/`** - Local skill customizations
+- **`README.md`** - Overlay documentation
 
-## Request / Data Flow
-1. Client sends a request to `/v1/chat/completions` endpoint
-2. Application parses the request payload and extracts model, messages, stream flag
-3. Model resolution: determines profile or passthrough mode based on client model
-4. Message splitting: separates system messages from regular messages
-5. Summarization decision: evaluates whether context exceeds threshold using token counting
-6. If summarization needed:
-   - Cache lookup for existing summary (if enabled)
-   - If cache miss, generate new summary from middle portion of conversation
-   - If cache hit, potentially reuse cached summary with incremental updates
-7. Request repacking: combines head messages, summary, and tail messages into new prompt
-8. Context adjustment: calculates max tokens for upstream request based on estimated prompt length
-9. Forward to upstream backend via HTTP client
-10. Receive response from upstream backend
-11. If streaming, reconstruct the full assistant reply from SSE events
-12. Return final response to client
+**Usage:** Reference when core skills need project-specific adjustments.
 
-## Failure / Fallback Philosophy
-- When summarization fails, the system falls back to passthrough mode (direct routing)
-- Context overflow errors are handled gracefully by retrying with reduced context
-- Cache operations fail soft - if cache is unavailable or corrupted, continue without it
-- Logging does not break core request serving - logging failures are ignored
-- If upstream backend fails, the system attempts graceful degradation or error propagation
+### Specialized Documentation (`_docs/`)
+Specialized documentation for specific concerns:
+- **`architecture/`** - System architecture and design
+- **`decisions/`** - Architecture decision records
+- **`design/`** - Design documentation
+- **`development/`** - Development guidelines
+- **`API_DOCUMENTATION.md`** - API reference
+- **`CONFIGURATION.md`** - Configuration guide
+- **`PERFORMANCE.md`** - Performance optimization
+- **`TESTING.md`** - Testing guidelines
+- **`TROUBLESHOOTING.md`** - Common issues and solutions
+- **`RUNNING.md`** - Running the application
+- **`CACHING_MECHANISM.md`** - Caching details
 
-## Key Configuration Parameters
-- `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
-- `MAIN_MODEL`, `SUMMARY_MODEL`
-- `QUICK_MAIN_MODEL`, `QUICK_SUMMARY_MODEL`
-- `BASE_MAIN_MODEL`, `BASE_SUMMARY_MODEL`
-- `DEEP_MAIN_MODEL`, `DEEP_SUMMARY_MODEL`
-- `MAX_HEAD`, `MAX_TAIL` (rolling-summary head/tail caps)
-- `DEFAULT_CTX_LEN` - Default context length when no model info is available
-- `SUMMARY_MAX_TOKENS` - Maximum tokens for summary generation
+**Usage:** Deep-dive into specific topics when needed.
 
-## Links
-- `_docs/architecture/OVERVIEW.md`
-- `_docs/architecture/INVARIANTS.md`
-- `_docs/decisions/DECISIONS.md`
-- `_project/KNOWLEDGE_BASE.md` - Comprehensive project knowledge
-- `_project/SKILLS-INDEX.md` - CATALYST skills catalog
-- `CATALYST.md` - CATALYST workflow specification
+### Learning Reports (`_agent/learning_reports/`)
+Session-specific learning documentation:
+- **Session reports** - Detailed learning from agent sessions
+- **Analysis documents** - Deep dives into specific issues
 
-## Repository Structure
-- `keeprollming/` - Core application modules (app.py, config.py, rolling_summary.py, etc.)
-- `tests/` - Unit and integration tests
-- `scripts/` - Utility scripts for testing and setup
-- `config.yaml` - Configuration file
-- `requirements.txt` - Production dependencies
-- `requirements-dev.txt` - Development dependencies
-- `_docs/` - Documentation directory (CONFIGURATION.md, PERFORMANCE.md, TESTING.md, etc.)
-- `_prompts/` - Summary prompt templates (classic, curated, structured, incremental)
-- `_agent/` - Agent runtime state and knowledge
-  - `_agent/state/` - Active task, handoff, scope
-  - `_agent/knowledge/` - Project knowledge base, repo map (this file)
-  - `_agent/learning_reports/` - Session-specific learning documentation
-- `_project/` - Project-specific documentation and skills
-  - `_project/_skills/` - Project skills (IMPROVE-SKILLS)
-  - `_project/KNOWLEDGE_BASE.md` - Comprehensive knowledge base
-  - `_project/TODOS.md` - Project enhancement wishlist
-- `_agent/overlay/` - Agent overlay skills and configuration
-- `.catalyst/` - CATALYST core skills and configuration
-  - `.catalyst/_skills/` - 46 core CATALYST skills
-  - `CATALYST.md` - CATALYST workflow specification
-  - `AGENTS.md` - Agent workflow specification
-- `.qwen/skills/` - Runtime skill registry (auto-generated symlinks)
-- `perf_dashboard.py` - Real-time performance monitoring dashboard
-- `benchmark_routes.py` - Route benchmarking tool
+**Usage:** Reference historical learning and avoid repeating mistakes.
 
-## Key Environment Variables
-- `LOG_MODE` (DEBUG, MEDIUM, BASIC, BASIC_PLAIN) - Logging verbosity level
-- `SUMMARY_MODE` (cache_append, classic) - Summary strategy choice
-- `SUMMARY_CACHE_ENABLED` (true/false) - Toggle cache usage
-- `SUMMARY_CACHE_DIR` - Cache storage directory path
-- `LOG_PAYLOAD_MAX_CHARS` - Maximum characters for logging large payloads
+## Cognitive Workflow
+
+### Standard Sequence
+1. **THINK** - Clarify objective, check scope, select next skill
+2. **PLAN** (optional) - Create bounded execution plan for complex tasks
+3. **WORK** - Execute the task
+4. **FEEDBACK** - Analyze interaction patterns and friction
+5. **LEARN** - Consolidate lessons and improvements
+6. **ADAPT** - Apply small, safe local improvements
+7. **CLOSE-TASK** - Update handoff, memory, and task state
+
+### Cognitive Routing
+- **THINK** is the cognitive router - prefer this when next step is unclear
+- **FEEDBACK** analyzes recent friction and recommends outcomes
+- **LEARN** handles broader consolidation, may recommend THINK or ADAPT
+- **ADAPT** applies minimal workflow/skill refinements (small, local, low-risk only)
+
+### Skill Categories
+- **Task Management** - PICKUP-TASK, CLOSE-TASK, UPDATE-TODO, CREATE-ACTIVE-TASK
+- **Documentation** - IMPROVE-DOC, CONSOLIDATE-DOC, REVIEW-DOC, UPDATE-README
+- **Workflow & Planning** - WORK, PLAN, THINK, FEEDBACK, LEARN, ADAPT
+- **Knowledge Management** - UPDATE-KNOWLEDGE-BASE, REMEMBER, DISTILL-LEARNINGS
+- **Repository Maintenance** - BUILD-REPO-MAP, BUILD-AGENT-MAP, SYNC-COMMANDS
+- **Code Quality** - SAFE-REFACTOR, FIX-FAILING-TEST, IMPLEMENT-FEEDBACK
+- **Catalyst Core** - DIGEST-LEGACY-CATALYST, RECONCILE-LEGACY-SKILLS, PROPOSE-CORE-CHANGE
+
+## Skills Organization
+
+### Core CATALYST Skills (`.catalyst/_skills/`)
+46 core skills for general development workflow.
+- **View catalog:** `_project/_skills/SKILLS-INDEX.md`
+- **Runtime registry:** `.qwen/skills/` (auto-generated symlinks)
+
+### Project-Specific Skills (`_project/_skills/`)
+Skills tailored for this project:
+- **IMPROVE-SKILLS** - Enhance existing skills
+- **SKILLS-INDEX.md** - Skills catalog
+
+### Runtime Skills (`.qwen/skills/`)
+Auto-generated symlinks to active skills for Qwen Code.
+- **Regenerate:** Run `SYNC-QWEN-SKILL-REGISTRY` skill
+
+## Finding Documentation
+
+### Quick Reference
+| Need | File |
+|------|------|
+| How to use CATALYST | `_agent/knowledge/MAP.md` (this file) |
+| Project structure | `_project/MAP.md` |
+| Comprehensive knowledge | `_project/KNOWLEDGE_BASE.md` |
+| Configuration details | `_docs/CONFIGURATION.md` |
+| Testing guide | `_docs/TESTING.md` |
+| Performance info | `_docs/PERFORMANCE.md` |
+| Troubleshooting | `_docs/TROUBLESHOOTING.md` |
+| API reference | `_docs/API_DOCUMENTATION.md` |
+
+### Documentation Flow
+```
+QWEN.md
+  → AGENTS.md
+    → _agent/knowledge/MAP.md (agent navigation)
+      → _project/KNOWLEDGE_BASE.md (comprehensive knowledge)
+        → _docs/* (specialized docs)
+```
+
+## Related Skills
+
+- **[BUILD-AGENT-MAP](../_skills/BUILD-AGENT-MAP/SKILL.md)** - Update this navigation guide
+- **[BUILD-REPO-MAP](../_skills/BUILD-REPO-MAP/SKILL.md)** - Update project structure map
+- **[INDEX-SKILLS](../_skills/INDEX-SKILLS/SKILL.md)** - Update skills catalog
+- **[UPDATE-KNOWLEDGE-BASE](../_skills/UPDATE-KNOWLEDGE-BASE/SKILL.md)** - Update comprehensive knowledge
+- **[SYNC-QWEN-SKILL-REGISTRY](../_skills/SYNC-QWEN-SKILL-REGISTRY/SKILL.md)** - Update runtime registry
+
+---
+
+*This navigation guide is maintained by the BUILD-AGENT-MAP skill. Update it when the CATALYST framework structure changes.*
