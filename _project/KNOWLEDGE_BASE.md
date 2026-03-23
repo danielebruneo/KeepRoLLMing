@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds rolling-summary support to avoid context overflow. It handles long conversations by implementing a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
+Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an OpenAI-compatible backend (e.g., LM Studio) and adds **rolling-summary** support to avoid context overflow. It handles long conversations by implementing a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
 
 ## Core Architecture
 
@@ -12,8 +12,12 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 3. **Routing System** (`keeprollming/routing.py`) - Route matching, pattern parsing, and inherited route resolution via `resolve_inherited_route()`
 4. **Orchestrator Logic** (`keeprollming/rolling_summary.py`) - Handles token counting, message splitting, and summarization as needed
 5. **Upstream Client** (`keeprollming/upstream.py`) - Manages communication with OpenAI-compatible backend using `httpx.AsyncClient`
-6. **Rolling Summary Module** (`keeprollming/rolling_summary.py`) - Implements core logic for handling context overflow and summary generation
-7. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency
+6. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency
+7. **Token Counter** (`keeprollming/token_counter.py`) - Token estimation with fallback to character-based counting
+8. **Logger** (`keeprollming/logger.py`) - Logging with multiple modes (DEBUG, MEDIUM, BASIC, BASIC_PLAIN)
+9. **Performance** (`keeprollming/performance.py`) - Performance tracking utilities
+10. **Metrics** (`keeprollming/metrics.py`) - Metrics collection and recording
+11. **Validator** (`keeprollming/validator.py`) - Configuration validation tool
 
 ### Route Composition System
 - Routes can extend other routes using the `extends` field in YAML config
@@ -21,12 +25,14 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 - Supports multi-level inheritance chains (grandparent → parent → child)
 - Circular inheritance detection prevents infinite loops
 - Default values defined in `Route` dataclass, `_UNSET` sentinel distinguishes "not set" vs "explicitly set to default"
+- Full route hierarchy path tracking in `_route_hierarchy` field
 
 ### Profile Categories
 1. **Base Profiles** - Common settings for groups of routes (e.g., `quick-base`, `main-base`, `deep-base`)
 2. **Chat Routes** - `chat/quick`, `chat/main`, `chat/deep` with varying context/token limits
 3. **System Routes** - `sys/memory`, `sys/summary` for system-level tasks
 4. **Code Routes** - `code/junior`, `code/senior`, `code/architect` for coding assistance at different levels
+5. **Passthrough Routes** - Direct routing without summarization using pattern transformations
 
 ## Key Features
 
@@ -34,8 +40,15 @@ Keeprollming is a FastAPI-based proxy/orchestrator that sits in front of an Open
 - Support for multiple profiles (`local/quick`, `local/main`, `local/deep`) with different model configurations
 - Rolling-summary support to manage context overflow
 - Passthrough mode for direct routing without summarization
-- Streaming proxy (SSE) support
+- Streaming proxy (SSE) support with full response reconstruction
 - Token accounting and context management
+- Route inheritance with multi-level chains
+- Circuit breaker support for fallback chains
+- Performance monitoring and benchmarking
+- Configuration validation tool
+- Summary cache with fingerprint-based lookup and incremental consolidation
+- Custom summary prompt templates (classic, curated, structured, incremental)
+- Regex capture group support for backend model name transformation
 
 ## Configuration
 
@@ -50,7 +63,7 @@ routes:
     upstream_url: "http://arkai.local:1234/v1"
     model: "qwen3.5-35b-a3b@q3_k_s"
     ctx_len: 128000
-    max_tokens: 8192  # Optional: if set, sends this as default max_tokens upstream
+    max_tokens: 8192
 
   # Child route that extends base and overrides specific fields
   chat/quick:
@@ -66,7 +79,7 @@ Global settings can be defined at the root level and applied to all routes unles
 ```yaml
 defaults:
   ctx_len: 8192
-  # max_tokens: 4096  # Optional default for all routes
+  max_tokens: 4096  # Optional default for all routes
 
 # If default_max_completion_tokens is not set or is None, max_tokens is NOT sent upstream
 default_max_completion_tokens: 900  # Optional fallback when client doesn't specify
@@ -77,96 +90,6 @@ default_max_completion_tokens: 900  # Optional fallback when client doesn't spec
 - If `max_tokens` is configured at root level (defaults.max_tokens) → use as default for all routes
 - If `default_max_completion_tokens` is set in config → use when client doesn't specify max_tokens
 - If no max_tokens configuration exists → **do NOT send max_tokens upstream** (upstream decides)
-
-### Profile Categories (Current Setup)
-
-**Base Profiles:**
-- `quick-base`: ArkAI port 1234, ctx=128K, max_tokens=8K
-- `main-base`: ArkAI port 1234, ctx=128K, max_tokens=16K
-- `deep-base`: ArkAI port 1234, ctx=128K, max_tokens=32K
-
-**Chat Routes (extend base profiles):**
-- `chat/quick` → extends `quick-base`, uses qwen2.5-3b-instruct
-- `chat/main` → extends `main-base`, uses qwen3.5-35b-a3b
-- `chat/deep` → extends `deep-base`, uses qwen3.5-35b-a3b
-
-**System Routes (standalone):**
-- `sys/memory`: ctx=64K, for memory and context retention
-- `sys/summary`: ctx=64K, for summarization tasks
-
-**Code Routes (extend base profiles):**
-- `code/junior` → extends `quick-base`, uses qwen2.5-7b-instruct
-- `code/senior` → extends `main-base`, uses qwen3.5-35b-a3b
-- `code/architect` → extends `deep-base`, uses qwen3.5-35b-a3b
-
-### Configuration Hierarchy
-Configuration values are resolved in this priority order (highest to lowest):
-1. **Route-level settings** (e.g., `route.max_tokens`)
-2. **Model-level settings** (e.g., `model_cfg.max_tokens`)
-3. **Global defaults** (e.g., `defaults.max_tokens`)
-4. **Sentinel `_UNSET`** → if no configuration exists, field is not sent upstream
-
-### max_tokens Configuration
-
-The `max_tokens` parameter controls the maximum number of tokens the upstream model can generate in its response. This feature provides fine-grained control over response length.
-
-#### Configuration Hierarchy (Highest to Lowest Priority)
-1. **Route-level** (`routes[].max_tokens`) - Most specific, applies only to that route
-2. **Model-level** (`models[].max_tokens`) - Applies to all routes using that model
-3. **Global defaults** (`defaults.max_tokens`) - Fallback for all routes without explicit setting
-4. **Sentinel `_UNSET`** - If no configuration exists, max_tokens is NOT sent upstream (upstream decides)
-
-#### Behavior
-
-| Configuration Scenario | Result |
-|------------------------|--------|
-| `default_max_completion_tokens` set in config | Used when client doesn't specify max_tokens |
-| Route has `max_tokens` configured | Uses route value (overrides global) |
-| No max_tokens configuration anywhere | **max_tokens NOT sent upstream** - upstream uses its own defaults |
-
-#### Examples
-
-```yaml
-# Example 1: Global default for all routes
-defaults:
-  ctx_len: 8192
-  max_tokens: 4096  # All routes use 4096 unless overridden
-
-routes:
-  - name: limited-route
-    pattern: "api/limited"
-    model: qwen2.5-7b-instruct
-    max_tokens: 2048  # This route uses 2048 instead of global 4096
-```
-
-```yaml
-# Example 2: No global default - upstream decides
-defaults:
-  ctx_len: 8192
-  # max_tokens not set - upstream will use its own defaults
-
-routes:
-  - name: open-route
-    pattern: "api/open"
-    model: qwen3.5-7b-instruct
-    # No max_tokens specified - upstream decides
-```
-
-```yaml
-# Example 3: Per-route max_tokens limits
-routes:
-  - name: quick-chat
-    pattern: "chat/quick"
-    model: qwen2.5-3b-instruct
-    ctx_len: 8192
-    max_tokens: 1024  # Limit responses to 1K tokens
-
-  - name: long-response
-    pattern: "api/long"
-    model: qwen3.5-35b-a3b
-    ctx_len: 128000
-    max_tokens: 32768  # Allow up to 32K token responses
-```
 
 ### Environment Variables
 - `UPSTREAM_BASE_URL` (default `http://127.0.0.1:1234/v1`)
@@ -183,6 +106,11 @@ routes:
 - `SUMMARY_CACHE_DIR` (default `./__summary_cache`) - Cache storage directory path
 - `SUMMARY_CACHE_FINGERPRINT_MSGS` - Number of messages to include in fingerprint calculation
 - `LOG_MODE` (DEBUG, MEDIUM, BASIC, BASIC_PLAIN) - Logging verbosity level
+- `LOG_PAYLOAD_MAX_CHARS` - Maximum characters for logging large payloads
+- `LOG_STREAM_PROGRESS_INTERVAL_MS` - Interval for logging stream progress
+- `SUMMARY_FORCE_CONSOLIDATE` - Force summary consolidation
+- `SUMMARY_CONSOLIDATE_WHEN_NEEDED` - Conditional summary consolidation
+- `ENABLE_OPENAI_STREAM_COMPAT` - Enable OpenAI streaming compatibility mode
 
 ## How It Works
 
@@ -205,6 +133,23 @@ routes:
 - Maintains cache entries with range hashes for validation
 - Implements both full and partial cache entry matching strategies
 
+### Request Flow
+1. Client sends request to `/v1/chat/completions` endpoint
+2. Application parses request payload and extracts model, messages, stream flag
+3. Model resolution: determines profile or passthrough mode based on client model
+4. Message splitting: separates system messages from regular messages
+5. Summarization decision: evaluates whether context exceeds threshold using token counting
+6. If summarization needed:
+   - Cache lookup for existing summary (if enabled)
+   - If cache miss, generate new summary from middle portion of conversation
+   - If cache hit, potentially reuse cached summary with incremental updates
+7. Request repacking: combines head messages, summary, and tail messages into new prompt
+8. Context adjustment: calculates max tokens for upstream request based on estimated prompt length
+9. Forward to upstream backend via HTTP client
+10. Receive response from upstream backend
+11. If streaming, reconstruct the full assistant reply from SSE events
+12. Return final response to client
+
 ## Testing
 
 ### Test Setup
@@ -221,18 +166,15 @@ routes:
 6. Context overflow handling with chunking
 7. Performance metrics recording
 8. Logging behavior under various modes
+9. Configuration validation and inheritance chains
 
-## Code Structure
-
-### File Organization
-- `keeprollming/app.py` - Main FastAPI application and request handling
-- `keeprollming/config.py` - Configuration management with profiles
-- `keeprollming/rolling_summary.py` - Core summarization logic and decision making
-- `keeprollming/summary_cache.py` - Cache implementation and retrieval
-- `keeprollming/upstream.py` - Upstream client communication
-- `keeprollming/token_counter.py` - Token counting utilities
-- `keeprollming/logger.py` - Logging functionality
-- `keeprollming/performance.py` - Performance tracking utilities
+### Test Files
+- `test_config.py` - Configuration loading and profile resolution
+- `test_routing.py` - Route matching and pattern parsing
+- `test_orchestrator.py` - Core orchestration logic
+- `test_summary_overflow_regression.py` - Summary overflow handling
+- `test_validator.py` - Configuration validation
+- `test_healthcheck.py` - E2E health checks
 
 ## Performance Monitoring
 
@@ -259,6 +201,7 @@ python perf_dashboard.py /path/to/summary   # Specify custom path
 - TTFT (Time to First Token in ms)
 - Completion tokens
 - Prompt tokens
+- Route hierarchy (full inheritance chain)
 
 **Data Source:**
 - Reads from `summary.yaml` in the performance logs directory
@@ -277,6 +220,11 @@ python benchmark_routes.py --num-prompts 5 --filter "chat/main"
 - `--num-prompts`: Number of prompt iterations per route (default: varies)
 - `--filter`: Filter routes by pattern (e.g., "chat/main", "code/*")
 - Output groups results by backend_model instead of route
+
+**New Metrics:**
+- `prompt_tps` - Tokens per second during prompt processing (before first token)
+- `completion_tps` - Tokens per second during generation (after first token)
+- `tps` - Overall tokens per second for entire request (prompt + completion combined)
 
 ## Usage Examples
 
@@ -319,25 +267,20 @@ curl -s http://127.0.0.1:8000/v1/chat/completions \
   -d '{"model":"local/main","stream":true,"messages":[{"role":"user","content":"ciao"}]}'
 ```
 
-## Key Implementation Details
+### Configuration Validation
+```bash
+# Validate configuration structure
+python validate_config.py --config config.yaml validate
 
-### Summary Strategy Options
-- `cache_append` (default): Reuse existing summaries when possible, with incremental consolidation
-- Classic approach: Always summarize middle portion from scratch
+# Run E2E health checks on all routes
+python validate_config.py --config config.yaml healthcheck
 
-### Context Handling
-- Uses safety margin tokens to avoid hitting exact context limits
-- Dynamically calculates maximum output tokens based on available context
-- Handles context overflow errors by chunking and retrying
-- Implements fallback mechanism for upstream model info retrieval
+# Run full validation (structure + health)
+python validate_config.py --config config.yaml full-check
+```
 
-### Logging Configuration
-- Supports multiple logging modes: DEBUG, MEDIUM, BASIC, BASIC_PLAIN
-- Provides detailed logging for debugging purposes
-- Includes streaming response handling capabilities
-- All logs written to both stdout (JSON) and keeprollming.log (plain text)
+## Error Handling
 
-### Error Handling
 The orchestrator implements comprehensive error handling with automatic fallback chains:
 
 **Error Categories:**
@@ -366,43 +309,114 @@ The orchestrator implements comprehensive error handling with automatic fallback
 - Each failed attempt is logged with `fallback_error` event
 - If all fallbacks exhausted, returns error to client with details
 
-**Common Error Scenarios:**
-1. **Connection Failed**: Upstream server down or network unreachable
-   - Logs: `connection_error` with `error_type=connection_failed`
-   - Falls back to next model in chain if available
-   
-2. **Connection Timeout**: Server not responding within timeout
-   - Logs: `connection_error` with `error_type=connection_timeout`
-   - Falls back to next model in chain if available
-   
-3. **HTTP Status Error**: Upstream returns 4xx/5xx
-   - Logs: `upstream_http_error_stream` (streaming) or `upstream_http_error_sync` (non-streaming)
-   - Falls back to next model if configured
+## Configuration Validation
+
+The project includes a comprehensive configuration validation tool to check:
+- **Route inheritance chains** - Validates that routes properly extend parent routes
+- **Circular references** - Detects circular inheritance (e.g., A extends B extends A)
+- **Required fields** - Ensures non-private routes have all necessary settings
+- **E2E health checks** - Tests actual backend connectivity
+
+**Exit Codes:**
+- `0` - Validation passed, all routes healthy
+- `1` - Validation failed or some routes unhealthy
+
+## Prompt Templates
+
+Summary prompts are loaded from external template files in the `_prompts/` directory.
+
+### Available Templates
+- `classic.summary_prompt.txt` - Classic summarization format
+- `curated.summary_prompt.txt` - Curated context compaction (default)
+- `structured.summary_prompt.txt` - Structured bullet-point format
+- `incremental.txt` - Incremental summary updates
+
+### Template Variables
+- `{{TRANSCRIPT}}` - The conversation transcript to summarize
+- `{{LANG_HINT}}` - Language hint for output (default: "italiano")
 
 ## Cross-referencing
 
 - [_docs/architecture/OVERVIEW.md](../_docs/architecture/OVERVIEW.md): Architecture overview
+- [_docs/architecture/INVARIANTS.md](../_docs/architecture/INVARIANTS.md): System invariants
 - [_docs/decisions/DECISIONS.md](../_docs/decisions/DECISIONS.md): Design decisions
 - [_docs/development/STYLE.md](../_docs/development/STYLE.md): Coding conventions
 - [_docs/development/WORKFLOW.md](../_docs/development/WORKFLOW.md): Development workflow
+- [_docs/API_DOCUMENTATION.md](../_docs/API_DOCUMENTATION.md): API reference
+- [_docs/CONFIGURATION.md](../_docs/CONFIGURATION.md): Configuration guide
+- [_docs/PERFORMANCE.md](../_docs/PERFORMANCE.md): Performance optimization
+- [_docs/TESTING.md](../_docs/TESTING.md): Testing guidelines
+- [_docs/TROUBLESHOOTING.md](../_docs/TROUBLESHOOTING.md): Common issues
 - [_project/TODOS.md](_project/TODOS.md): Project enhancement wishlist
 
-## Related Skills
+## Repository Structure
 
-- [ADD-FEATURE](../_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md)
-- [BUILD-REPO-MAP](../_skills/BUILD-REPO-MAP/SKILL-BUILD-REPO-MAP.md)
+```
+.
+├── keeprollming/           # Core application modules
+│   ├── app.py             # FastAPI application
+│   ├── config.py          # Configuration management
+│   ├── routing.py         # Route matching and resolution
+│   ├── rolling_summary.py # Core summarization logic
+│   ├── summary_cache.py   # Summary caching
+│   ├── upstream.py        # Upstream client
+│   ├── token_counter.py   # Token counting
+│   ├── logger.py          # Logging
+│   ├── performance.py     # Performance tracking
+│   ├── metrics.py         # Metrics collection
+│   ├── validator.py       # Configuration validation
+│   └── healthcheck.py     # Health check endpoints
+├── tests/                  # Unit and integration tests
+├── _prompts/              # Summary prompt templates
+├── _docs/                 # Documentation
+│   ├── architecture/      # Architecture docs
+│   ├── decisions/         # Decision records
+│   ├── design/           # Design docs
+│   └── development/      # Development guides
+├── _project/              # Project metadata
+│   ├── _docs/            # Project documentation
+│   ├── _project/         # Project-specific docs
+│   └── _skills/          # Project skills
+├── _agent/                # Agent state and knowledge
+│   ├── state/            # Runtime state
+│   ├── knowledge/        # Persistent knowledge
+│   └── learning_reports/ # Learning sessions
+├── benchmarks/            # Benchmark results
+├── __performance_logs/    # Performance data
+├── __summary_cache/       # Summary cache storage
+├── benchmark_routes.py    # Benchmark tool
+├── perf_dashboard.py      # Performance dashboard
+├── validate_config.py     # Config validation tool
+├── config.example.yaml    # Example configuration
+├── requirements.txt       # Production dependencies
+└── requirements-dev.txt   # Development dependencies
+```
 
-## CATALYST bootstrap model
+## Dependencies
+
+**Production:**
+- `fastapi>=0.112` - Web framework
+- `uvicorn[standard]>=0.30` - ASGI server
+- `httpx>=0.27` - Async HTTP client
+- `pydantic>=2.8` - Data validation
+- `rich>=13.7` - Terminal UI
+- `python-multipart>=0.0.9` - Multipart form support
+
+**Development:**
+- `pytest>=8.0` - Testing framework
+- `pytest-asyncio>=0.23` - Async test support
+- `pytest-xdist>=3.0` - Parallel test execution
+
+## CATALYST Bootstrap Model
 
 This repository uses a layered bootstrap for agent-assisted development:
 - [QWEN.md](../QWEN.md): Qwen-specific loader
 - [AGENTS.md](../AGENTS.md): canonical workflow and rules
 - [README.md](../README.md): human-facing overview with a short agent-assistance section
 
-Operational state lives in [_agent/](../_agent/) and specialized procedures live in [_skills/](../_skills/).
+Operational state lives in [_agent/](_agent/) and specialized procedures live in [_skills/](_skills/).
 
 Within skill directories, `SKILL.md` is canonical and any `SKILL-<NAME>.md` companion path should be treated as an alias/symlink path to the canonical content.
-
 
 ## CATALYST Cognitive Workflow
 
@@ -425,52 +439,13 @@ The preferred cognitive sequence is:
 - LEARN: consolidate lessons and decide whether they should remain as proposals, become TODOs, or justify ADAPT
 - ADAPT: apply a minimal workflow or skill refinement; never broad architectural changes
 
-
 ## CATALYST cognitive routing
 - [THINK](../../_skills/THINK/SKILL-THINK.md) is the cognitive router and should be preferred before premature skill use when the next step is unclear.
 - [FEEDBACK](../../_skills/FEEDBACK/SKILL-FEEDBACK.md) analyzes recent friction and should recommend an explicit outcome.
 - [LEARN](../../_skills/LEARN/SKILL-LEARN.md) handles broader consolidation and may recommend THINK or ADAPT.
 - [ADAPT](../../_skills/ADAPT/SKILL-ADAPT.md) is allowed to change CATALYST repository artifacts when the current scope is `CATALYST` or `META`, as long as the change is small, local, and low-risk.
-## Route Hierarchy Tracking (2026-03-22)
 
-Routes can now track their full inheritance chain using the `extends` field in config.yaml.
+## Related Skills
 
-### How It Works
-
-When a route extends another route:
-1. The child route inherits settings from the parent
-2. The full hierarchy path is tracked in `_route_hierarchy` field
-3. Performance logs include both `route_name` and `route_hierarchy`
-4. Dashboard displays the full chain for debugging
-
-### Example Configuration
-
-```yaml
-routes:
-  arkai/lmstudio:  # Base route with upstream URL
-    upstream_url: "http://arkai.local:1234"
-
-  arkai/RTX3090/QWen3.5-35b:  # Extends lmstudio, adds model and ctx_len
-    extends: arkai/lmstudio
-    model: "qwen3.5-35b-a3b@q3_k_s"
-    ctx_len: 100000
-
-  local/deep:  # Extends the RTX3090 route
-    extends: arkai/RTX3090/QWen3.5-35b
-    pattern: "local/deep"
-```
-
-### Hierarchy Display
-
-For `local/deep`, the hierarchy would be:
-`arkai/lmstudio -> arkai/RTX3090/QWen3.5-35b -> local/deep`
-
-This shows the complete chain from base route to final route.
-
-### Files Modified
-
-- `keeprollming/routing.py`: Added `_route_hierarchy` field to Route dataclass
-- `keeprollming/performance.py`: Track and store hierarchy in logs
-- `perf_dashboard.py`: Display hierarchy column
-- `keeprollming/app.py`: Pass hierarchy to performance tracking
-
+- [ADD-FEATURE](../_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md)
+- [BUILD-REPO-MAP](../_skills/BUILD-REPO-MAP/SKILL-BUILD-REPO-MAP.md)

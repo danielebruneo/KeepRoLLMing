@@ -41,3 +41,10 @@ __summary_cache/
 config.yaml
 *.log
 server.log
+.catalyst_legacy/LATEST_MIGRATION.md
+.catalyst_legacy/migration_20260316_013338
+.catalyst_legacy/migration_20260316_015407
+.catalyst_legacy/migration_20260323_093227
+.catalyst_legacy/migration_20260323_093542
+.catalyst_legacy/migration_20260323_102150
+.catalyst_legacy/update_20260323_092336
