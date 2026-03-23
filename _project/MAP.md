@@ -107,11 +107,10 @@ It is NOT responsible for:
 - `_prompts/` - Summary prompt templates (classic, curated, structured, incremental)
 - `_agent/` - Agent runtime state and knowledge
   - `_agent/state/` - Active task, handoff, scope
-  - `_agent/knowledge/` - Project knowledge base, repo map
+  - `_agent/knowledge/` - Project knowledge base, repo map (this file)
   - `_agent/learning_reports/` - Session-specific learning documentation
 - `_project/` - Project-specific documentation and skills
   - `_project/_skills/` - Project skills (IMPROVE-SKILLS)
-  - `_project/MAP.md` - Repository structure map
   - `_project/KNOWLEDGE_BASE.md` - Comprehensive knowledge base
   - `_project/TODOS.md` - Project enhancement wishlist
 - `_agent/overlay/` - Agent overlay skills and configuration

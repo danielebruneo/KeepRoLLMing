@@ -6,7 +6,7 @@ description: Builds or refreshes _agent/MAP.md by inferring the real repository 
 # BUILD-REPO-MAP Skill
 
 ## Goal
-Populate [_agent/knowledge/MAP.md](../../_agent/knowledge/MAP.md) with a concise navigation map of the real repository.
+Populate [`_agent/knowledge/MAP.md`](../../_agent/knowledge/MAP.md) with a concise navigation map of the real repository.
 
 ## Procedure
 1. Inspect the repository tree to understand project structure.
