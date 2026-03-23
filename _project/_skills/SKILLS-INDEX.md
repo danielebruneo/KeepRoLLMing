@@ -59,7 +59,7 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 
 ### Repository Maintenance
 
-- **[BUILD-REPO-MAP]**(.catalyst/_skills/BUILD-REPO-MAP/SKILL.md) - Builds or refreshes _agent/MAP.md by inferring the real repository structure and responsibilities.
+- **[BUILD-REPO-MAP]**(.catalyst/_skills/BUILD-REPO-MAP/SKILL.md) - Builds or refreshes _project/MAP.md by inferring the real repository structure and responsibilities.
 - **[INDEX-SKILLS]**(.catalyst/_skills/INDEX-SKILLS/SKILL.md) - Generate and maintain a comprehensive SKILLS-INDEX.md file in _project/_skills/ that maps all available skills grouped by topic, making it easy for agents to discover and leverage the full skill set.
 - **[MOCK-TEST]**(.catalyst/_skills/MOCK-TEST/SKILL.md) - A mock skill for testing sync functionality.
 - **[SYNC-COMMANDS]**(.catalyst/_skills/SYNC-COMMANDS/SKILL.md) - Refreshes _agent/COMMANDS.md from the actual repository scripts, tooling, and test commands.
