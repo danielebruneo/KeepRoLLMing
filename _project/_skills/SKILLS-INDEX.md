@@ -1,6 +1,6 @@
 # Skills Index
 
-**Generated:** 2026-03-17 17:07:25
+**Generated:** 2026-03-23 12:40:23
 
 ## Overview
 
@@ -11,8 +11,8 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 | Category | Skills Count |
 |----------|--------------|
 | Task Management & Workflow | 9 |
-| Documentation & Knowledge | 23 |
-| Repository Maintenance | 3 |
+| Documentation & Knowledge | 22 |
+| Repository Maintenance | 4 |
 | Code Quality & Testing | 4 |
 | Catalyst Core Operations | 8 |
 | Feature Development | 0 |
@@ -24,7 +24,7 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 - **[CLOSE-TASK]**(.catalyst/_skills/CLOSE-TASK/SKILL.md) - Closes or rolls over the active task by updating handoff, memory, and task state.
 - **[COMPLETED-TASKS]**(.catalyst/_skills/COMPLETED-TASKS/SKILL.md) - Maintains a record of completed tasks for historical tracking and project metrics.
 - **[CREATE-ACTIVE-TASK]**(.catalyst/_skills/CREATE-ACTIVE-TASK/SKILL.md) - Creates or refreshes _agent/ACTIVE_TASK.md from the user request using a fixed task structure.
-- **[ENFORCE-PROJECT-TODO]**(_project/_skills/ENFORCE-PROJECT-TODO/SKILL.md) - No description available
+- **[ENFORCE-PROJECT-TODO]**(.catalyst/_skills/ENFORCE-PROJECT-TODO/SKILL.md) - No description available
 - **[PICKUP-TASK]**(.catalyst/_skills/PICKUP-TASK/SKILL.md) - Selects and converts a task from the TODO list into an active task for execution.
 - **[PLAN]**(.catalyst/_skills/PLAN/SKILL.md) - Create a bounded execution plan for a non-trivial or underspecified task before implementation.
 - **[SYNC-QWEN-SKILL-REGISTRY]**(.catalyst/_skills/SYNC-QWEN-SKILL-REGISTRY/SKILL.md) - Rebuild .qwen/skills as a runtime projection of active markdown skills from overlay, project, and core locations.
@@ -34,16 +34,15 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 ### Documentation & Knowledge
 
 - **[CONSOLIDATE-DOC]**(.catalyst/_skills/CONSOLIDATE-DOC/SKILL.md) - No description available
-- **[CONSOLIDATE-DOC]**(_project/_skills/CONSOLIDATE-DOC/SKILL.md) - No description available
 - **[CONSOLIDATE-DOCS]**(.catalyst/_skills/CONSOLIDATE-DOCS/SKILL.md) - Merge durable knowledge into canonical docs and remove duplication between agent notes, docs, and skills.
 - **[DISTILL-LEARNINGS]**(.catalyst/_skills/DISTILL-LEARNINGS/SKILL.md) - Convert raw feedback, handoff notes, and repeated observations into compact reusable lessons and clear destinations.
 - **[DOCUMENTATION-REFERENCE]**(.catalyst/_skills/DOCUMENTATION-REFERENCE/SKILL.md) - Helps agents understand when and how to reference specific documentation files during their workflows.
-- **[ENFORCE-PROJECT-WORKFLOW]**(_project/_skills/ENFORCE-PROJECT-WORKFLOW/SKILL.md) - No description available
+- **[ENFORCE-PROJECT-WORKFLOW]**(.catalyst/_skills/ENFORCE-PROJECT-WORKFLOW/SKILL.md) - No description available
 - **[IMPROVE-AGENT-WORKFLOW]**(.catalyst/_skills/IMPROVE-AGENT-WORKFLOW/SKILL.md) - Improves the overall agent workflow system by integrating knowledge base, documentation, and skill structures.
 - **[IMPROVE-DOC]**(.catalyst/_skills/IMPROVE-DOC/SKILL.md) - No description available
-- **[IMPROVE-DOC]**(_project/_skills/IMPROVE-DOC/SKILL.md) - No description available
 - **[IMPROVE-DOC-STRUCTURES]**(.catalyst/_skills/IMPROVE-DOC-STRUCTURES/SKILL.md) - Improves the structure and consistency of documentation files across the project.
 - **[IMPROVE-SKILLS]**(.catalyst/_skills/IMPROVE-SKILLS/SKILL.md) - Reviews and enhances existing skills in the project to improve clarity, usability, and actionable guidance for Qwen Code agents.
+- **[IMPROVE-SKILLS]**(_project/_skills/IMPROVE-SKILLS/SKILL.md) - Reviews and enhances existing skills in the project to improve clarity, usability, and actionable guidance for Qwen Code agents.
 - **[INIT-KNOWLEDGE-BASE]**(.catalyst/_skills/INIT-KNOWLEDGE-BASE/SKILL.md) - Initializes the internal agent knowledge files by inferring project structure, commands, and architecture from the current repository.
 - **[LEARN]**(.catalyst/_skills/LEARN/SKILL.md) - Implements systematic learning process that reviews project components, identifies improvement opportunities, and executes consolidation of knowledge enhancements.
 - **[LEARN-PROJECT]**(.catalyst/_skills/LEARN-PROJECT/SKILL.md) - Helps agents explore and understand a project's structure, components, and knowledge base.
@@ -61,6 +60,7 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 
 - **[BUILD-REPO-MAP]**(.catalyst/_skills/BUILD-REPO-MAP/SKILL.md) - Builds or refreshes _agent/MAP.md by inferring the real repository structure and responsibilities.
 - **[INDEX-SKILLS]**(.catalyst/_skills/INDEX-SKILLS/SKILL.md) - Generate and maintain a comprehensive SKILLS-INDEX.md file in _project/_skills/ that maps all available skills grouped by topic, making it easy for agents to discover and leverage the full skill set.
+- **[MOCK-TEST]**(.catalyst/_skills/MOCK-TEST/SKILL.md) - A mock skill for testing sync functionality.
 - **[SYNC-COMMANDS]**(.catalyst/_skills/SYNC-COMMANDS/SKILL.md) - Refreshes _agent/COMMANDS.md from the actual repository scripts, tooling, and test commands.
 
 ### Code Quality & Testing
@@ -74,7 +74,7 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 
 - **[ADAPT]**(.catalyst/_skills/ADAPT/SKILL.md) - Apply a small, safe, local improvement to the CATALYST workflow after clear feedback or learning.
 - **[DIGEST-LEGACY-CATALYST]**(.catalyst/_skills/DIGEST-LEGACY-CATALYST/SKILL.md) - Digest archived legacy CATALYST assets under .catalyst_legacy and redistribute information units into the new layered structure.
-- **[ENFORCE-CATALYST-WORKFLOW]**(_project/_skills/ENFORCE-CATALYST-WORKFLOW/SKILL.md) - No description available
+- **[ENFORCE-CATALYST-WORKFLOW]**(.catalyst/_skills/ENFORCE-CATALYST-WORKFLOW/SKILL.md) - No description available
 - **[FEEDBACK]**(.catalyst/_skills/FEEDBACK/SKILL.md) - Analyzes conversation patterns with user, system feedback, agent reasoning processes, and overall workflow effectiveness to propose improvements for future interactions.
 - **[PROPOSE-CATALYST-CORE-CHANGE]**(.catalyst/_skills/PROPOSE-CATALYST-CORE-CHANGE/SKILL.md) - Capture a local adaptation that may be worth promoting into the CATALYST core.
 - **[PROPOSE-CATALYST-PULL-REQUEST]**(.catalyst/_skills/PROPOSE-CATALYST-PULL-REQUEST/SKILL.md) - Prepare a structured pull-request proposal for promoting a local improvement into the upstream CATALYST core.
@@ -114,4 +114,4 @@ This index is auto-generated by the **INDEX-SKILLS** skill. When adding or modif
 3. Verify that all skills are correctly categorized
 
 ---
-*Generated by INDEX-SKILLS on 2026-03-17 17:07:25*
+*Generated by INDEX-SKILLS on 2026-03-23 12:40:23*
