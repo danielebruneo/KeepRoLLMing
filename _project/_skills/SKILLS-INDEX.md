@@ -1,6 +1,6 @@
 # Skills Index
 
-**Generated:** 2026-03-23 13:00:34
+**Generated:** 2026-03-23 17:00:00
 
 ## Overview
 
@@ -10,7 +10,7 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 
 | Category | Skills Count |
 |----------|--------------|
-| Task Management & Workflow | 9 |
+| Task Management & Workflow | 17 |
 | Documentation & Knowledge | 23 |
 | Repository Maintenance | 4 |
 | Code Quality & Testing | 4 |
@@ -21,15 +21,25 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 
 ### Task Management & Workflow
 
+- **[APPROVE-PROPOSAL]**(.catalyst/_skills/APPROVE-PROPOSAL/SKILL.md) - Reviews and approves a TODO proposal, moving it from TODO_PROPOSALS to the official TODO list.
+- **[CAPTURE-ENVIRONMENT-LESSON]**(.catalyst/_skills/CAPTURE-ENVIRONMENT-LESSON/SKILL.md) - Automatically saves environmental and tool-calling pattern learnings when initial approaches fail.
 - **[CLOSE-TASK]**(.catalyst/_skills/CLOSE-TASK/SKILL.md) - Closes or rolls over the active task by updating handoff, memory, and task state.
 - **[COMPLETED-TASKS]**(.catalyst/_skills/COMPLETED-TASKS/SKILL.md) - Maintains a record of completed tasks for historical tracking and project metrics.
 - **[CREATE-ACTIVE-TASK]**(.catalyst/_skills/CREATE-ACTIVE-TASK/SKILL.md) - Creates or refreshes _agent/ACTIVE_TASK.md from the user request using a fixed task structure.
 - **[ENFORCE-PROJECT-TODO]**(.catalyst/_skills/ENFORCE-PROJECT-TODO/SKILL.md) - No description available
+- **[ENFORCE-SCOPE]**(.catalyst/_skills/ENFORCE-SCOPE/SKILL.md) - Validates that file changes comply with current work scope defined in SCOPE.md.
 - **[PICKUP-TASK]**(.catalyst/_skills/PICKUP-TASK/SKILL.md) - Selects and converts a task from the TODO list into an active task for execution.
 - **[PLAN]**(.catalyst/_skills/PLAN/SKILL.md) - Create a bounded execution plan for a non-trivial or underspecified task before implementation.
+- **[PROPOSE-TODO]**(.catalyst/_skills/PROPOSE-TODO/SKILL.md) - Captures new task ideas discovered during work and adds them to TODO_PROPOSALS for approval.
+- **[RESUME-TASK]**(.catalyst/_skills/RESUME-TASK/SKILL.md) - Restores a suspended task from STALE_TASKS directory back to ACTIVE_TASK for continued work.
+- **[SUSPEND-TASK]**(.catalyst/_skills/SUSPEND-TASK/SKILL.md) - Suspends the current active task by saving it to STALE_TASKS directory and clearing ACTIVE_TASK for new work.
 - **[SYNC-QWEN-SKILL-REGISTRY]**(.catalyst/_skills/SYNC-QWEN-SKILL-REGISTRY/SKILL.md) - Rebuild .qwen/skills as a runtime projection of active markdown skills from overlay, project, and core locations.
+- **[UPDATE-SCOPE]**(.catalyst/_skills/UPDATE-SCOPE/SKILL.md) - Updates the current work scope in SCOPE.md to reflect new boundaries or task focus.
 - **[UPDATE-TODO]**(.catalyst/_skills/UPDATE-TODO/SKILL.md) - Updates and maintains the TODO list with new items, status changes, and completion tracking.
-- **[WORK]**(.catalyst/_skills/WORK/SKILL.md) - Automates the full workflow of checking active tasks, picking up tasks when needed, implementing them through completion, and properly closing completed tasks with commit and handoff updates.
+- **[USE-CATALYST]**(.catalyst/_skills/USE-CATALYST/SKILL.md) - Enforces CATALYST framework rules, checks workflow compliance, and validates scope adherence.
+- **[WORK]**(.catalyst/_skills/WORK/SKILL.md) - Automates the full workflow of checking active tasks, picking up tasks when needed, implementing through completion, and properly closing completed tasks with commit and handoff updates.
+- **[WORKFLOW-AUDIT]**(.catalyst/_skills/WORKFLOW-AUDIT/SKILL.md) - Reviews all agent state files for consistency, detects issues, and generates compliance report.
+- **[WORKFLOW-CHECK]**(.catalyst/_skills/WORKFLOW-CHECK/SKILL.md) - Validates proper task lifecycle compliance and workflow rules adherence.
 
 ### Documentation & Knowledge
 
@@ -53,7 +63,7 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 - **[SYNC-BOOTSTRAP-FILES]**(.catalyst/_skills/SYNC-BOOTSTRAP-FILES/SKILL.md) - Keeps QWEN.md, AGENTS.md, and README.md aligned so the CATALYST bootstrap survives regeneration and documentation drift.
 - **[THINK]**(.catalyst/_skills/THINK/SKILL.md) - Pause execution to clarify objective, scope, and the most appropriate next skill without modifying files.
 - **[UPDATE-HUMAN-DOCS]**(.catalyst/_skills/UPDATE-HUMAN-DOCS/SKILL.md) - Updates human-facing project documentation without mixing it with internal agent operational notes.
-- **[UPDATE-KNOWLEDGE-BASE]**(.catalyst/_skills/UPDATE-KNOWLEDGE-BASE/SKILL.md) - Refreshes the internal agent knowledge files after meaningful project changes.
+- **[UPDATE-KNOWLEDGE-BASE]**(.catalyst/_skills/UPDATE-KNOWLEDGE-BASE/SKILL.md) - Refreshes the internal agent knowledge files after meaningful changes.
 - **[UPDATE-README]**(.catalyst/_skills/UPDATE-README/SKILL.md) - Safely updates README.md when project-level usage, status, or structure has materially changed.
 - **[UPDATE-README-SAFE]**(.catalyst/_skills/UPDATE-README-SAFE/SKILL.md) - Update the public README without damaging its human-oriented role.
 
@@ -97,22 +107,3 @@ This index provides a comprehensive map of all available CATALYST skills, organi
 - Skills are markdown procedures, not executables - they guide agent behavior
 - Use `INDEX-SKILLS` skill when adding new skills to update this index
 - Check `_agent/state/ACTIVE_TASK.md` for context on current work
-
-## Skill Categories Explained
-
-**Task Management & Workflow**: Skills for managing tasks, TODOs, and workflow progression
-**Documentation & Knowledge**: Skills for creating, improving, and maintaining documentation
-**Repository Maintenance**: Skills for keeping the repository structure and metadata up to date
-**Code Quality & Testing**: Skills for refactoring code and fixing tests
-**Catalyst Core Operations**: Skills for managing CATALYST framework itself
-**Feature Development**: Skills for implementing new features
-
-## Maintenance
-
-This index is auto-generated by the **INDEX-SKILLS** skill. When adding or modifying skills:
-1. Create/update the SKILL.md file in the appropriate directory
-2. Run the INDEX-SKILLS skill to regenerate this index
-3. Verify that all skills are correctly categorized
-
----
-*Generated by INDEX-SKILLS on 2026-03-23 13:00:34*

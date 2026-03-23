@@ -20,13 +20,19 @@ Automate a complete work cycle that checks if an active task is pending, picks u
    - If the active task is complex or under-specified, call [PLAN](../PLAN/SKILL-PLAN.md) before implementation
    - If an active task exists and is still pending, proceed with implementation
    - If no active task exists or the current task is completed, pick up the next available task from TODO list
-3. **Implement Task**: Execute the work described in ACTIVE_TASK.md until completion criteria are met
-4. **Validate**: Check done criteria and run targeted validation or tests when appropriate
-5. **Commit Changes**: Commit changes only when the work is coherent and scoped appropriately
-6. **Close Task**: Update `_agent/state/ACTIVE_TASK.md` to mark task as completed and add final status information
-7. **Update Handoff**: Modify `_agent/state/HANDOFF.md` with completion record, including files touched and lessons learned
-8. **Update TODO List**: Remove or mark the completed task in `_agent/state/TODOS.md` when applicable
-9. **Generate Summary Report**: Create a brief summary of what was accomplished and why it matters
+3. **Enforce Scope**: Call [ENFORCE-SCOPE](../ENFORCE-SCOPE/SKILL-ENFORCE-SCOPE.md) before modifying files
+   - Validate all file changes against SCOPE.md
+   - Block critical scope violations
+   - Log non-critical violations
+4. **Implement Task**: Execute the work described in ACTIVE_TASK.md until completion criteria are met
+5. **Validate**: Check done criteria and run targeted validation or tests when appropriate
+6. **Commit Changes**: Commit changes only when the work is coherent and scoped appropriately
+7. **Close Task**: Update `_agent/state/ACTIVE_TASK.md` to mark task as completed and add final status information
+8. **Update Handoff**: Modify `_agent/state/HANDOFF.md` with completion record, including files touched and lessons learned
+9. **Update TODO List**: Remove or mark the completed task in `_agent/state/TODOS.md` when applicable
+   - Add link to COMPLETED_TASKS.md for traceability
+10. **Workflow Check**: Optionally call [WORKFLOW-CHECK](../WORKFLOW-CHECK/SKILL-WORKFLOW-CHECK.md) to validate compliance
+11. **Generate Summary Report**: Create a brief summary of what was accomplished and why it matters
 
 ## Constraints
 - Do not make broad refactorings or changes beyond scope defined in the active task and `_agent/state/SCOPE.md`
@@ -34,6 +40,8 @@ Automate a complete work cycle that checks if an active task is pending, picks u
 - Maintain all existing workflow templates and conventions consistently
 - Ensure commit messages follow established patterns for different types of work (task, learn, scripts)
 - Preserve datetime tracking throughout the process (DD/MM/YYYY HH:MM:SS format)
+- **Enforce scope compliance**: Use ENFORCE-SCOPE before file modifications
+- **Validate lifecycle**: Ensure PICKUP-TASK was used to start task, CLOSE-TASK to end it
 
 ## Key Integration Points
 This skill integrates with other CATALYST skills:

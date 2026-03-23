@@ -19,6 +19,8 @@ Close or roll over the active task cleanly with proper documentation of outcomes
    - Key outcomes achieved
    - Lessons learned
 6. Update [_agent/state/TODOS.md](../../_agent/state/TODOS.md) to mark the completed task as finished
+   - **Add link to COMPLETED_TASKS.md**: Include reference like `→ [Completed: DD/MM/YYYY](_agent/state/COMPLETED_TASKS.md#task-title)`
+   - This creates bidirectional traceability from TODO to completion record
 
 ## When to Use
 - When completing a task and ready to move on to new work

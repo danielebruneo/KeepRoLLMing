@@ -17,6 +17,7 @@ When executing this skill, use these structured approaches:
 2. **Communication Pattern Analysis**: Evaluate how well user intent was understood and responded to
 3. **Skill Integration Analysis**: Assess when different skills worked well together vs. when they conflicted or were misapplied
 4. **Workflow Efficiency Analysis**: Identify bottlenecks in the overall process
+5. **Environmental Pattern Detection**: Identify tool-calling, LLM model, or environment quirks that should be captured in ENVIRONMENT.md
 
 ## Procedure
 1. **Conversation Analysis**: Review the interaction history with user for patterns and insights about what worked well vs. what could be improved

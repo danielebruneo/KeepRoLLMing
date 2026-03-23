@@ -27,6 +27,7 @@ Files that change frequently during agent sessions:
 Persistent knowledge that agents should reference:
 - **`MAP.md`** - This navigation guide (you are here)
 - **`MEMORY.md`** - Implementation patterns, lessons learned, configuration
+- **`ENVIRONMENT.md`** - Environmental quirks, LLM patterns, and tool-calling workarounds
 - **`SKILL_PROPOSAL.md`** - Skill improvement proposals
 
 **Usage:** Reference as needed for project-specific patterns and conventions.

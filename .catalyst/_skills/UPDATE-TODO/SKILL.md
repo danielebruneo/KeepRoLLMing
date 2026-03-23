@@ -11,9 +11,15 @@ Update and maintain the TODO list with new items, status changes, and completion
 ## Procedure
 1. Read current _agent/TODOS.md file
 2. Allow user to add new tasks or modify existing ones
-3. Validate task structure follows project standards
-4. Maintain consistent formatting and categorization
-5. Save updated file
+3. **Track ACTIVE_TASK linkage:**
+   - If task is currently active, add reference to ACTIVE_TASK.md
+   - Example: `- [ ] Task description → [Active](_agent/state/ACTIVE_TASK.md)`
+4. **Validate task structure** follows project standards
+5. **Track completion status:**
+   - When marking as completed, add link to COMPLETED_TASKS.md
+   - Example: `- [x] Task description → [Completed: DD/MM/YYYY](_agent/state/COMPLETED_TASKS.md#task-title)`
+6. Maintain consistent formatting and categorization
+7. Save updated file
 
 ## When to Use
 - When adding new ideas or enhancements to the project
