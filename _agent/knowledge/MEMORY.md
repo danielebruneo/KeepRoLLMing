@@ -1,167 +1,179 @@
-# Memory and Lessons Learned
+# Project Memory - CATALYST Orchestrator
 
-Use this file for non-obvious lessons that are likely to matter again.
+## Task Tracking
+- Current active task: Fix HTTPX exception handling in nested async generator
+- Focus areas: Exception handling, streaming compatibility, logging
 
-## Entry format
-- Date/session: DD/MM/YYYY HH:MM:SS
-- Topic: [short description]
-- Lesson: [detailed explanation of the lesson learned]
-- Relevant files: [path/to/file](path/to/file)
-- Category: [learning type] (optional)
+## Implementation Patterns
+
+### HTTPX Exception Handling in Nested Generators
+- Use `sys.exc_info()[1].__class__` for runtime exception type detection
+- Avoid static `except httpx.ConnectError:` in nested scopes
+
+### OpenAI Streaming Compatibility
+- Inject `role: "assistant"` in first delta
+- Handle tool-only chunks with synthetic role preface
+- Merge tool_calls arguments chunk-by-chunk
+
+### Logging Configuration
+- `MAX_BODY_CHARS=10_000_000` for full response capture
+- `MAX_SSE_BYTES=10_000_000` for full SSE stream capture
+- `LOG_SNIP_CHARS=0` to disable truncation
+
+## Known Issues & Solutions
+
+### Issue: NameError in nested exception handlers
+**Solution:** Use `sys.exc_info()[1].__class__` to get exception type at runtime
+
+### Issue: Missing role in reconstructed response logs
+**Solution:** Ensure role injection happens in both streaming output AND logged reconstruction
+
+## Configuration
+- LOG_LEVEL="DEBUG" for verbose logging
+- ENABLE_OPENAI_STREAM_COMPAT=1 for OpenAI compatibility mode
 
 ---
 
-## Terminal Handling for Interactive Dashboards
+# Lessons Learned - HTTPX Exception Handling & OpenAI Streaming Compatibility
 
-**Date/session:** 21/03/2026 14:35:00  
-**Topic:** Raw terminal mode and Ctrl+C signal handling  
-**Lesson:** When implementing interactive terminal UIs with key bindings, raw terminal mode must be applied **temporarily within the main loop** (not in a background thread) to preserve `Ctrl+C` signal handling.
+## Date: 2026-03-23
 
-**Why Background Thread Failed:** Setting terminal mode in a background thread conflicts with the main loop's keyboard interrupt handling, breaking `Ctrl+C`.
+### Problem: NameError in Nested Async Generator Exception Handlers
+
+**Issue:** When catching `httpx` exceptions inside a nested async generator (`_iter` function), using `except httpx.ConnectError:` directly fails with `NameError: name 'httpx' is not defined`.
+
+**Root Cause:** In Python's exception handling, exception types must be resolved at the scope where the `except` clause is defined, not where it executes. When the exception handler is in a nested function, the exception type lookup can fail if the import is not properly accessible in that nested scope.
+
+**Solution:** Use runtime exception type detection:
+```python
+except Exception as e:
+    exc_type = sys.exc_info()[1].__class__
+    if exc_type == httpx.ConnectError:
+        # Handle connection error
+```
+
+**Why This Works:** `sys.exc_info()[1]` returns the actual exception instance at runtime, and `.__class__` gives us the dynamic type. This bypasses the static scope resolution issue.
+
+**Lesson:** When dealing with nested exception handlers, prefer runtime type checking over static type references in the `except` clause.
+
+---
+
+## Problem: OpenAI-Compatible Streaming with Tool Calls
+
+**Issue:** OpenAI's streaming API requires `delta.role = "assistant"` to be present in the first chunk. When the upstream model sends tool_calls without content in the first chunk, clients expect this role field.
+
+**Current Working Pattern:**
+1. **Check if first chunk is tool-only:**
+   ```python
+   has_tool_calls_emit = bool(delta_emit.get("tool_calls"))
+   has_content_emit = isinstance(delta_emit.get("content"), str) and bool(delta_emit.get("content"))
+   
+   if not role_sent:
+       if has_tool_calls_emit and not has_content_emit:
+           # Emit synthetic role chunk first
+           emit_role_preface = True
+       else:
+           delta_emit["role"] = "assistant"
+           role_sent = True
+   ```
+
+2. **Emit synthetic role chunk if needed:**
+   ```python
+   if emit_role_preface:
+       role_chunk_obj = {
+           "choices": [{"index": 0, "delta": {"role": "assistant"}}]
+       }
+       yield role_chunk_obj
+       role_sent = True
+   ```
+
+3. **Add role to actual chunk:**
+   ```python
+   delta_emit["role"] = delta_emit.get("role") or "assistant"
+   ```
+
+**Lesson:** For OpenAI compatibility, inject `role: "assistant"` in the first delta, but handle tool-only chunks by emitting a separate role-preface chunk.
+
+---
+
+## Problem: Role Not Appearing in Reconstructed Response Logs
+
+**Issue:** The `response_body` logged in `response_stream_reconstructed` and `response_sent_downstream` was missing `role: "assistant"` even though it was correctly injected into the streamed output.
+
+**Root Cause Analysis:**
+1. Role injection happened during streaming (for downstream clients)
+2. `reconstructed_response` was built from upstream chunks (which don't have injected role)
+3. Final check for role in delta was **inside** the `if final_tool_calls:` block
+4. When tool_calls existed, the block ran, but the role check only ran if delta didn't already have role
+5. Since delta existed from earlier chunks, the role check was skipped
+
+**The Bug:**
+```python
+if final_tool_calls:  # Role check is INSIDE this conditional
+    ...
+    if "role" not in reconstructed_response["choices"][0]["delta"]:
+        reconstructed_response["choices"][0]["delta"]["role"] = "assistant"
+```
+
+**The Fix:**
+```python
+# Ensure role is present (unconditional check, outside tool_calls block)
+if reconstructed_response["choices"] and "delta" not in reconstructed_response["choices"][0]:
+    reconstructed_response["choices"][0]["delta"] = {}
+if reconstructed_response["choices"]:
+    if "role" not in reconstructed_response["choices"][0].get("delta", {}):
+        reconstructed_response["choices"][0]["delta"]["role"] = "assistant"
+```
+
+**Lesson:** Always ensure logging consistency. If you inject fields for downstream compatibility, you must also inject them into the logged reconstruction. Don't put conditional checks inside other conditionals that might skip the fix.
+
+---
+
+## Problem: Tool Calls Argument Reconstruction
+
+**Issue:** Tool call arguments arrive as JSON fragments across multiple SSE chunks. Simply concatenating them fails because each chunk contains a full JSON object, not just the argument string.
 
 **Working Pattern:**
-1. Save original terminal settings before entering loop
-2. Apply non-canonical mode (`ICANON`, `ECHO` disabled) temporarily  
-3. Use `os.read(fd, 1)` with `select.select()` for non-blocking key capture
-4. Always restore original settings in `finally` block
-
-This ensures:
-- Key presses captured immediately without waiting for Enter
-- `Ctrl+C` still works (terminal signals aren't disabled)
-- Terminal returns to normal state on exit
-
-**Relevant files:** [perf_dashboard.py](perf_dashboard.py), [_agent/knowledge/MEMORY.md](_agent/knowledge/MEMORY.md)  
-**Category:** Implementation Pattern
-
----
-
-## Configuration-Based Prompt Templates
-
-**Date/session:** 21/03/2026 14:35:00  
-**Topic:** Distinguishing file paths from direct text in config.yaml  
-**Lesson:** When implementing custom summary prompts from config.yaml, the main challenge was properly distinguishing between file references (strings starting with `./`, `/` or containing path separators) and direct text content.
-
-File-based references should be identified by strings that start with "./", "/", or contain path separators to be treated as paths. Direct text content that doesn't match these patterns should be used literally as prompt templates in config files.
-
-**Relevant files:** [keeprollming/rolling_summary.py](keeprollming/rolling_summary.py), [_docs/CONFIGURATION.md](_docs/CONFIGURATION.md)  
-**Category:** Configuration Pattern
-
----
-
-## Server State Awareness After Code Changes
-
-**Date/session:** 22/03/2026 01:35:00  
-**Topic:** Verifying running processes before testing code changes  
-**Lesson:** When modifying Python files that affect runtime behavior (app.py, config.py), the server process must be restarted for changes to take effect. Simply saving files does not trigger reload in uvicorn without `--reload` flag.
-
-**Verification Pattern:**
-1. Before testing changes: `ps aux | grep uvicorn` to check if process is running
-2. After modifying code: Restart server with `pkill -f uvicorn && sleep 1 && uvicorn ... &`
-3. Wait for startup logs before sending test requests
-
-**Common Pitfall:** Assuming "unknown" in dashboard means code bug, when actually the issue is stale process running old code.
-
-**Relevant files:** [keeprollming/app.py](keeprollming/app.py), [keeprollming/config.py](keeprollming/config.py), [perf_dashboard.py](perf_dashboard.py)  
-**Category:** Runtime State Management
-
----
-
-## Virtual Environment Context for Project Scripts
-
-**Date/session:** 22/03/2026 01:35:00  
-**Topic:** Using venv Python vs system Python for project tools  
-**Lesson:** Project scripts (dashboard, benchmark tools) require dependencies installed in the virtual environment. Running with system `python3` causes ModuleNotFoundError.
-
-**Correct Usage:**
-```bash
-# Option 1: Direct venv path (recommended)
-/home/daniele/LLM/orchestrator/.venv/bin/python3 perf_dashboard.py
-
-# Option 2: Activate venv first
-cd /home/daniele/LLM/orchestrator && source .venv/bin/activate && python3 perf_dashboard.py
-```
-
-**Why This Happens:** Project dependencies (pyyaml, rich, etc.) are installed in `.venv`, not system Python.
-
-**Relevant files:** [perf_dashboard.py](perf_dashboard.py), [benchmark_routes.py](benchmark_routes.py)  
-**Category:** Environment Management
-
----
-
-## Route Name vs Upstream Model Name Separation
-
-**Date/session:** 22/03/2026 01:35:00  
-**Topic:** Handling hash IDs from upstream services  
-**Lesson:** When upstream services (like Lemonade) return hash IDs instead of readable model names, display the route name separately in UI. This clarifies that "base/alt" is the orchestrator's route while "ea4dc5c6..." is what upstream returned.
-
-**Implementation Pattern:**
-1. Track `route_name` separately from `model` field
-2. In performance logs: store both fields
-3. In dashboard: show Route column (human-readable) and Model column (upstream response)
-
-**Why This Matters:** Users need to know which route they hit, not just what hash ID upstream returned.
-
-**Relevant files:** [keeprollming/performance.py](keeprollming/performance.py), [keeprollming/app.py](keeprollming/app.py), [perf_dashboard.py](perf_dashboard.py)  
-**Category:** Data Model Design
-
----
-
-## Documentation Consolidation Best Practices
-
-**Date/session:** 21/03/2026 14:35:00  
-**Topic:** Moving prompt template docs to canonical location  
-**Lesson:** When consolidating documentation, identify the most appropriate canonical file for each topic and remove duplication from other files. For configuration details, `_docs/CONFIGURATION.md` is the canonical source; for project overview, use `_project/KNOWLEDGE_BASE.md`; for repository structure, use `_project/MAP.md`.
-
-**Relevant files:** [_docs/CONFIGURATION.md](_docs/CONFIGURATION.md), [_project/KNOWLEDGE_BASE.md](_project/KNOWLEDGE_BASE.md), [_project/MAP.md](_project/MAP.md)  
-**Category:** Documentation Pattern
-
----
-
-## Skill Structure Consistency
-
-**Date/session:** 21/03/2026 14:35:00  
-**Topic:** CATALYST skill file organization  
-**Lesson:** All CATALYST skills must follow a consistent directory structure with:
-1. A main documentation file named `SKILL-NAME.md`
-2. A symlink named `SKILL.md` pointing to this main file
-3. This pattern ensures proper recognition by the agent system during sync operations
-
-When creating or modifying skills, always ensure both files exist and are properly linked with correct relative paths.
-
-**Relevant files:** [.qwen/skills/](.qwen/skills/)  
-**Category:** System Pattern
-
----
-
-## Route-Based Configuration Implementation
-
-**Date/session:** 21/03/2026 14:35:00  
-**Topic:** Fallback chain routing with loop prevention  
-**Lesson:** When implementing fallback chains for automatic rerouting, track visited models per request to prevent infinite loops. Use a set data structure to maintain the list of already-attempted models and check before each fallback attempt.
-
-**Relevant files:** [keeprollming/routing.py](keeprollming/routing.py), [keeprollming/app.py](keeprollming/app.py)  
-**Category:** Implementation Pattern
-
----
-
-## Total TPS Metric Calculation
-
-**Date/session:** 21/03/2026 15:45:00  
-**Topic:** End-to-end throughput calculation for performance monitoring  
-**Lesson:** The `total_tps` metric represents overall system throughput, calculated as `(prompt_tokens + completion_tokens) / elapsed_time`. This differs from `completion_tps` which only measures generation speed.
-
-**Formula:**
 ```python
-total_tps = (prompt_tokens + completion_tokens) / (elapsed_ms / 1000.0)
+for tc_delta in delta["tool_calls"]:
+    tc_idx = tc_delta["index"]
+    # Merge function fields
+    for func_key, func_value in tc_value.items():
+        if func_key == "function":
+            # Handle nested function fields
+            if "function" not in tool_calls_accumulator[idx][tc_idx]:
+                tool_calls_accumulator[idx][tc_idx]["function"] = {}
+            for inner_key, inner_value in tc_value.items():
+                if inner_key in tool_calls_accumulator[idx][tc_idx]["function"]:
+                    # Concatenate string arguments
+                    tool_calls_accumulator[idx][tc_idx]["function"][inner_key] += inner_value
+                else:
+                    tool_calls_accumulator[idx][tc_idx]["function"][inner_key] = inner_value
 ```
 
-This metric is crucial for understanding real-world performance because it accounts for both prompt processing time and generation time, giving a complete picture of tokens processed per second from request start to finish.
+**Lesson:** For tool_calls, merge chunk-by-chunk rather than concatenating raw strings. Handle the nested structure properly.
 
-**Implementation:**
-- Calculated in `keeprollming/performance.py::compute_request_performance()`
-- Aggregated with avg/min/max stats in `_update_summary()` function
-- Displayed as "Tot TPS" column in `perf_dashboard.py`
-- Stored in `summary.yaml` alongside other TPS metrics (completion_tps, prompt_tps)
+---
 
-**Relevant files:** [keeprollming/performance.py](keeprollming/performance.py), [perf_dashboard.py](perf_dashboard.py), [_docs/PERFORMANCE.md](_docs/PERFORMANCE.md)  
-**Category:** Performance Monitoring
+## Configuration Best Practices
+
+**Logging Configuration:**
+- `MAX_BODY_CHARS=10_000_000` - Capture full response bodies
+- `MAX_SSE_BYTES=10_000_000` - Capture full SSE streams  
+- `LOG_SNIP_CHARS=0` - Disable truncation
+- `LOG_LEVEL="DEBUG"` - Verbose logging for debugging
+
+**OpenAI Compatibility:**
+- `ENABLE_OPENAI_STREAM_COMPAT=1` - Inject role and format deltas
+
+**Lesson:** For production debugging, increase buffer sizes and disable truncation. The memory overhead is worth the visibility.
+
+---
+
+## Summary
+
+1. **Use runtime exception type checking** for nested exception handlers
+2. **Inject role in first delta** for OpenAI compatibility, handle tool-only chunks specially
+3. **Ensure logging consistency** - inject same fields in logged reconstruction as in streamed output
+4. **Merge tool_calls chunk-by-chunk** rather than concatenating raw strings
+5. **Increase buffer sizes** for full visibility during debugging

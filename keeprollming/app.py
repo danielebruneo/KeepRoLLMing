@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
@@ -79,8 +80,9 @@ TOK = TokenCounter()
 # Max chars for logging large payloads (input conversation, summary requests, etc.)
 LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
 
-MAX_SSE_BYTES = 8000  # capture only the first N bytes of SSE bodies for logging
+MAX_SSE_BYTES = 10_000_000  # capture up to 10MB of SSE bodies for full logging
 LOG_STREAM_PROGRESS_INTERVAL_MS = max(0, int(os.getenv("LOG_STREAM_PROGRESS_INTERVAL_MS", "1000")))
+ENABLE_OPENAI_STREAM_COMPAT = os.getenv("ENABLE_OPENAI_STREAM_COMPAT", "1") == "1"
 
 
 def _parse_captured_sse_text(sse_text: str) -> tuple[str, str | None, dict | None, int]:
@@ -725,6 +727,10 @@ async def chat_completions(req: Request) -> Response:
     url = f"{route_upstream_url}/v1/chat/completions"
     client = await http_client()
 
+    # Resolve fallback chain up front so both streaming and non-streaming paths can safely reference it.
+    fallback_attempts = []
+    visited_models: set[str] = {upstream_model}
+
     # Log fallback chain availability with primary model
     if route.fallback_chain:
         log(
@@ -753,17 +759,91 @@ async def chat_completions(req: Request) -> Response:
             generated_tokens_est: int | None = 0
             last_progress_log_ms = 0.0
             r: httpx.Response | None = None
+            # Store full reconstructed response body for logging
+            reconstructed_response: dict = {
+                "id": "",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "",
+                "choices": [{}]
+            }
+            # Track accumulated tool_calls by index
+            tool_calls_accumulator: dict[int, dict] = {}
             
             # Track if we need to transform reasoning_content -> content for compatibility
             needs_transformation = is_passthrough and (transform_reasoning_content or add_empty_content_when_reasoning_only)
 
             # Track whether we've seen regular content (not just reasoning_content) during streaming
             has_seen_regular_content: bool = False
+            # Track whether we've already emitted an assistant role delta downstream.
+            role_sent: bool = False
             
             try:
                 async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp:
                     r = resp
-                    resp.raise_for_status()
+                    if resp.status_code >= 400:
+                        err_bytes = await resp.aread()
+                        err_text = err_bytes.decode("utf-8", errors="replace")
+                        log(
+                            "ERROR",
+                            "upstream_http_error_stream",
+                            req_id=req_id,
+                            status=resp.status_code,
+                            body=err_text[:500],
+                            did_summarize=did_summarize,
+                            passthrough=is_passthrough,
+                        )
+                        if fallback_attempts and upstream_model not in visited_models:
+                            log(
+                                "INFO",
+                                "upstream_error_fallback_attempt",
+                                req_id=req_id,
+                                original_model=upstream_model,
+                                err=f"HTTP {resp.status_code}",
+                            )
+                            for route_opt, fallback_model in fallback_attempts:
+                                if fallback_model not in visited_models:
+                                    log(
+                                        "INFO",
+                                        "fallback_to_next_model",
+                                        req_id=req_id,
+                                        from_model=upstream_model,
+                                        to_model=fallback_model,
+                                    )
+                                    upstream_payload["model"] = fallback_model
+                                    visited_models.add(fallback_model)
+                                    try:
+                                        async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
+                                            r = resp_retry
+                                            if resp_retry.status_code >= 400:
+                                                retry_bytes = await resp_retry.aread()
+                                                retry_text = retry_bytes.decode("utf-8", errors="replace")
+                                                log_fallback_error(
+                                                    req_id=req_id,
+                                                    from_model=upstream_model,
+                                                    to_model=fallback_model,
+                                                    error_type="http_status_error",
+                                                    err_msg=retry_text[:300],
+                                                )
+                                                visited_models.add(fallback_model)
+                                                continue
+                                            async for chunk in resp_retry.aiter_bytes():
+                                                if not chunk:
+                                                    continue
+                                                yield chunk
+                                            return
+                                    except Exception as retry_err:
+                                        log_fallback_error(
+                                            req_id=req_id,
+                                            from_model=upstream_model,
+                                            to_model=fallback_model,
+                                            error_type="http_status_error",
+                                            err_msg=str(retry_err)[:300],
+                                        )
+                                        visited_models.add(fallback_model)
+                        yield ("data: " + json.dumps({'error': {'message': 'Upstream error', 'details': err_text[:2000]}}) + "\n\n").encode("utf-8")
+                        yield b"data: [DONE]\n\n"
+                        return
                     async for chunk in resp.aiter_bytes():
                         if not chunk:
                             continue
@@ -843,7 +923,10 @@ async def chat_completions(req: Request) -> Response:
                                 continue
 
                             payload_sse = "\n".join(data_lines).strip()
-                            if not payload_sse or payload_sse == "[DONE]":
+                            if not payload_sse:
+                                continue
+                            if payload_sse == "[DONE]":
+                                yield b"data: [DONE]\n\n"
                                 continue
 
                             stream_event_count += 1
@@ -854,6 +937,121 @@ async def chat_completions(req: Request) -> Response:
 
                             if not isinstance(obj, dict):
                                 continue
+
+                            if ENABLE_OPENAI_STREAM_COMPAT:
+                                # OpenAI compatibility: ensure delta.role = "assistant" is present on the
+                                # first assistant/tool chunk actually emitted downstream.
+                                emit_role_preface = False
+                                if isinstance(obj.get("choices"), list) and obj.get("choices"):
+                                    c0_emit = obj["choices"][0] if isinstance(obj["choices"][0], dict) else None
+                                    if isinstance(c0_emit, dict):
+                                        delta_emit = c0_emit.get("delta")
+                                        if isinstance(delta_emit, dict):
+                                            has_tool_calls_emit = bool(delta_emit.get("tool_calls"))
+                                            has_content_emit = isinstance(delta_emit.get("content"), str) and bool(delta_emit.get("content"))
+                                            has_reasoning_emit = isinstance(delta_emit.get("reasoning_content"), str) and bool(delta_emit.get("reasoning_content"))
+
+                                            if not role_sent:
+                                                # If the first meaningful chunk is tool-only, emit a synthetic
+                                                # assistant-role preface before forwarding the real tool chunk.
+                                                if has_tool_calls_emit and not has_content_emit and not has_reasoning_emit and "role" not in delta_emit:
+                                                    emit_role_preface = True
+                                                else:
+                                                    delta_emit["role"] = delta_emit.get("role") or "assistant"
+                                                    role_sent = True
+                                                    obj["choices"][0]["delta"] = delta_emit
+
+                                if emit_role_preface:
+                                    role_chunk_obj = {
+                                        "id": obj.get("id"),
+                                        "object": obj.get("object") or "chat.completion.chunk",
+                                        "created": obj.get("created"),
+                                        "model": obj.get("model"),
+                                        "choices": [
+                                            {
+                                                "index": 0,
+                                                "delta": {"role": "assistant"},
+                                                "finish_reason": None,
+                                            }
+                                        ],
+                                    }
+                                    yield ("data: " + json.dumps(role_chunk_obj, separators=(",", ":")) + "\n\n").encode("utf-8")
+                                    role_sent = True
+
+                                payload_out = json.dumps(obj, separators=(",", ":"))
+                                yield ("data: " + payload_out + "\n\n").encode("utf-8")
+                            else:
+                                yield chunk
+
+                            # Build reconstructed_response with basic fields
+                            if isinstance(obj.get("id"), str):
+                                reconstructed_response["id"] = obj["id"]
+                            if isinstance(obj.get("object"), str):
+                                reconstructed_response["object"] = obj["object"]
+                            if isinstance(obj.get("created"), (int, float)):
+                                reconstructed_response["created"] = obj["created"]
+                            if isinstance(obj.get("model"), str):
+                                reconstructed_response["model"] = obj["model"]
+
+                            # Track tool_calls from this chunk
+                            if isinstance(obj.get("choices"), list):
+                                for choice in obj["choices"]:
+                                    if isinstance(choice, dict) and "index" in choice:
+                                        idx = choice["index"]
+                                        delta = choice.get("delta", {})
+                                        if isinstance(delta, dict) and "tool_calls" in delta:
+                                            if idx not in tool_calls_accumulator:
+                                                tool_calls_accumulator[idx] = {}
+                                            # Merge tool_calls deltas
+                                            for tc_delta in delta["tool_calls"]:
+                                                if isinstance(tc_delta, dict) and "index" in tc_delta:
+                                                    tc_idx = tc_delta["index"]
+                                                    if tc_idx not in tool_calls_accumulator[idx]:
+                                                        tool_calls_accumulator[idx][tc_idx] = {}
+                                                    # Merge each field
+                                                    for tc_key, tc_value in tc_delta.items():
+                                                        if tc_key == "function" and isinstance(tc_value, dict):
+                                                            # Handle nested function fields
+                                                            if "function" not in tool_calls_accumulator[idx][tc_idx]:
+                                                                tool_calls_accumulator[idx][tc_idx]["function"] = {}
+                                                            for func_key, func_value in tc_value.items():
+                                                                if func_key in tool_calls_accumulator[idx][tc_idx]["function"]:
+                                                                    if isinstance(tool_calls_accumulator[idx][tc_idx]["function"][func_key], str) and isinstance(func_value, str):
+                                                                        tool_calls_accumulator[idx][tc_idx]["function"][func_key] += func_value
+                                                                    else:
+                                                                        tool_calls_accumulator[idx][tc_idx]["function"][func_key] = func_value
+                                                                else:
+                                                                    tool_calls_accumulator[idx][tc_idx]["function"][func_key] = func_value
+                                                        elif tc_key != "index":
+                                                            if isinstance(tool_calls_accumulator[idx][tc_idx].get(tc_key), str) and isinstance(tc_value, str):
+                                                                tool_calls_accumulator[idx][tc_idx][tc_key] += tc_value
+                                                            else:
+                                                                tool_calls_accumulator[idx][tc_idx][tc_key] = tc_value
+
+                            # Track finish_reason from choices
+                            if isinstance(obj.get("choices"), list):
+                                for choice in obj["choices"]:
+                                    if isinstance(choice, dict) and "index" in choice:
+                                        idx = choice["index"]
+                                        finish_reason = choice.get("finish_reason")
+                                        if finish_reason:
+                                            if len(reconstructed_response["choices"]) <= idx:
+                                                reconstructed_response["choices"].append({})
+                                            reconstructed_response["choices"][idx]["finish_reason"] = finish_reason
+
+                            # OpenAI compatibility: inject role into reconstructed_response delta
+                            if ENABLE_OPENAI_STREAM_COMPAT and isinstance(obj.get("choices"), list) and not role_sent:
+                                c0 = obj["choices"][0] if isinstance(obj["choices"][0], dict) else None
+                                if isinstance(c0, dict):
+                                    delta = c0.get("delta", {})
+                                    if isinstance(delta, dict):
+                                        # Inject role into reconstructed_response
+                                        if "delta" not in reconstructed_response["choices"][0]:
+                                            reconstructed_response["choices"][0]["delta"] = {}
+                                        reconstructed_response["choices"][0]["delta"]["role"] = "assistant"
+                                        role_sent = True
+                                        if LOG_MODE == "DEBUG":
+                                            log("INFO", "role_injected_into_reconstructed_response", req_id=req_id, event_num=stream_event_count)
 
                             if upstream_model_seen is None and isinstance(obj.get("model"), str):
                                 upstream_model_seen = obj.get("model")
@@ -988,7 +1186,9 @@ async def chat_completions(req: Request) -> Response:
                             }
                             if final_usage:
                                 final_chunk_obj["usage"] = final_usage
-                            yield (f"data: {json.dumps(final_chunk_obj, separators=(',', ':'))}\n\n").encode("utf-8")
+                            # Re-encode the (possibly modified) chunk for downstream
+                            payload = json.dumps(final_chunk_obj, separators=(",", ":"))
+                            yield (f"data: {payload}\n\n").encode("utf-8")
                             if LOG_MODE == "DEBUG" and not has_seen_regular_content:
                                 log(
                                     "INFO",
@@ -997,199 +1197,170 @@ async def chat_completions(req: Request) -> Response:
                                     placeholder_used=reasoning_placeholder or "(empty)",
                                 )
 
-                        yield transformed_chunk
-            except httpx.ConnectError as e:
-                # Connection error - upstream server unreachable
-                elapsed_ms = (time.perf_counter() - t0) * 1000.0
-                log_connection_error(
-                    req_id=req_id,
-                    error_type="connection_failed",
-                    upstream_url=url,
-                    model=upstream_model,
-                    elapsed_ms=elapsed_ms,
-                    err=str(e)[:300],
-                )
-                
-                # Try fallback chain if available
-                if fallback_attempts and upstream_model not in visited_models:
-                    log(
-                        "INFO",
-                        "connection_error_fallback_attempt",
-                        req_id=req_id,
-                        original_model=upstream_model,
-                        upstream_url=url,
+            except Exception as e:
+                # Use sys.exc_info() to get exception type at runtime (needed for nested generators)
+                exc_type = sys.exc_info()[1].__class__
+                if exc_type is httpx.ConnectError:
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    log_connection_error(
+                        req_id=req_id, error_type="connection_failed",
+                        upstream_url=url, model=upstream_model,
+                        elapsed_ms=elapsed_ms, err=str(e)[:300],
                     )
-                    
-                    for route_opt, fallback_model in fallback_attempts:
-                        if fallback_model not in visited_models:
-                            log(
-                                "INFO",
-                                "fallback_to_next_model",
-                                req_id=req_id,
-                                from_model=upstream_model,
-                                to_model=fallback_model,
-                            )
-                            
-                            upstream_payload["model"] = fallback_model
-                            visited_models.add(fallback_model)
-                            
-                            try:
-                                async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
-                                    r = resp_retry
-                                    resp_retry.raise_for_status()
-                                    
-                                    async for chunk in resp_retry.aiter_bytes():
-                                        if not chunk:
-                                            continue
-                                        yield chunk
-                                    
-                                    return
-                            except Exception as retry_err:
-                                log_fallback_error(
-                                    req_id=req_id,
-                                    from_model=upstream_model,
-                                    to_model=fallback_model,
-                                    error_type="connection_failed",
-                                    err_msg=str(retry_err)[:300],
-                                )
+                    if fallback_attempts and upstream_model not in visited_models:
+                        log("INFO", "connection_error_fallback_attempt", req_id=req_id,
+                            original_model=upstream_model, upstream_url=url)
+                        for route_opt, fallback_model in fallback_attempts:
+                            if fallback_model not in visited_models:
+                                log("INFO", "fallback_to_next_model", req_id=req_id,
+                                    from_model=upstream_model, to_model=fallback_model)
+                                upstream_payload["model"] = fallback_model
                                 visited_models.add(fallback_model)
-                    
-                    yield (f"data: {json.dumps({'error': {'message': 'Connection failed - all upstreams unreachable'}})}\n\n").encode("utf-8")
-                    yield b"data: [DONE]\n\n"
-                else:
-                    yield (f"data: {json.dumps({'error': {'message': 'Connection failed', 'details': str(e)[:200]}})}\n\n").encode("utf-8")
-                    yield b"data: [DONE]\n\n"
-                    
-            except httpx.ConnectTimeout as e:
-                # Connection timeout
-                elapsed_ms = (time.perf_counter() - t0) * 1000.0
-                log_connection_error(
-                    req_id=req_id,
-                    error_type="connection_timeout",
-                    upstream_url=url,
-                    model=upstream_model,
-                    elapsed_ms=elapsed_ms,
-                    err=str(e)[:300],
-                )
-                
-                if fallback_attempts and upstream_model not in visited_models:
-                    log(
-                        "INFO",
-                        "timeout_error_fallback_attempt",
-                        req_id=req_id,
-                        original_model=upstream_model,
-                        upstream_url=url,
-                    )
-                    
-                    for route_opt, fallback_model in fallback_attempts:
-                        if fallback_model not in visited_models:
-                            log(
-                                "INFO",
-                                "fallback_to_next_model",
-                                req_id=req_id,
-                                from_model=upstream_model,
-                                to_model=fallback_model,
-                            )
-                            
-                            upstream_payload["model"] = fallback_model
-                            visited_models.add(fallback_model)
-                            
-                            try:
-                                async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
-                                    r = resp_retry
-                                    resp_retry.raise_for_status()
-                                    
-                                    async for chunk in resp_retry.aiter_bytes():
-                                        if not chunk:
+                                try:
+                                    async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
+                                        r = resp_retry
+                                        if resp_retry.status_code >= 400:
+                                            retry_bytes = await resp_retry.aread()
+                                            retry_text = retry_bytes.decode("utf-8", errors="replace")
+                                            log_fallback_error(req_id=req_id, from_model=upstream_model,
+                                                to_model=fallback_model, error_type="http_status_error",
+                                                err_msg=retry_text[:300])
+                                            visited_models.add(fallback_model)
                                             continue
-                                        yield chunk
-                                    
-                                    return
-                            except Exception as retry_err:
-                                log_fallback_error(
-                                    req_id=req_id,
-                                    from_model=upstream_model,
-                                    to_model=fallback_model,
-                                    error_type="connection_timeout",
-                                    err_msg=str(retry_err)[:300],
-                                )
+                                        async for chunk in resp_retry.aiter_bytes():
+                                            if not chunk: continue
+                                            yield chunk
+                                        return
+                                except Exception as retry_err:
+                                    log_fallback_error(req_id=req_id, from_model=upstream_model,
+                                        to_model=fallback_model, error_type="connection_failed",
+                                        err_msg=str(retry_err)[:300])
+                                    visited_models.add(fallback_model)
+                        yield (f"data: {json.dumps({'error': {'message': 'Connection failed - all upstreams unreachable'}})}\n\n").encode("utf-8")
+                        yield b"data: [DONE]\n\n"
+                    else:
+                        yield (f"data: {json.dumps({'error': {'message': 'Connection failed', 'details': str(e)[:200]}})}\n\n").encode("utf-8")
+                        yield b"data: [DONE]\n\n"
+                elif exc_type is httpx.ConnectTimeout:
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    log_connection_error(
+                        req_id=req_id, error_type="connection_timeout",
+                        upstream_url=url, model=upstream_model,
+                        elapsed_ms=elapsed_ms, err=str(e)[:300],
+                    )
+                    if fallback_attempts and upstream_model not in visited_models:
+                        log("INFO", "timeout_error_fallback_attempt", req_id=req_id,
+                            original_model=upstream_model, upstream_url=url)
+                        for route_opt, fallback_model in fallback_attempts:
+                            if fallback_model not in visited_models:
+                                log("INFO", "fallback_to_next_model", req_id=req_id,
+                                    from_model=upstream_model, to_model=fallback_model)
+                                upstream_payload["model"] = fallback_model
                                 visited_models.add(fallback_model)
-                    
-                    yield (f"data: {json.dumps({'error': {'message': 'Connection timeout - all upstreams timed out'}})}\n\n").encode("utf-8")
-                    yield b"data: [DONE]\n\n"
-                else:
-                    yield (f"data: {json.dumps({'error': {'message': 'Connection timeout', 'details': str(e)[:200]}})}\n\n").encode("utf-8")
-                    yield b"data: [DONE]\n\n"
-                    
-            except httpx.HTTPStatusError as e:
-                err_text = e.response.text
-                log(
-                    "ERROR",
-                    "upstream_http_error_stream",
-                    req_id=req_id,
-                    status=e.response.status_code,
-                    body=err_text[:500],
-                    did_summarize=did_summarize,
-                    passthrough=is_passthrough,
-                )
-                
-                # Try fallback chain if available and we haven't tried all options
-                if fallback_attempts and upstream_model not in visited_models:
-                    log(
-                        "INFO",
-                        "upstream_error_fallback_attempt",
-                        req_id=req_id,
-                        original_model=upstream_model,
-                        err=str(e),
-                    )
-                    
-                    # Find next fallback option that hasn't been tried
-                    for route_opt, fallback_model in fallback_attempts:
-                        if fallback_model not in visited_models:
-                            log(
-                                "INFO",
-                                "fallback_to_next_model",
-                                req_id=req_id,
-                                from_model=upstream_model,
-                                to_model=fallback_model,
-                            )
-                            
-                            # Update payload with new model
-                            upstream_payload["model"] = fallback_model
-                            visited_models.add(fallback_model)
-                            
-                            # Retry the request with the fallback model
-                            try:
-                                async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
-                                    r = resp_retry
-                                    resp_retry.raise_for_status()
-                                    
-                                    # Stream from retry response
-                                    async for chunk in resp_retry.aiter_bytes():
-                                        if not chunk:
+                                try:
+                                    async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
+                                        r = resp_retry
+                                        if resp_retry.status_code >= 400:
+                                            retry_bytes = await resp_retry.aread()
+                                            retry_text = retry_bytes.decode("utf-8", errors="replace")
+                                            log_fallback_error(req_id=req_id, from_model=upstream_model,
+                                                to_model=fallback_model, error_type="http_status_error",
+                                                err_msg=retry_text[:300])
+                                            visited_models.add(fallback_model)
                                             continue
-                                        
-                                        yield chunk
-                                
-                                # Success with fallback - return early to avoid error response
-                                return
-                            except Exception as retry_err:
+                                        async for chunk in resp_retry.aiter_bytes():
+                                            if not chunk: continue
+                                            yield chunk
+                                        return
+                                except Exception as retry_err:
+                                    log_fallback_error(req_id=req_id, from_model=upstream_model,
+                                        to_model=fallback_model, error_type="connection_timeout",
+                                        err_msg=str(retry_err)[:300])
+                                    visited_models.add(fallback_model)
+                        yield (f"data: {json.dumps({'error': {'message': 'Connection timeout - all upstreams timed out'}})}\n\n").encode("utf-8")
+                        yield b"data: [DONE]\n\n"
+                    else:
+                        yield (f"data: {json.dumps({'error': {'message': 'Connection timeout', 'details': str(e)[:200]}})}\n\n").encode("utf-8")
+                        yield b"data: [DONE]\n\n"
+                elif exc_type is httpx.HTTPStatusError:
+                    err_text = ""
+                    try:
+                        err_bytes = await e.response.aread()
+                        err_text = err_bytes.decode("utf-8", errors="replace")
+                    except Exception as read_err:
+                        err_text = f"<unable to read upstream error body: {read_err}>"
+
+                    log(
+                        "ERROR",
+                        "upstream_http_error_stream",
+                        req_id=req_id,
+                        status=e.response.status_code,
+                        body=err_text[:500],
+                        did_summarize=did_summarize,
+                        passthrough=is_passthrough,
+                    )
+                    if fallback_attempts and upstream_model not in visited_models:
+                        log(
+                            "INFO",
+                            "upstream_error_fallback_attempt",
+                            req_id=req_id,
+                            original_model=upstream_model,
+                            err=str(e),
+                        )
+                        for route_opt, fallback_model in fallback_attempts:
+                            if fallback_model not in visited_models:
                                 log(
-                                    "WARN",
-                                    "fallback_retry_failed",
+                                    "INFO",
+                                    "fallback_to_next_model",
                                     req_id=req_id,
                                     from_model=upstream_model,
                                     to_model=fallback_model,
-                                    err=str(retry_err),
                                 )
+                                upstream_payload["model"] = fallback_model
                                 visited_models.add(fallback_model)
-                    
-                    # All fallbacks exhausted - return error
-                    yield (f"data: {json.dumps({'error': {'message': 'Upstream error', 'details': err_text}})}\n\n").encode("utf-8")
+                                try:
+                                    async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp_retry:
+                                        r = resp_retry
+                                        if resp_retry.status_code >= 400:
+                                            retry_bytes = await resp_retry.aread()
+                                            retry_text = retry_bytes.decode("utf-8", errors="replace")
+                                            log(
+                                                "WARN",
+                                                "fallback_retry_failed",
+                                                req_id=req_id,
+                                                from_model=upstream_model,
+                                                to_model=fallback_model,
+                                                err=retry_text[:300],
+                                            )
+                                            visited_models.add(fallback_model)
+                                            continue
+                                        async for chunk in resp_retry.aiter_bytes():
+                                            if not chunk:
+                                                continue
+                                            yield chunk
+                                    return
+                                except Exception as retry_err:
+                                    log(
+                                        "WARN",
+                                        "fallback_retry_failed",
+                                        req_id=req_id,
+                                        from_model=upstream_model,
+                                        to_model=fallback_model,
+                                        err=str(retry_err),
+                                    )
+                                    visited_models.add(fallback_model)
+
+                    err_payload = {
+                        "error": {
+                            "message": "Upstream error",
+                            "details": err_text[:2000],
+                        }
+                    }
+                    yield ("data: " + json.dumps(err_payload, separators=(",", ":")) + "\n\n").encode("utf-8")
                     yield b"data: [DONE]\n\n"
                 else:
-                    # No fallback available or all tried - return error
-                    yield (f"data: {json.dumps({'error': {'message': 'Upstream error', 'details': err_text}})}\n\n").encode("utf-8")
+                    raise
+
                     yield b"data: [DONE]\n\n"
             except Exception as e:
                 log(
@@ -1272,6 +1443,31 @@ async def chat_completions(req: Request) -> Response:
                         avg_message_length=avg_message_length,
                         summary_decision_reason=plan.reason if not is_passthrough and not skip_summary_for_tools else "passthrough"
                     )
+
+                    # Add accumulated tool_calls to reconstructed_response
+                    if tool_calls_accumulator and reconstructed_response["choices"]:
+                        final_tool_calls = []
+                        for idx in sorted(tool_calls_accumulator.keys()):
+                            tc_dict = tool_calls_accumulator[idx]
+                            for tc_idx in sorted(tc_dict.keys()):
+                                final_tool_calls.append({
+                                    "index": tc_idx,
+                                    **tc_dict[tc_idx]
+                                })
+                        if final_tool_calls:
+                            if len(reconstructed_response["choices"]) <= 0:
+                                reconstructed_response["choices"] = [{}]
+                            reconstructed_response["choices"][0]["tool_calls"] = final_tool_calls
+                            # Preserve existing delta and merge tool_calls into it
+                            if "delta" not in reconstructed_response["choices"][0]:
+                                reconstructed_response["choices"][0]["delta"] = {}
+                            # Add tool_calls to delta without overwriting existing fields like role
+                            if "tool_calls" not in reconstructed_response["choices"][0]["delta"]:
+                                reconstructed_response["choices"][0]["delta"]["tool_calls"] = final_tool_calls
+                            # Ensure role is present (double-check)
+                            if "role" not in reconstructed_response["choices"][0]["delta"]:
+                                reconstructed_response["choices"][0]["delta"]["role"] = "assistant"
+
                     if LOG_MODE == "DEBUG":
                         log(
                             "INFO",
@@ -1290,6 +1486,14 @@ async def chat_completions(req: Request) -> Response:
                             completion_tokens_source=completion_tokens_source,
                             completion_tokens=completion_tokens_u,
                             assistant_text=full_text,
+                            response_body=reconstructed_response,
+                        )
+                        # Log the final response that will be sent downstream
+                        log(
+                            "INFO",
+                            "response_sent_downstream",
+                            req_id=req_id,
+                            response_body=reconstructed_response,
                         )
                     elif LOG_MODE == "MEDIUM":
                         log(
@@ -1597,7 +1801,6 @@ async def chat_completions(req: Request) -> Response:
             ttft_ms_non_stream = elapsed_ms * 0.3
         
         # Categorize the error type
-        import httpx
         error_type = "unknown"
         err_msg = str(e)[:500]
         

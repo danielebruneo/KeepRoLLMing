@@ -17,6 +17,8 @@ export LOG_LEVEL="DEBUG"
 # export LOG_LEVEL="BASIC_PLAIN"
 
 export LOG_JSON=1
+# Set to 0 to show full raw response bodies (no truncation)
+export LOG_SNIP_CHARS=0
 
 # =========================
 # CONFIGURATION FILE

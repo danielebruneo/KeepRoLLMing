@@ -456,6 +456,16 @@ def _format_plain(rec: Dict[str, Any]) -> str:
         if assistant:
             parts.append(_c("│   assistant:", ANSI_DIM, ANSI_GRAY))
             parts.append(_indent_block(assistant, prefix="│     "))
+        # Show full reconstructed response body JSON when LOG_SNIP_CHARS=0
+        if LOG_SNIP_CHARS == 0:
+            response_body = rec.get("response_body")
+            if response_body:
+                parts.append(_c("│   response_body:", ANSI_DIM, ANSI_YELLOW))
+                try:
+                    raw_json = json.dumps(response_body, indent=2, ensure_ascii=False)
+                    parts.append(_indent_block(raw_json, prefix="│     "))
+                except Exception:
+                    pass
     elif msg == "stream_progress":
         meta = _fmt_meta(
             model=rec.get("upstream_model"),
@@ -575,7 +585,7 @@ def _log_to_file(level: str, msg: str, **fields: Any) -> None:
         pass
 
 
-MAX_BODY_CHARS = 4000
+MAX_BODY_CHARS = 10_000_000  # capture up to 10MB of response bodies for full logging
 
 
 def _snip(s: str | None, limit: int = MAX_BODY_CHARS) -> str:
