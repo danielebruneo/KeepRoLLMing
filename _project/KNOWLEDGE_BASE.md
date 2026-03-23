@@ -445,6 +445,33 @@ The preferred cognitive sequence is:
 - [LEARN](../../_skills/LEARN/SKILL-LEARN.md) handles broader consolidation and may recommend THINK or ADAPT.
 - [ADAPT](../../_skills/ADAPT/SKILL-ADAPT.md) is allowed to change CATALYST repository artifacts when the current scope is `CATALYST` or `META`, as long as the change is small, local, and low-risk.
 
+## Learning Reports & Analysis
+
+### Recent Learning Sessions
+
+**2026-03-23: CATALYST Core Skills Integration**
+- Added 9 new CATALYST core skills
+- Enhanced KNOWLEDGE_BASE.md with cognitive workflow
+- See `_agent/learning_reports/learn_session_20260323_catalyst_skills.md` for details
+
+**2026-03-21: Performance Dashboard Enhancement**
+- Added interactive key bindings (q, c, s)
+- Implemented terminal raw mode handling
+- Added backup and clear functionality
+- See `_agent/learning_reports/perf_dashboard_enhancement_20260321.md` for details
+
+**2026-03-22: Feedback Analysis - Route Tracking**
+- Identified server restart timing issues
+- Documented venv Python usage patterns
+- Hash ID vs route name clarification
+- See `_agent/learning_reports/feedback_analysis.md` for details
+
+**2026-03-16: CATALYST Migration Lessons**
+- Git directory handling best practices
+- Iterative workflow requirements
+- Learning persistence patterns
+- See `_agent/learning_reports/` for full session reports
+
 ## Related Skills
 
 - [ADD-FEATURE](../_skills/ADD-FEATURE/SKILL-ADD-FEATURE.md)

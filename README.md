@@ -15,33 +15,20 @@ If an agent runner passes through this README, it should continue into [QWEN.md]
 
 ## Project Overview
 
-The Keeprollming Orchestrator is designed to handle long conversations that would otherwise exceed the context window limits of language models. It implements a rolling summary mechanism that periodically summarizes conversation history while preserving the most recent user messages.
+The Keeprollming Orchestrator is a FastAPI proxy that adds **rolling-summary** support to OpenAI-compatible backends, preventing context overflow in long conversations.
 
-### Key Features
+**Key Features:**
 - OpenAI-compatible endpoint: `POST /v1/chat/completions`
-- Support for multiple profiles (`local/quick`, `local/main`, `local/deep`) with different model configurations
-- Rolling-summary support to manage context overflow
-- Passthrough mode for direct routing without summarization
-- Streaming proxy (SSE) support
-- Token accounting and context management
+- Rolling-summary mechanism with configurable profiles
+- Passthrough mode and streaming proxy (SSE) support
+- Route-based configuration with inheritance chains
+- Performance monitoring and benchmarking tools
 
-### Architecture
-1. **FastAPI Application** (`keeprollming/app.py`) - Handles incoming requests, processes them through the orchestrator logic, and sends responses back to the client.
-2. **Configuration Management** (`keeprollming/config.py`) - Uses a dataclass-based system for profiles with different main and summary models.
-3. **Orchestrator Logic** - Handles token counting, message splitting, and summarization as needed.
-4. **Upstream Client** (`keeprollming/upstream.py`) - Manages communication with the OpenAI-compatible backend using `httpx.AsyncClient`.
-5. **Rolling Summary Module** (`keeprollming/rolling_summary.py`) - Implements the core logic for handling context overflow and summary generation.
-6. **Summary Cache** (`keeprollming/summary_cache.py`) - Provides caching mechanisms to reuse previously generated summaries for efficiency.
+**Architecture:** See [_project/KNOWLEDGE_BASE.md](_project/KNOWLEDGE_BASE.md) for complete component breakdown.
 
 ## Configuration
 
-Configuration is managed via:
-- `config.yaml` file with profiles and model aliases
-- Environment variables that override default values
-- Available profiles:
-  - `local/quick` (qwen2.5-3b-instruct main, qwen2.5-1.5b-instruct summary)
-  - `local/main` (qwen2.5-v1-7b-instruct main, qwen2.5-3b-instruct summary)
-  - `local/deep` (qwen/qwen3.5-35b-a3b main, qwen2.5-7b-instruct summary)
+Configuration via `config.yaml` with profiles and model aliases. See [_docs/CONFIGURATION.md](_docs/CONFIGURATION.md) for full documentation.
 
 ## Configuration Validation
 
@@ -79,25 +66,7 @@ python validate_config.py --config config.yaml full-check
 
 ## Performance Benchmarking
 
-This project includes a benchmark tool to test route performance with predefined prompts:
-
-```bash
-# Run benchmarks on all routes
-python benchmark_routes.py --config config.yaml --output benchmarks/
-
-# Custom timeout and verbose output
-python benchmark_routes.py --config config.yaml -t 120 -v
-```
-
-### Benchmark Features
-- Tests multiple prompt types (story, technical explanation, code review)
-- Measures latency, throughput (tokens/sec), and token counts
-- **New metrics:**
-  - `prompt_tps` - Tokens per second during prompt processing (before first token)
-  - `completion_tps` - Tokens per second during generation (after first token)
-  - `tps` - Overall tokens per second for entire request (prompt + completion combined)
-- Saves individual route results as JSON files
-- Generates aggregated summary statistics
+See [_project/KNOWLEDGE_BASE.md](_project/KNOWLEDGE_BASE.md) for benchmarking details.
 
 ### CLI Options
 
