@@ -92,6 +92,9 @@ It is NOT responsible for:
 - `_docs/architecture/OVERVIEW.md`
 - `_docs/architecture/INVARIANTS.md`
 - `_docs/decisions/DECISIONS.md`
+- `_project/KNOWLEDGE_BASE.md` - Comprehensive project knowledge
+- `_project/SKILLS-INDEX.md` - CATALYST skills catalog
+- `CATALYST.md` - CATALYST workflow specification
 
 ## Repository Structure
 - `keeprollming/` - Core application modules (app.py, config.py, rolling_summary.py, etc.)
@@ -100,9 +103,25 @@ It is NOT responsible for:
 - `config.yaml` - Configuration file
 - `requirements.txt` - Production dependencies
 - `requirements-dev.txt` - Development dependencies
-- `_docs/` - Documentation directory (including CONFIGURATION.md)
+- `_docs/` - Documentation directory (CONFIGURATION.md, PERFORMANCE.md, TESTING.md, etc.)
 - `_prompts/` - Summary prompt templates (classic, curated, structured, incremental)
-- `_project/TODOS.md` - Project enhancement wishlist for long-term goals
+- `_agent/` - Agent runtime state and knowledge
+  - `_agent/state/` - Active task, handoff, scope
+  - `_agent/knowledge/` - Project knowledge base, repo map
+  - `_agent/learning_reports/` - Session-specific learning documentation
+- `_project/` - Project-specific documentation and skills
+  - `_project/_skills/` - Project skills (IMPROVE-SKILLS)
+  - `_project/MAP.md` - Repository structure map
+  - `_project/KNOWLEDGE_BASE.md` - Comprehensive knowledge base
+  - `_project/TODOS.md` - Project enhancement wishlist
+- `_agent/overlay/` - Agent overlay skills and configuration
+- `.catalyst/` - CATALYST core skills and configuration
+  - `.catalyst/_skills/` - 46 core CATALYST skills
+  - `CATALYST.md` - CATALYST workflow specification
+  - `AGENTS.md` - Agent workflow specification
+- `.qwen/skills/` - Runtime skill registry (auto-generated symlinks)
+- `perf_dashboard.py` - Real-time performance monitoring dashboard
+- `benchmark_routes.py` - Route benchmarking tool
 
 ## Key Environment Variables
 - `LOG_MODE` (DEBUG, MEDIUM, BASIC, BASIC_PLAIN) - Logging verbosity level
