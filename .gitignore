@@ -38,3 +38,6 @@ __performance_logs/
 __summary_cache/
 .obsidian/
 *.zip
+config.yaml
+*.log
+server.log
