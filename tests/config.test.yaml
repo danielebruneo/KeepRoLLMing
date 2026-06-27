@@ -1,0 +1,214 @@
+# Test configuration for keeprollming orchestrator
+# Updated for current architecture (extends, filter_chain, upstream_url per route)
+
+routes:
+  # Base profiles
+  base/quick:
+    model: "test-quick-model"
+    summary_model: "test-summary-1.5b"
+    ctx_len: 2048
+    max_tokens: 1024
+    summary_enabled: true
+
+  base/main:
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    summary_enabled: true
+
+  base/deep:
+    model: "test-deep-model"
+    summary_model: "test-summary-7b"
+    ctx_len: 4096
+    max_tokens: 2048
+    summary_enabled: true
+
+  # Quick route
+  local/quick:
+    extends: base/quick
+    pattern: "local/quick"
+    request_timeout: 2.0
+
+  # Main route
+  local/main:
+    extends: base/main
+    pattern: "local/main"
+
+  # Deep route with all filters
+  local/deep:
+    extends: base/deep
+    pattern: "local/deep"
+    filter_chain:
+      order: [system_prompt, model_nudge, model_tool_loop_stopper]
+      filters:
+        system_prompt:
+          enabled: true
+          prompt: "Test system prompt"
+          override: false
+        model_nudge:
+          enabled: true
+          trigger_patterns: [":$"]
+          nudge_message: "Continue."
+          max_nudge_attempts: 3
+
+        model_tool_loop_stopper:
+          enabled: true
+          max_attempts: 1
+
+  # Passthrough route for pass/* patterns
+  passthrough:
+    pattern: "pass/*"
+    model: null
+    summary_model: null
+    ctx_len: 8192
+    max_tokens: 4096
+    passthrough_enabled: true
+    backend_model_pattern: "${1}"
+
+  # Production-like route matching code/red config
+  code/red:
+    extends: base/deep
+    pattern: "code/red"
+    summary_enabled: false
+    request_timeout: 600.0
+    filter_chain:
+      order: [model_nudge, model_tool_loop_stopper]
+      filters:
+        model_nudge:
+          enabled: true
+          trigger_patterns:
+            - ":$"
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Ora\b[\s\S]*\.$'
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Devo\b[\s\S]*\.$'
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Basta\b.*\.$'
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*((?:\S+\s+){0,4}\S+)\.$'
+          action: nudge
+          nudge_message: "Continue."
+          max_nudge_attempts: 3
+        model_tool_loop_stopper:
+          enabled: true
+          max_attempts: 1
+          tls_message: >
+            You've already executed this tool call with the same arguments.
+            Please proceed with the next step or try a different approach.
+          fallback_message: >
+            I notice I'm repeating the same tool call. Let me try a different approach.
+
+  # Internal test routes with filter chains (for e2e pipeline tests)
+  internal/sp:
+    pattern: "internal/sp"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filter_chain:
+      order: [system_prompt]
+      filters:
+        system_prompt:
+          enabled: true
+          prompt: "/nothink reply in french"
+          override: false
+
+  internal/full:
+    pattern: "internal/full"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filter_chain:
+      order: [system_prompt, model_nudge]
+      filters:
+        system_prompt:
+          enabled: true
+          prompt: "/nothink"
+          override: false
+        model_nudge:
+          enabled: true
+          trigger_patterns: [":$"]
+          nudge_message: "Continue."
+          max_nudge_attempts: 3
+
+  # ── Production-like routes with tool_rewrite + nudge (extends inheritance) ──
+
+  # Parent: tool_rewrite + model_nudge chain
+  chain/tr-nudge:
+    pattern: "chain/tr-nudge/*"
+    model: "test-deep-model"
+    summary_enabled: false
+    ctx_len: 8192
+    max_tokens: 4096
+    filter_chain:
+      order: [tool_rewrite, model_nudge]
+      filters:
+        tool_rewrite:
+          enabled: true
+        model_nudge:
+          enabled: true
+          trigger_patterns:
+            - ":$"
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
+          action: nudge
+          nudge_message: "Continue."
+          max_nudge_attempts: 3
+
+  # Child: inherits chain/tr-nudge via extends (production pattern)
+  chain/tr-nudge/inherited:
+    extends: chain/tr-nudge
+    pattern: "chain/tr-nudge/inherited/*"
+
+  # Production-like: tool_rewrite + tls + nudge
+  chain/tr-tls-nudge:
+    pattern: "chain/tr-tls-nudge/*"
+    model: "test-deep-model"
+    summary_enabled: false
+    ctx_len: 8192
+    max_tokens: 4096
+    filter_chain:
+      order: [tool_rewrite, model_tool_loop_stopper, model_nudge]
+      filters:
+        tool_rewrite:
+          enabled: true
+        model_tool_loop_stopper:
+          enabled: true
+          max_attempts: 1
+          tls_message: "You already tried this. Try something different."
+          fallback_message: "Let me try a different approach."
+        model_nudge:
+          enabled: true
+          trigger_patterns:
+            - ":$"
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
+            - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
+          action: nudge
+          nudge_message: "Continue."
+          max_nudge_attempts: 3
+
+  # Route with Timestamp filter for E2E testing
+  internal/timestamp:
+    pattern: "internal/timestamp"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filter_chain:
+      order: [timestamp]
+      filters:
+        timestamp:
+          enabled: true
+          template: "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
+          timezone: "UTC"
+
+  # Catch-all for any other model names (MUST be last to avoid shadowing)
+  catchall:
+    pattern: "*"
+    model: null
+    ctx_len: 8192
+    max_tokens: 4096
+    passthrough_enabled: true
+    backend_model_pattern: "${1}"
+
+summary_cache_dir: "/tmp/summary_cache_test"

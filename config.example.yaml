@@ -1,0 +1,35 @@
+# KeepRoLLMing — Minimal Configuration Example
+# ==============================================
+# Copy this file to config.yaml and adjust for your setup.
+# A complete example with all options is in docs/examples/config.full.example.yaml
+
+routes:
+  # Local backend (llama.cpp, vLLM, etc.)
+  local/chat:
+    model: "qwen2.5-7b"
+    upstream_url: "http://127.0.0.1:8080"
+    max_tokens: 8192
+    ctx_len: 32768
+
+  # Remote OpenAI-compatible API (DeepSeek, OpenRouter, etc.)
+  remote/deepseek:
+    model: "deepseek-chat"
+    upstream_url: "https://api.deepseek.com"
+    api_key: "sk-your-api-key-here"            # → Authorization: Bearer
+    max_tokens: 8192
+
+  # Route with filters
+  code/assistant:
+    extends: [local/chat]
+    filter_chain:
+      timestamp:
+        enabled: true                           # Adds timestamp footer
+      model_nudge:
+        enabled: true                           # Detects lazy responses
+
+# Global defaults
+default_ctx_len: 8192
+default_max_completion_tokens: 4096
+
+# Logging
+LOG_MODE: BASIC_PLAIN                          # or DEBUG for verbose
