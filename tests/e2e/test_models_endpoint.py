@@ -112,7 +112,7 @@ class TestModelsEndpoint:
             assert "summary_enabled" in cfg, f"Missing summary_enabled in config for {model['id']}"
             assert "pattern" in cfg, f"Missing pattern in config for {model['id']}"
             
-            # Route with filter_chain should have filters listed
+            # Route with filters should have filters listed
             if model["id"] in ["local/deep"]:
                 assert "filters" in cfg, f"Missing filters in config for {model['id']}"
                 assert "model_nudge" in cfg.get("filters", [])

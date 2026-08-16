@@ -13,9 +13,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 print("=== Testing Application Startup Logs ===")
 
-# Set logging mode explicitly for this test
-os.environ['LOG_MODE'] = 'DEBUG'
-
 try:
     # Import config and logger modules
     from keeprollming.config import (

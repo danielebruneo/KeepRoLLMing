@@ -8,7 +8,7 @@ This module acts as a facade over the modularized package structure.
 from __future__ import annotations
 
 from .constants import (
-    LOG_MODE, LOG_MODE_CHOICES, LOG_SNIP_CHARS, BASIC_SNIP_CHARS,
+    LOG_SNIP_CHARS, BASIC_SNIP_CHARS,
     LOG_STREAM_CHUNKS, LOG_PLAIN_COLORS, LOG_PLAIN_WRAP_WIDTH,
     _PLAIN_LAST_REQ_ID, _PLAIN_CLOSED_REQ_IDS,
 )
@@ -39,9 +39,6 @@ from .formatters import (
     _fmt_usage, _fmt_tool_calls_yaml, _fmt_tool_result_yaml,
 )
 
-# ── Plain-text formatting (from plain_text.py) ─────────────────────
-from .plain_text import format_plain as _format_plain  # internal name used by logger.py
-
 # ── Server events (from server_events.py) ──────────────────────────
 from .server_events import (
     setup_server_logging, get_server_logger,
@@ -52,12 +49,11 @@ from .server_events import (
     log_request_error, log_connection_error, log_fallback_error,
 )
 
-# ── Filter logging (from filter_logger.py) ─────────────────────────
-from .filter_logger import (
-    FilterLogger,
-    get_filter_logger,
-    reset_filter_loggers,
-)
+# ── Filter logging (Phase P6: FilterLogger shim retired) ───────────
+# The FilterLogger class and get_filter_logger() are retired. All filters
+# now use RuntimeEvent emission via orchestrator/filters/events.py helpers.
+# Per-filter-file views can be recreated using Projector selectors on
+# source.domain="filter" events.
 
 # ── Main dispatcher (from logger.py — imported at bottom after all deps) ──
 # The main `log()` function and `_should_log` are defined in logger.py itself.

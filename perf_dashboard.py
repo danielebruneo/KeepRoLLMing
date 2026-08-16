@@ -17,12 +17,24 @@ import select
 import fcntl
 import termios
 import threading
+import math
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # Terminal width configuration - adjust this to fit your terminal
 WIDTH = 130  # Total terminal width in characters
+
+
+def _format_number(value: Any, precision: int = 1) -> str:
+    """Render unavailable or non-finite metric values without inventing zero."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "n/a"
+    if not math.isfinite(numeric):
+        return "n/a"
+    return f"{numeric:.{precision}f}"
 
 
 class PerformanceDashboard:
@@ -49,7 +61,7 @@ class PerformanceDashboard:
             with open(self.summary_path, 'r') as f:
                 data = yaml.safe_load(f)
 
-            self.models = data.get('models', [])
+            self.models = data.get('models', []) if isinstance(data, dict) else []
             return True
         except Exception:
             return False
@@ -99,6 +111,13 @@ class PerformanceDashboard:
         comp_tokens_stats = model.get('completion_tokens', {})
         prompt_tokens_stats = model.get('prompt_tokens', {})
 
+        # ExecutionUsage metrics (Phase 12)
+        upstream_stats = model.get('upstream_attempts', {})
+        reported_stats = model.get('usage_reported_attempts', {})
+        recovery_stats = model.get('recovery_count', {})
+        ratio_stats = model.get('retry_amplification_ratio', {})
+        usage_complete_pct = model.get('usage_complete_pct', 0.0)
+
         # Truncate model name to fit column width
         route_width = 18
         hierarchy_width = 42
@@ -114,12 +133,9 @@ class PerformanceDashboard:
         model_name = model.get('model', 'unknown')[:model_width]
         requests = model.get('requests', 0)
 
-        # Calculate requests per hour based on average elapsed time
-        elapsed_ms_avg = elapsed_ms_stats.get('avg', None) if elapsed_ms_stats else None
-        if elapsed_ms_avg and elapsed_ms_avg > 0:
-            req_per_hour = (3600000 / elapsed_ms_avg) * requests
-        else:
-            req_per_hour = 0.0
+        # This is an observed completion rate across the recorded time window,
+        # not a capacity estimate derived from request count and mean latency.
+        req_per_hour = model.get('requests_per_hour')
 
         tps_avg = stats.get('avg', 0) or 0
         comp_tps_avg = comp_stats.get('avg', 0) or 0
@@ -129,12 +145,17 @@ class PerformanceDashboard:
         comp_tokens_avg = comp_tokens_stats.get('avg', 0) or 0
         prompt_tokens_avg = prompt_tokens_stats.get('avg', 0) or 0
 
+        # ExecutionUsage values
+        upstream_avg = upstream_stats.get('avg', 0) or 0
+        recovery_avg = recovery_stats.get('avg', 0) or 0
+        ratio_avg = ratio_stats.get('avg')
+
         row = (
             f"{route_name:<{route_width}} | "
             f"{hierarchy_str:<{hierarchy_width}} | "
             f"{model_name:<{model_width}} | "
             f"Reqs: {requests:>3} | "
-            f"Reqs/h: {req_per_hour:>7.1f}"
+            f"Reqs/h: {_format_number(req_per_hour):>7}"
         )
         
         # Add data availability indicator
@@ -145,6 +166,13 @@ class PerformanceDashboard:
 
         print("=" * WIDTH)
         print(row)
+        # Add ExecutionUsage summary on next line
+        if requests > 0:
+            print(
+                f"   └─ Upstream: {upstream_avg:.1f} avg | Recovery: {recovery_avg:.1f} | "
+                f"Retry Amp: {_format_number(ratio_avg, 2)} | "
+                f"Usage Complete: {usage_complete_pct*100:.0f}%"
+            )
         print("=" * WIDTH)
 
     def draw_model_detailed_stats(self, model: Dict[str, Any]):
@@ -163,6 +191,8 @@ class PerformanceDashboard:
 
         # Helper to extract all stats for a metric type
         def get_stats(metric_dict, key='avg'):
+            if not metric_dict:
+                return 0
             return metric_dict.get(key, 0) or 0
 
         # Row: Avg values across all metrics
@@ -174,6 +204,7 @@ class PerformanceDashboard:
         # Row: Max values across all metrics
         print(f"{'Max':<6} | {get_stats(stats, 'max'):>10.2f} | {get_stats(comp_stats, 'max'):>10.2f} | {get_stats(prompt_stats, 'max'):>12.2f} | {(elapsed_ms_stats.get('max', 0) or 0)/1000:>15.1f} | {get_stats(ttft_stats, 'max'):>12.2f} | {get_stats(comp_tokens_stats, 'max'):>11.0f} | {get_stats(prompt_tokens_stats, 'max'):>13.0f}")
         print("-" * WIDTH)
+
 
     def draw_footer(self, routes: List[Dict[str, Any]]):
         """Draw dashboard footer with summary stats."""

@@ -1,63 +1,49 @@
-# Getting Started
+# Getting started
 
-## Installation
+## Install
+
+KeepRoLLMing requires Python 3.11 or newer.
 
 ```bash
 git clone https://github.com/danielebruneo/KeepRoLLMing.git
 cd KeepRoLLMing
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+bash scripts/setup.sh
 ```
 
-## First Run (with fake backend)
+This creates `.venv` and installs the package in editable mode. To select a
+specific interpreter, set `KRM_PYTHON`, for example
+`KRM_PYTHON=python3.12 bash scripts/setup.sh`.
+
+## Verify the proxy without an LLM
 
 ```bash
 bash scripts/start-with-fake.sh
 ```
 
-This starts both a fake LLM backend and the orchestrator. Test it:
+The script starts a fake upstream and the proxy. In another terminal:
 
 ```bash
 curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "content-type: application/json" \
-  -d '{"model":"internal/full","messages":[{"role":"user","content":"Hello"}],"stream":true}'
+  -H 'content-type: application/json' \
+  -d '{"model":"internal/fake","messages":[{"role":"user","content":"Hello"}],"stream":false}'
 ```
 
-## Connecting Your LLM
+`internal/fake` intentionally enables `system_prompt`, `model_nudge`, and
+`model_tool_loop_stopper` using the same canonical `filters:` syntax as a real
+configuration.
+
+## Connect a real backend
 
 ```bash
-export UPSTREAM_BASE_URL="http://127.0.0.1:1234"
-python keeprollming.py --port 8000
+cp config.example.yaml config.yaml
+# Edit base/local.model and base/local.upstream_url.
+./krm serve --port 8000 --config config.yaml
 ```
 
-The orchestrator automatically appends `/v1` to the upstream URL.
+Then send a request with `model: "chat/local"`. The proxy forwards it to the
+configured upstream model. `code/assistant` is an example route that inherits
+the same backend but enables a system prompt and nudge filter.
 
-## Your First Config
-
-Create `config.yaml`:
-
-```yaml
-models:
-  my-model: {context_length: 32768}
-routes:
-  my-route:
-    pattern: "my-model"
-    model: "my-model"
-    upstream_url: "http://127.0.0.1:1234"
-    filter_chain:
-      order: [system_prompt, model_nudge]
-      filters:
-        system_prompt:
-          enabled: true
-          prompt: "You are a helpful assistant."
-        model_nudge:
-          enabled: true
-          trigger_patterns: [":$"]
-```
-
-Start with your config:
-
-```bash
-CONFIG_FILE=config.yaml python keeprollming.py --port 8000
-```
+For all available settings, start from
+[`config.example.full.yaml`](../config.example.full.yaml), not from an old
+configuration snippet found in an issue or historical discussion.

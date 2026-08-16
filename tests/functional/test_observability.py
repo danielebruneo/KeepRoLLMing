@@ -1,8 +1,10 @@
 """
-Functional tests: verify NDJSON logging contains expected events.
+Functional tests: verify structured JSON projection contracts.
 """
 
 import json
+
+import pytest
 
 
 class TestObservability:
@@ -15,10 +17,10 @@ class TestObservability:
         assert resp.status_code == 200
 
         events = harness.read_log_json()
-        msgs = {e["msg"] for e in events}
-        assert "http_in" in msgs, f"Missing http_in in {msgs}"
-        assert "route_resolved" in msgs, f"Missing route_resolved in {msgs}"
-        assert "http_out" in msgs, f"Missing http_out in {msgs}"
+        event_types = {event["type"] for event in events}
+        assert "execution.chat.http_in" in event_types, event_types
+        assert "execution.chat.route_resolved" in event_types, event_types
+        assert "execution.chat.http_out" in event_types, event_types
 
     def test_filter_chain_events_in_log(self, harness):
         """Filter chain events appear in NDJSON log."""
@@ -27,12 +29,14 @@ class TestObservability:
         assert resp.status_code == 200
 
         events = harness.read_log_json()
-        msgs = {e["msg"] for e in events}
-        filter_msgs = msgs & {
-            "has_filter_chain", "system_prompt_inserted",
-            "filter_chain_executed", "filter_chain_loaded"
-        }
-        assert filter_msgs, f"No filter events in {msgs}"
+        routed_filter_sets = [
+            event["data"].get("filters", [])
+            for event in events
+            if event["type"] == "execution.chat.request_route"
+        ]
+        assert ["system_prompt", "model_nudge"] in routed_filter_sets, (
+            f"No route event with the configured filters: {routed_filter_sets}"
+        )
 
     def test_json_log_is_valid_ndjson(self, harness):
         """Every line in the NDJSON log is valid JSON with required fields."""
@@ -48,8 +52,9 @@ class TestObservability:
             if not line:
                 continue
             ev = json.loads(line)
-            assert "msg" in ev, f"Missing 'msg': {line[:80]}"
-            assert "ts" in ev, f"Missing 'ts': {line[:80]}"
+            assert "type" in ev, f"Missing 'type': {line[:80]}"
+            assert "timestamp_ms" in ev, f"Missing 'timestamp_ms': {line[:80]}"
+            assert isinstance(ev.get("data"), dict), f"Missing event data: {line[:80]}"
 
     def test_streaming_request_logs_progress(self, harness):
         """Streaming request logs response_stream_reconstructed or stream_progress."""
@@ -58,7 +63,10 @@ class TestObservability:
         assert resp.status_code == 200
 
         events = harness.read_log_json()
-        msgs = {e["msg"] for e in events}
-        # Pipeline logs 'assistant' for both streaming and non-streaming responses
-        stream_msgs = msgs & {"assistant", "response_stream_reconstructed", "stream_progress"}
-        assert stream_msgs, f"No streaming events in {msgs}"
+        event_types = {event["type"] for event in events}
+        stream_events = {
+            "execution.streaming.progress",
+            "execution.chat.assistant",
+            "execution.streaming.complete",
+        }
+        assert event_types & stream_events, f"No streaming events in {event_types}"

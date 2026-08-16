@@ -235,35 +235,85 @@ def _extract_connection_target(error_str: str) -> str | None:
 def log_request_error(req_id: str, error_type: str, endpoint: str | None = None,
                       model: str | None = None, upstream_url: str | None = None,
                       status_code: int | None = None, elapsed_ms: float | None = None,
-                      **extra_fields) -> None:
-    """Centralized error logging function for request errors."""
-    from ..logger import log  # avoid circular at module level
+                      dispatcher=None, **extra_fields) -> None:
+    """Centralized error logging function for request errors.
 
-    log(
-        "ERROR", "request_error", req_id=req_id, error_type=error_type, endpoint=endpoint,
-        model=model, upstream_url=upstream_url, status=status_code, elapsed_ms=elapsed_ms,
-        **extra_fields
-    )
+    Uses a semantic runtime event when the dispatcher is available and a
+    diagnostic event as an isolated error-path fallback.
+    """
+    try:
+        from ..observability.events_request import emit_failed as emit_request_failed
+        emit_request_failed(
+            req_id=req_id,
+            error=error_type,
+            status=status_code or 500,
+            dispatcher=dispatcher,
+            endpoint=endpoint,
+            model=model,
+            upstream_url=upstream_url,
+            elapsed_ms=elapsed_ms,
+            **extra_fields
+        )
+    except Exception:
+        # Preserve the error signal if semantic event construction fails.
+        from ..logger import log
+        log(
+            "ERROR", "request_error", req_id=req_id, error_type=error_type, endpoint=endpoint,
+            model=model, upstream_url=upstream_url, status=status_code, elapsed_ms=elapsed_ms,
+            **extra_fields
+        )
 
 
 def log_connection_error(req_id: str, error_type: str, upstream_url: str,
                          model: str | None = None, elapsed_ms: float | None = None,
-                         **extra_fields) -> None:
-    """Centralized connection error logging function."""
-    from ..logger import log
+                         dispatcher=None, **extra_fields) -> None:
+    """Centralized connection error logging function.
 
-    log(
-        "ERROR", "connection_error", req_id=req_id, error_type=error_type,
-        upstream_url=upstream_url, model=model, elapsed_ms=elapsed_ms, **extra_fields
-    )
+    Uses a semantic runtime event when the dispatcher is available and a
+    diagnostic event as an isolated error-path fallback.
+    """
+    try:
+        from ..observability.events_upstream import emit_connection_error
+        emit_connection_error(
+            req_id=req_id,
+            error_type=error_type,
+            upstream_url=upstream_url,
+            model=model,
+            elapsed_ms=elapsed_ms,
+            dispatcher=dispatcher,
+            **extra_fields
+        )
+    except Exception:
+        # Preserve the error signal if semantic event construction fails.
+        from ..logger import log
+        log(
+            "ERROR", "connection_error", req_id=req_id, error_type=error_type,
+            upstream_url=upstream_url, model=model, elapsed_ms=elapsed_ms, **extra_fields
+        )
 
 
 def log_fallback_error(req_id: str, from_model: str, to_model: str,
-                       error_type: str, err_msg: str, **extra_fields) -> None:
-    """Centralized fallback chain error logging."""
-    from ..logger import log
+                       error_type: str, err_msg: str, dispatcher=None, **extra_fields) -> None:
+    """Centralized fallback chain error logging.
 
-    log(
-        "WARN", "fallback_error", req_id=req_id, from_model=from_model, to_model=to_model,
-        error_type=error_type, err_msg=err_msg[:500], **extra_fields
-    )
+    Uses a semantic runtime event when the dispatcher is available and a
+    diagnostic event as an isolated error-path fallback.
+    """
+    try:
+        from ..observability.events_routing import emit_fallback_error
+        emit_fallback_error(
+            req_id=req_id,
+            from_model=from_model,
+            to_model=to_model,
+            error_type=error_type,
+            err_msg=err_msg[:500],
+            dispatcher=dispatcher,
+            **extra_fields
+        )
+    except Exception:
+        # Preserve the error signal if semantic event construction fails.
+        from ..logger import log
+        log(
+            "WARN", "fallback_error", req_id=req_id, from_model=from_model, to_model=to_model,
+            error_type=error_type, err_msg=err_msg[:500], **extra_fields
+        )

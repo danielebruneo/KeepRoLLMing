@@ -4,6 +4,8 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 
+from ..observability import events_summary as _summ
+
 
 # ---------------------------------------------------------------------
 # Configuration imports (lazy)
@@ -136,8 +138,8 @@ async def _summarize_middle_core(
         "stream": False,
     }
     
-    log("INFO", "summary_req", req_id=req_id, summary_model=summary_model, summary_prompt_type=(prompt_type or "curated"), middle_count=len(middle), transcript_chars=len(transcript), body_json=snip_json(body))
-    
+    _summ.emit_request(req_id=req_id, summary_model=summary_model, summary_prompt_type=(prompt_type or "curated"), middle_count=len(middle), transcript_chars=len(transcript), body_json=snip_json(body))
+
     t0 = time.time()
     data = await _request_summary_completion(body, timeout=request_timeout)
     elapsed_ms = (time.time() - t0) * 1000.0
@@ -152,7 +154,7 @@ async def _summarize_middle_core(
     
     summary = _sanitize_summary_text(summary, fallback="(Context not available (compacted).)") or "(Context not available (compacted).)"
     
-    log("INFO", "summary_reply", req_id=req_id, elapsed_ms=round(elapsed_ms, 2), usage=data.get("usage"), summary_chars=len(summary), summary_snip=summary, raw_json=snip_json(data))
+    _summ.emit_reply(req_id=req_id, elapsed_ms=round(elapsed_ms, 2), usage=data.get("usage"), summary_chars=len(summary), summary_snip=summary, raw_json=snip_json(data))
     return summary
 
 
@@ -176,8 +178,7 @@ async def summarize_middle(
     config = _get_config()
     
     if _attempt >= config["MAX_SUMMARY_BACKEND_ATTEMPTS"]:
-        from ..logger import log
-        log("ERROR", "summary_retry_exhausted", req_id=req_id, summary_model=summary_model, attempts=_attempt, max_attempts=config["MAX_SUMMARY_BACKEND_ATTEMPTS"], middle_count=len(middle))
+        _summ.emit_retry_exhausted(req_id=req_id, summary_model=summary_model, attempts=_attempt, max_attempts=config["MAX_SUMMARY_BACKEND_ATTEMPTS"], middle_count=len(middle))
         raise RuntimeError(f"summary retry exhausted after {config['MAX_SUMMARY_BACKEND_ATTEMPTS']} attempts")
 
     # Check if we need to pre-chunk
@@ -197,13 +198,12 @@ async def summarize_middle(
         chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=summary_ctx)
         chunks, normalization_reason = _normalize_retry_chunks(middle, chunks)
         
-        from ..logger import log
-        log("WARN", "summary_preflight_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, est_tokens=est_tokens, threshold=threshold, normalization=normalization_reason)
-        
+        _summ.emit_preflight_chunking(req_id=req_id, chunks=len(chunks), summary_model=summary_model, est_tokens=est_tokens, threshold=threshold, normalization=normalization_reason)
+
         if normalization_reason == "forced_split_no_progress":
-            log("WARN", "summary_preflight_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+            _summ.emit_preflight_forced_split(req_id=req_id, chunks=len(chunks), summary_model=summary_model)
         if normalization_reason == "single_chunk_no_progress":
-            log("ERROR", "summary_no_progress_abort", req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, est_tokens=est_tokens, threshold=threshold)
+            _summ.emit_no_progress_abort(req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, est_tokens=est_tokens, threshold=threshold)
             raise RuntimeError("summary preflight produced no-progress single chunk")
         
         # Summarize each chunk and merge
@@ -230,13 +230,12 @@ async def summarize_middle(
             chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=summary_ctx)
             chunks, normalization_reason = _normalize_retry_chunks(middle, chunks)
             
-            from ..logger import log
-            log("WARN", "summary_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, normalization=normalization_reason)
-            
+            _summ.emit_overflow_chunking(req_id=req_id, chunks=len(chunks), summary_model=summary_model, normalization=normalization_reason)
+
             if normalization_reason == "forced_split_no_progress":
-                log("WARN", "summary_overflow_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+                _summ.emit_overflow_forced_split(req_id=req_id, chunks=len(chunks), summary_model=summary_model)
             if normalization_reason == "single_chunk_no_progress":
-                log("ERROR", "summary_no_progress_abort", req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
+                _summ.emit_no_progress_abort(req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
                 raise
         
         elif retry_reason == "http_retry":
@@ -245,13 +244,12 @@ async def summarize_middle(
             chunks = _chunk_messages_for_summary(middle, prompt_type=prompt_type, lang_hint=lang_hint, summary_model_ctx=reduced_ctx)
             chunks, normalization_reason = _normalize_retry_chunks(middle, chunks)
             
-            from ..logger import log
-            log("WARN", "summary_http_retry_reduced_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, status=_http_status_from_error(err), reduced_ctx=reduced_ctx, err=_extract_backend_ctx_error_message(err), normalization=normalization_reason)
-            
+            _summ.emit_http_retry_chunking(req_id=req_id, chunks=len(chunks), summary_model=summary_model, status=_http_status_from_error(err), reduced_ctx=reduced_ctx, err=_extract_backend_ctx_error_message(err), normalization=normalization_reason)
+
             if normalization_reason == "forced_split_no_progress":
-                log("WARN", "summary_http_retry_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+                _summ.emit_http_retry_forced_split(req_id=req_id, chunks=len(chunks), summary_model=summary_model)
             if normalization_reason == "single_chunk_no_progress":
-                log("ERROR", "summary_no_progress_abort", req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
+                _summ.emit_no_progress_abort(req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
                 raise
         
         else:
@@ -306,7 +304,7 @@ async def _summarize_incremental_core(
         "stream": False,
     }
 
-    log("INFO", "summary_req", req_id=req_id, summary_model=summary_model, summary_prompt_type="incremental", middle_count=len(new_messages), transcript_chars=len(user), body_json=snip_json(body))
+    _summ.emit_request(req_id=req_id, summary_model=summary_model, summary_prompt_type="incremental", middle_count=len(new_messages), transcript_chars=len(user), body_json=snip_json(body))
     
     t0 = time.time()
     data = await _request_summary_completion(body)
@@ -322,7 +320,7 @@ async def _summarize_incremental_core(
     
     summary = _sanitize_summary_text(summary, fallback=existing_summary.strip() or "(Context not available (compacted).)") or existing_summary.strip() or "(Context not available (compacted).)"
     
-    log("INFO", "summary_reply", req_id=req_id, elapsed_ms=round(elapsed_ms, 2), usage=data.get("usage"), summary_chars=len(summary), summary_snip=summary, raw_json=snip_json(data))
+    _summ.emit_reply(req_id=req_id, elapsed_ms=round(elapsed_ms, 2), usage=data.get("usage"), summary_chars=len(summary), summary_snip=summary, raw_json=snip_json(data))
     return summary
 
 
@@ -340,8 +338,7 @@ async def summarize_incremental(
     config = _get_config()
     
     if _attempt >= config["MAX_SUMMARY_BACKEND_ATTEMPTS"]:
-        from ..logger import log
-        log("ERROR", "summary_incremental_retry_exhausted", req_id=req_id, summary_model=summary_model, attempts=_attempt, max_attempts=config["MAX_SUMMARY_BACKEND_ATTEMPTS"], new_messages_count=len(new_messages))
+        _summ.emit_incremental_retry_exhausted(req_id=req_id, summary_model=summary_model, attempts=_attempt, max_attempts=config["MAX_SUMMARY_BACKEND_ATTEMPTS"], new_messages_count=len(new_messages))
         raise RuntimeError(f"incremental summary retry exhausted after {config['MAX_SUMMARY_BACKEND_ATTEMPTS']} attempts")
 
     # Check if we need to pre-chunk
@@ -361,13 +358,12 @@ async def summarize_incremental(
         chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=summary_ctx, incremental_existing_summary=existing_summary)
         chunks, normalization_reason = _normalize_retry_chunks(new_messages, chunks)
         
-        from ..logger import log
-        log("WARN", "summary_incremental_preflight_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, est_tokens=est_tokens, threshold=threshold, normalization=normalization_reason)
-        
+        _summ.emit_incremental_preflight_chunking(req_id=req_id, chunks=len(chunks), summary_model=summary_model, est_tokens=est_tokens, threshold=threshold, normalization=normalization_reason)
+
         if normalization_reason == "forced_split_no_progress":
-            log("WARN", "summary_incremental_preflight_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+            _summ.emit_incremental_preflight_forced_split(req_id=req_id, chunks=len(chunks), summary_model=summary_model)
         if normalization_reason == "single_chunk_no_progress":
-            log("ERROR", "summary_incremental_no_progress_abort", req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, est_tokens=est_tokens, threshold=threshold)
+            _summ.emit_incremental_no_progress_abort(req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, est_tokens=est_tokens, threshold=threshold)
             raise RuntimeError("incremental summary preflight produced no-progress single chunk")
         
         current = existing_summary
@@ -389,13 +385,12 @@ async def summarize_incremental(
             chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=summary_ctx, incremental_existing_summary=existing_summary)
             chunks, normalization_reason = _normalize_retry_chunks(new_messages, chunks)
             
-            from ..logger import log
-            log("WARN", "summary_incremental_overflow_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, normalization=normalization_reason)
-            
+            _summ.emit_incremental_overflow_chunking(req_id=req_id, chunks=len(chunks), summary_model=summary_model, normalization=normalization_reason)
+
             if normalization_reason == "forced_split_no_progress":
-                log("WARN", "summary_incremental_overflow_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+                _summ.emit_incremental_overflow_forced_split(req_id=req_id, chunks=len(chunks), summary_model=summary_model)
             if normalization_reason == "single_chunk_no_progress":
-                log("ERROR", "summary_incremental_no_progress_abort", req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
+                _summ.emit_incremental_no_progress_abort(req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
                 raise
         
         elif retry_reason == "http_retry":
@@ -404,13 +399,12 @@ async def summarize_incremental(
             chunks = _chunk_messages_for_summary(new_messages, prompt_type=None, lang_hint=lang_hint, summary_model_ctx=reduced_ctx, incremental_existing_summary=existing_summary)
             chunks, normalization_reason = _normalize_retry_chunks(new_messages, chunks)
             
-            from ..logger import log
-            log("WARN", "summary_incremental_http_retry_reduced_chunking", req_id=req_id, chunks=len(chunks), summary_model=summary_model, status=_http_status_from_error(err), reduced_ctx=reduced_ctx, err=_extract_backend_ctx_error_message(err), normalization=normalization_reason)
-            
+            _summ.emit_incremental_http_retry_chunking(req_id=req_id, chunks=len(chunks), summary_model=summary_model, status=_http_status_from_error(err), reduced_ctx=reduced_ctx, err=_extract_backend_ctx_error_message(err), normalization=normalization_reason)
+
             if normalization_reason == "forced_split_no_progress":
-                log("WARN", "summary_incremental_http_retry_forced_split", req_id=req_id, chunks=len(chunks), summary_model=summary_model)
+                _summ.emit_incremental_http_retry_forced_split(req_id=req_id, chunks=len(chunks), summary_model=summary_model)
             if normalization_reason == "single_chunk_no_progress":
-                log("ERROR", "summary_incremental_no_progress_abort", req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
+                _summ.emit_incremental_no_progress_abort(req_id=req_id, summary_model=summary_model, attempts=_attempt + 1, err=_extract_backend_ctx_error_message(err))
                 raise
         
         else:

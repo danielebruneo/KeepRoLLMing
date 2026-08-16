@@ -63,9 +63,7 @@ routes:
   internal/full:
     extends: base/test
     pattern: "internal/full"
-    filter_chain:
-      order: [system_prompt, model_nudge]
-      filters:
+    filters:
         system_prompt:
           enabled: true
           prompt: "/nothink"
@@ -74,7 +72,7 @@ routes:
           enabled: true
           trigger_patterns: [":$"]
           nudge_message: "Continue."
-          max_nudge_attempts: 2
+          max_attempts: 2
           upstream_url: "http://127.0.0.1:{self.fake_port}"
 {self._extra_config}
 """
@@ -83,7 +81,6 @@ routes:
 
         env = os.environ.copy()
         env["CONFIG_FILE"] = self._config_path
-        env["LOG_MODE"] = "BASIC_PLAIN"
         env["LOG_PATH"] = self._log_dir
 
         self._orchestrator = subprocess.Popen(

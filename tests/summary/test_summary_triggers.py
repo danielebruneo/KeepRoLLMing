@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import keeprollming.app as app_mod
+import keeprollming.config as config_mod
 
 
 @pytest.fixture
@@ -16,12 +17,12 @@ def client(monkeypatch, tmp_path) -> TestClient:
     # Get the globally created fake client from conftest
     from tests.conftest import _fake_upstream
 
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
-    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(config_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
 
     # Expose fake client to tests
     monkeypatch.setattr(app_mod, "_TEST_FAKE_UPSTREAM", _fake_upstream, raising=False)
@@ -122,7 +123,7 @@ def test_passthrough_model_routes_without_summary(client, monkeypatch):
         raise AssertionError("summarize_middle should not be called for pass/* models")
 
     # Patch where the function is actually used (in app module)
-    monkeypatch.setattr(app, "summarize_middle", _boom)
+    monkeypatch.setattr("keeprollming.summary.summarize_middle", _boom)
 
     long_text = "x" * 2000
     resp = client.post(

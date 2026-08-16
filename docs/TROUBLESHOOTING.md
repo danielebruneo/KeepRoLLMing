@@ -1,69 +1,59 @@
 # Troubleshooting
 
-## Orchestrator won't start
+## Setup or import fails
 
-**Check**: Does `config.yaml` exist? Is `UPSTREAM_BASE_URL` set if no route-level URL?
-
-```bash
-CONFIG_FILE=config.yaml python keeprollming.py --port 8000
-```
-
-**Check**: Port already in use?
+Use the project setup script and confirm the active Python version:
 
 ```bash
-lsof -i :8000
+bash scripts/setup.sh --dev
+.venv/bin/python --version
+.venv/bin/python -c 'import yaml, keeprollming; print(keeprollming.__version__)'
 ```
 
-## Nudge not triggering
+KeepRoLLMing requires Python 3.11 or newer. If a preferred interpreter is not
+the default `python3`, run `KRM_PYTHON=python3.12 bash scripts/setup.sh`.
 
-The model response must end with the trigger pattern (default: `:$`). Check:
-1. The response actually ends with `:` (not `.` or `!`)
-2. `trigger_patterns` in `model_nudge` config matches
-3. `max_nudge_attempts` is not 0
+## No matching route
 
-## Tool loop not detected
+The client's `model` must match a route `pattern`.
 
-ToolLoopStopper matches by function name + canonical argument order.
-- JSON argument keys are sorted alphabetically for comparison
-- Non-JSON arguments (numbers, strings) are compared directly
-- `max_repeats` consecutive calls required (default: 3)
-
-## Streaming hangs
-
-Keepalive is emitted every 15s automatically. If the client disconnects:
-1. Check `proxy_read_timeout` in nginx/reverse proxy
-2. Check network firewall idle timeout
-3. Verify the upstream LLM is responding
-
-## "No matching route"
-
-The `model` parameter in your request must match a `pattern` in the config:
-
-```bash
-curl -s ... -d '{"model":"my-model",...}'
-```
-
-Must match a route like:
 ```yaml
 routes:
-  my-route:
-    pattern: "my-model"
+  chat/local:
+    pattern: "chat/local"
 ```
 
-Patterns support glob: `code/*` matches `code/review`, `code/debug`, etc.
+```json
+{"model":"chat/local","messages":[{"role":"user","content":"Hello"}]}
+```
 
-## Logs
+## Configuration fails at startup
+
+Use only the direct route-level mapping:
+
+```yaml
+filters:
+  model_nudge:
+    enabled: true
+    max_attempts: 3
+```
+
+`filter_chain`, manual `order` lists, and `max_nudge_attempts` are obsolete.
+Compare the route against `config.example.full.yaml`.
+
+## Fake quick start fails
+
+Ensure ports 8000 and 19997 are free, or choose alternatives:
 
 ```bash
-LOG_MODE=BASIC_PLAIN python keeprollming.py --port 8000
+bash scripts/start-with-fake.sh --port 18000 --fake-port 19997
 ```
 
-Shows structured blocks with request ID, route, model, filter events, and timing.
+Then call `model: "internal/fake"` on the selected proxy port.
 
-## Getting Help
+## Inspect streaming or tool behaviour
 
-Open an issue on GitHub with:
-- Config (redacted)
-- Request that caused the issue
-- Log output (BASIC_PLAIN mode)
-- Python version and OS
+The PLAIN projector is the normal operator view. Temporarily raise its level to
+`DEBUG` or `TRACE` in `observability.projectors.plain`. For a bounded raw SSE
+capture, enable `raw_trace` only for `selected_routes`. Redact configuration,
+requests, and logs before reporting an issue.

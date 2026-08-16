@@ -12,6 +12,7 @@ import re
 from typing import Dict, List, Optional, Tuple, Any, Union
 
 from ..types import DefaultSettings, ModelConfig, Route, RouteMatch, DEFAULT_FALLBACK_ROUTE
+from ..observability import events_routing as _routing_events
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +179,11 @@ def _match_route(client_model: str, routes: List[Route]) -> Optional[RouteMatch]
     return None
 
 
-def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) -> Tuple[Route, str]:
+def resolve_route(
+    client_model: str,
+    user_routes: Optional[List[Route]] = None,
+    req_id: Optional[str] = None,
+) -> Tuple[Route, str]:
     """
     Resolve a client-facing model name to the appropriate route and backend model.
 
@@ -188,12 +193,17 @@ def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) 
     Args:
         client_model: The model name from the client request (e.g., "local/quick", "pass/openai/gpt-4")
         user_routes: Optional list of user-defined routes (from config.yaml)
+        req_id: Optional request ID for observability event emission.
 
     Returns:
         Tuple of (matched_route, model_name)
         - route is always a valid Route (fallback if no match found)
         - model is the actual model to use for routing
     """
+    # Emit routing.resolution.started
+    if req_id:
+        _routing_events.emit_started(req_id=req_id, client_model=client_model)
+
     # Combine user routes and built-in routes
     all_routes = []
 
@@ -208,11 +218,22 @@ def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) 
 
     if route_match:
         matched_route = route_match.route
-        
+
         # Resolve inheritance - merge with parent settings
         resolved_route = resolve_inherited_route(matched_route, routes_by_name)
-        
+
         extracted_model, _ = _extract_model(resolved_route, client_model)
+
+        # Emit routing.resolution.resolved
+        if req_id:
+            _routing_events.emit_resolved(
+                req_id=req_id,
+                client_model=client_model,
+                resolved_route=resolved_route.name,
+                model=extracted_model,
+                upstream_model=resolved_route.model or "",
+            )
+
         return resolved_route, extracted_model
 
     # No match found — use default fallback, apply root config defaults
@@ -224,15 +245,39 @@ def resolve_route(client_model: str, user_routes: Optional[List[Route]] = None) 
         root_upstream = UPSTREAM_BASE_URL or CONFIG.get("upstream_url", "")
         if root_upstream and (not fallback.upstream_url or fallback.upstream_url is None):
             fallback = replace(fallback, upstream_url=root_upstream)
-        return replace(
+        resolved = replace(
             fallback,
             _route_hierarchy=[DEFAULT_FALLBACK_ROUTE.name]
-        ), client_model  # Pass through the client model name
+        )
+
+        # Emit routing.resolution.resolved (fallback path)
+        if req_id:
+            _routing_events.emit_resolved(
+                req_id=req_id,
+                client_model=client_model,
+                resolved_route=resolved.name,
+                model=client_model,
+                upstream_model=resolved.model or "",
+            )
+
+        return resolved, client_model  # Pass through the client model name
+
     fallback = DEFAULT_FALLBACK_ROUTE
     root_upstream = UPSTREAM_BASE_URL or CONFIG.get("upstream_url", "")
     if root_upstream and (not fallback.upstream_url or fallback.upstream_url is None):
         from dataclasses import replace
         fallback = replace(fallback, upstream_url=root_upstream)
+
+    # Emit routing.resolution.resolved (fallback path)
+    if req_id:
+        _routing_events.emit_resolved(
+            req_id=req_id,
+            client_model=client_model,
+            resolved_route=fallback.name,
+            model=client_model,
+            upstream_model=fallback.model or "",
+        )
+
     return fallback, client_model
 
 
@@ -297,7 +342,7 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
             "cost_priority": route.cost_priority,
             "performance_logs_dir": route.performance_logs_dir,
             "overrides": route.overrides,
-            "filter_chain": route.filter_chain,
+            "filters": route.filters,
         }
 
         # Initialize route hierarchy for routes without parents (e.g., built-in routes)
@@ -358,8 +403,8 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         "request_timeout": route.request_timeout,
         "cost_priority": route.cost_priority,
         "performance_logs_dir": route.performance_logs_dir,
-            "overrides": route.overrides,
-            "filter_chain": route.filter_chain,
+        "overrides": route.overrides,
+        "filters": route.filters,
     }
 
     # Merge settings from each parent in order (left to right).
@@ -389,7 +434,7 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
                     "model_pattern", "upstream_url", "upstream_headers",
                     "fallback_chain", "circuit_breaker_enabled", "failure_threshold",
                     "recovery_timeout", "request_timeout", "cost_priority",
-                    "performance_logs_dir", "filter_chain"]:
+                    "performance_logs_dir", "filters"]:
             own_val = child_own_values[key]          # Child's explicit value (captured before loop)
             parent_val = getattr(resolved_parent, key, None)
             if own_val is not None:

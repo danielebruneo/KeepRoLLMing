@@ -1,16 +1,13 @@
 #!/bin/bash
 # scripts/start-live-server.sh
-# Consolidated script to start the orchestrator server for BASIC_PLAIN debugging
+# Start a configured KeepRoLLMing server and capture its output in /tmp.
 # Usage: ./scripts/start-live-server.sh [--port 8000]
 
-set -e
+set -euo pipefail
 
 # Configuration - use absolute path
 PORT="${PORT:-8000}"
 BASE_LOG_DIR="/tmp"
-
-# Activate virtual environment
-source .venv/bin/activate
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -42,18 +39,22 @@ cd "$(dirname "$0")/.."
 
 # Start server with proper configuration:
 # - nohup: prevent termination when parent shell exits
-# - LOG_MODE=BASIC_PLAIN: enable structured logging
+# - observability is configured in config.yaml
 # - python -u: unbuffered stdout for real-time logs
 # - stdout + stderr go to main log; stderr also goes to separate err.log
 
-# Export environment variable first
-export LOG_MODE=BASIC_PLAIN
+if [[ -n "${KRM_PYTHON:-}" ]]; then
+    PYTHON_BIN="$KRM_PYTHON"
+elif [[ -x .venv/bin/python ]]; then
+    PYTHON_BIN=".venv/bin/python"
+else
+    PYTHON_BIN="python3"
+fi
 
 ERR_FILE="${LOG_FILE%.log}_err.log"
 
-nohup bash -c '
-if [[ -d .test_venv ]]; then source .test_venv/bin/activate; elif [[ -d .venv ]]; then source .venv/bin/activate; fi
-python -u keeprollming.py --port '"${PORT}"' 2> >(tee -a '"${ERR_FILE}"' >> '"${LOG_FILE}"') > '"${LOG_FILE}"'' &
+nohup "$PYTHON_BIN" -u keeprollming.py --port "$PORT" \
+    2> >(tee -a "$ERR_FILE" >> "$LOG_FILE") > "$LOG_FILE" &
 
 SERVER_PID=$!
 echo "Server PID: ${SERVER_PID}" >&2

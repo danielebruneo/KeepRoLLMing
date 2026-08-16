@@ -62,7 +62,16 @@ from .repacker import (
 )
 
 # Private utilities (internal use only)
-from .summary_orchestrator import _sanitize_summary_text
+from .summary_orchestrator import _request_summary_completion, _sanitize_summary_text
+
+# Shared integration seams used by the summary implementation and its tests.
+# They live on the canonical package so callers no longer need a compatibility
+# wrapper module merely to patch configuration or the upstream client.
+import keeprollming.config as _config_mod
+import keeprollming.upstream as upstream
+
+CONFIG = _config_mod.CONFIG
+get_ctx_len_for_model = upstream.get_ctx_len_for_model
 
 
 __all__ = [
@@ -101,6 +110,11 @@ __all__ = [
     "_normalize_retry_chunks",
     "_messages_signature",
     "_split_single_message_for_retry",
+    "_sanitize_summary_text",
+    "_request_summary_completion",
+    "CONFIG",
+    "upstream",
+    "get_ctx_len_for_model",
     
     # Summary orchestrator (public API)
     "summarize_middle",

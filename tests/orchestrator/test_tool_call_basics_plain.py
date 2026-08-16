@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import keeprollming.app as app_mod
+import keeprollming.config as config_mod
 import keeprollming.logger as logger_mod
 
 
@@ -128,19 +129,10 @@ def setup_agent_flow(monkeypatch, tmp_path):
     global _fake_client_instance
     _fake_client_instance = AgentFlowClient()
 
-    # Setup BASIC_PLAIN mode
-    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
     monkeypatch.setattr(logger_mod, "LOG_SNIP_CHARS", 2000)
     monkeypatch.setattr(logger_mod, "BASIC_SNIP_CHARS", 0)
     from keeprollming.logging import constants as logging_constants
     monkeypatch.setattr(logging_constants, "LOG_PLAIN_COLORS", False)
-
-    # Patch LOG_MODE in endpoint modules (they use _logger.LOG_MODE now)
-    from keeprollming.endpoints import chat_completions as cc_mod
-    monkeypatch.setattr(cc_mod._logger, "LOG_MODE", "BASIC_PLAIN")
-
-    from keeprollming.endpoints import streaming_handlers as sh_mod
-    monkeypatch.setattr(sh_mod._logger, "LOG_MODE", "BASIC_PLAIN")
 
      # Mock upstream http_client — must match signature used by chat_completions.py
     async def _fake_http_client(request_timeout):
@@ -154,11 +146,11 @@ def setup_agent_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(cc_mod, "http_client", _fake_http_client)
 
     # Summary cache settings
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
-    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(config_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
 
     from keeprollming.app import app
     yield app

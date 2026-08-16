@@ -1,55 +1,121 @@
-"""Tests for filter pipeline logging functionality."""
+"""Tests for filter pipeline event emission (O6 migration).
 
-import json
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+Phase P6 cleanup: FilterLogger tests removed. FilterLogger shim has been
+retired; all filters now use RuntimeEvent emission via orchestrator/filters/events.py.
+This file now tests only the RuntimeEvent-based filter event emission path.
+"""
 
 import pytest
 
-from keeprollming.logging import FilterLogger, get_filter_logger, reset_filter_loggers
-from keeprollming.orchestrator.filter import (
-    Filter,
-    FilterConfig,
-    FilterChain,
-    FilterExecutionContext,
-    Request,
-    Response,
-    StopFilterChain,
-)
-from keeprollming.orchestrator.filters.model_nudge_filter import ModelNudgeFilter
+from keeprollming.observability import EventDispatcher, RuntimeEvent
+from keeprollming.orchestrator.filters.events import emit_filter_event
 
 
-@pytest.fixture
-def temp_log_dir():
-    """Create a temporary directory for log files."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
+class TestFilterEventEmission:
+    """Tests for RuntimeEvent-based filter event emission."""
 
+    def test_emit_filter_event_basic(self):
+        """Test that emit_filter_event creates and emits a RuntimeEvent."""
+        dispatcher = EventDispatcher()
+        captured_events = []
 
-@pytest.fixture(autouse=True)
-def cleanup_loggers():
-    """Clean up filter loggers before and after tests."""
-    reset_filter_loggers()
-    yield
-    reset_filter_loggers()
+        def capture(event: RuntimeEvent):
+            captured_events.append(event)
 
+        # Subscribe to "filter" namespace prefix (matches filter.*)
+        dispatcher.subscribe("filter", capture)
 
-class TestFilterLogger:
-    """Tests for FilterLogger class."""
+        from unittest.mock import MagicMock
 
-    def test_logger_creates_log_file(self, temp_log_dir):
-        """Test that logger creates log file in specified directory."""
-        logger = FilterLogger("test_filter", str(temp_log_dir))
-        
-        assert logger.log_dir == temp_log_dir
-        assert logger.log_file == temp_log_dir / "test_filter.log"
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = dispatcher
 
-    def test_nudge_triggered_logs_event(self, temp_log_dir):
-        """Test that nudge_triggered creates proper log entry."""
-        logger = FilterLogger("model_nudge", str(temp_log_dir))
-        
-        logger.nudge_triggered(
+        emit_filter_event(
+            context,
+            component="model_nudge",
+            event_type="filter.nudge.detected",
+            trigger_pattern=":$",
+            response_content="Test:",
+            nudge_attempt=1,
+        )
+
+        assert len(captured_events) == 1
+        event = captured_events[0]
+        assert event.type == "filter.nudge.detected"
+        assert event.source.domain == "filter"
+        assert event.source.component == "model_nudge"
+        assert event.req_id == "test-req-123"
+        assert event.data["trigger_pattern"] == ":$"
+
+    def test_emit_filter_event_no_dispatcher(self):
+        """Test that emit_filter_event creates event but doesn't emit when no dispatcher."""
+        from unittest.mock import MagicMock
+
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = None
+
+        # Should not raise; returns event but doesn't emit it
+        result = emit_filter_event(
+            context,
+            component="model_nudge",
+            event_type="filter.nudge.detected",
+        )
+        assert result is not None
+        assert result.type == "filter.nudge.detected"
+
+    def test_emit_system_prompt_events(self):
+        """Test system prompt event emission helpers."""
+        dispatcher = EventDispatcher()
+        captured_events = []
+
+        def capture(event: RuntimeEvent):
+            captured_events.append(event)
+
+        dispatcher.subscribe("filter", capture)
+
+        from unittest.mock import MagicMock
+
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = dispatcher
+
+        from keeprollming.orchestrator.filters.events import (
+            emit_system_prompt_inserted,
+            emit_system_prompt_overridden,
+            emit_system_prompt_prepended,
+        )
+
+        emit_system_prompt_inserted(context, "You are a helpful assistant")
+        emit_system_prompt_overridden(context, "New system prompt", old_length=50)
+        emit_system_prompt_prepended(context, "Prefix:", old_length=30)
+
+        assert len(captured_events) == 3
+        assert captured_events[0].type == "filter.system_prompt.inserted"
+        assert captured_events[1].type == "filter.system_prompt.overridden"
+        assert captured_events[2].type == "filter.system_prompt.prepended"
+
+    def test_emit_nudge_events(self):
+        """Test nudge event emission helper."""
+        dispatcher = EventDispatcher()
+        captured_events = []
+
+        def capture(event: RuntimeEvent):
+            captured_events.append(event)
+
+        dispatcher.subscribe("filter", capture)
+
+        from unittest.mock import MagicMock
+
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = dispatcher
+
+        from keeprollming.orchestrator.filters.events import emit_nudge_detected
+
+        emit_nudge_detected(
+            context,
             trigger_pattern=":$",
             response_content="Now I will:",
             nudge_attempt=1,
@@ -57,269 +123,140 @@ class TestFilterLogger:
             max_attempts=3,
         )
 
-        # Verify log file was created and contains entry
-        assert logger.log_file.exists()
-        
-        with open(logger.log_file, "r") as f:
-            lines = f.readlines()
-        
-        assert len(lines) == 1
-        
-        # Parse JSON entry
-        entry = json.loads(lines[0])
-        assert entry["event"] == "nudge_triggered"
-        assert entry["trigger_pattern"] == ":$"
-        assert entry["response_content"] == "Now I will:"
-        assert entry["nudge_attempt"] == 1
-        assert entry["action"] == "nudge"
-        assert entry["filter"] == "model_nudge"
-        assert "timestamp" in entry
+        assert len(captured_events) == 1
+        event = captured_events[0]
+        assert event.type == "filter.nudge.detected"
+        assert event.source.component == "model_nudge"
+        assert event.data["nudge_attempt"] == 1
 
-    def test_loop_detected_logs_event(self, temp_log_dir):
-        """Test that loop_detected creates proper log entry."""
-        logger = FilterLogger("loop_detector", str(temp_log_dir))
-        
-        logger.loop_detected(
-            duplicate_count=3,
-            window_size=5,
-            response_hash="abc123",
+    def test_emit_tool_loop_events(self):
+        """Test tool loop event emission helpers."""
+        dispatcher = EventDispatcher()
+        captured_events = []
+
+        def capture(event: RuntimeEvent):
+            captured_events.append(event)
+
+        dispatcher.subscribe("filter", capture)
+
+        from unittest.mock import MagicMock
+
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = dispatcher
+
+        from keeprollming.orchestrator.filters.events import (
+            emit_tool_loop_detected,
+            emit_tls_intervention,
+            emit_tls_retry,
+            emit_tls_fallback,
         )
 
-        with open(logger.log_file, "r") as f:
-            entry = json.loads(f.readline())
-        
-        assert entry["event"] == "loop_detected"
-        assert entry["duplicate_count"] == 3
-        assert entry["response_hash"] == "abc123"
+        emit_tool_loop_detected(context, "search", "hash123", attempt=1)
+        emit_tls_intervention(context, messages_count=5)
+        emit_tls_retry(context, model="gpt-4", messages_count=6)
+        emit_tls_fallback(context, reason="max_attempts_exceeded")
 
-    def test_filter_chain_executed_logs_event(self, temp_log_dir):
-        """Test that filter_chain_executed creates proper log entry."""
-        logger = FilterLogger("filter_chain", str(temp_log_dir))
-        
-        logger.filter_chain_executed(
-            filters_executed=["master_prompt", "model_nudge"],
+        assert len(captured_events) == 4
+        assert captured_events[0].type == "filter.tool_loop.detected"
+        assert captured_events[1].type == "filter.tool_loop.intervention"
+        assert captured_events[2].type == "filter.tool_loop.retry"
+        assert captured_events[3].type == "filter.tool_loop.fallback"
+
+    def test_emit_reasoning_loop_events(self):
+        """Test reasoning loop event emission helpers."""
+        dispatcher = EventDispatcher()
+        captured_events = []
+
+        def capture(event: RuntimeEvent):
+            captured_events.append(event)
+
+        dispatcher.subscribe("filter", capture)
+
+        from unittest.mock import MagicMock
+
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = dispatcher
+
+        from keeprollming.orchestrator.filters.events import (
+            emit_reasoning_loop_detected,
+            emit_rls_intervention,
+            emit_rls_fallback,
+        )
+
+        emit_reasoning_loop_detected(context, "Let me think about this...")
+        emit_rls_intervention(context, messages_count=4)
+        emit_rls_fallback(context)
+
+        assert len(captured_events) == 3
+        assert captured_events[0].type == "filter.reasoning_loop.detected"
+        assert captured_events[1].type == "filter.reasoning_loop.intervention"
+        assert captured_events[2].type == "filter.reasoning_loop.fallback"
+
+    def test_emit_tool_rewrite_event(self):
+        """Test tool rewrite event emission helper."""
+        dispatcher = EventDispatcher()
+        captured_events = []
+
+        def capture(event: RuntimeEvent):
+            captured_events.append(event)
+
+        dispatcher.subscribe("filter", capture)
+
+        from unittest.mock import MagicMock
+
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = dispatcher
+
+        from keeprollming.orchestrator.filters.events import emit_tool_rewrite_applied
+
+        emit_tool_rewrite_applied(context, "search", original_length=500, cleaned_length=200)
+
+        assert len(captured_events) == 1
+        event = captured_events[0]
+        assert event.type == "filter.tool_rewrite.applied"
+        assert event.source.component == "tool_rewrite"
+        assert event.data["tool_name"] == "search"
+
+    def test_emit_filter_chain_events(self):
+        """Test filter chain event emission helpers."""
+        dispatcher = EventDispatcher()
+        captured_events = []
+
+        def capture(event: RuntimeEvent):
+            captured_events.append(event)
+
+        dispatcher.subscribe("filter", capture)
+
+        from unittest.mock import MagicMock
+
+        context = MagicMock(spec="FilterExecutionContext")
+        context.req_id = "test-req-123"
+        context.event_dispatcher = dispatcher
+
+        from keeprollming.orchestrator.filters.events import (
+            emit_filter_chain_executed,
+            emit_filter_error,
+            emit_filter_disabled,
+        )
+
+        emit_filter_chain_executed(
+            context,
+            filters_executed=["system_prompt", "model_nudge"],
             total_filters=2,
             nudge_count=1,
-            loop_count=0,
         )
+        emit_filter_error(context, error_type="ValidationError", message="Invalid config")
+        emit_filter_disabled(context)
 
-        with open(logger.log_file, "r") as f:
-            entry = json.loads(f.readline())
-        
-        assert entry["event"] == "filter_chain_executed"
-        assert entry["filters_executed"] == ["master_prompt", "model_nudge"]
-        assert entry["nudge_count"] == 1
-
-    def test_summary_stats(self, temp_log_dir):
-        """Test that summary_stats returns correct statistics."""
-        logger = FilterLogger("model_nudge", str(temp_log_dir))
-        
-        # Write some test events
-        logger.nudge_triggered(":$", "Now I will:", 1)
-        logger.nudge_triggered(":$", "Here's the plan:", 2)
-        logger.loop_detected(2, 3, "hash1")
-
-        stats = logger.summary_stats()
-        
-        assert stats["filter_name"] == "model_nudge"
-        assert stats["total_events"] == 3
-        assert stats["event_counts"]["nudge_triggered"] == 2
-        assert stats["event_counts"]["loop_detected"] == 1
+        assert len(captured_events) == 3
+        assert captured_events[0].type == "filter.chain.executed"
+        assert captured_events[1].type == "filter.error"
+        assert captured_events[2].type == "filter.disabled"
 
 
-class TestModelNudgeFilterLogging:
-    """Tests for Model Nudge filter logging integration."""
-
-    @pytest.fixture
-    def nudge_filter(self, temp_log_dir):
-        """Create a ModelNudgeFilter with custom log directory."""
-        config = FilterConfig(
-            enabled=True,
-            name="model_nudge",
-        )
-        
-        # Create filter instance (will use real logger)
-        # Note: Need to pass trigger_patterns in config
-        from keeprollming.orchestrator.filters.model_nudge_filter import ModelNudgeFilter
-        
-        # Manually set trigger patterns since FilterConfig doesn't support them directly
-        filter_instance = ModelNudgeFilter(config)
-        # Add default pattern for testing
-        import re
-        filter_instance._trigger_patterns = [re.compile(":$", re.IGNORECASE)]
-        
-        yield filter_instance
-
-    async def test_process_response_logs_nudge_trigger(self, nudge_filter):
-        """Test that process_response logs when nudge is triggered."""
-        filter_instance = nudge_filter
-        
-        # Create mock response matching lazy pattern with colon at end
-        mock_response = MagicMock()
-        mock_response.content = "Now I will:"  # Ends with colon to match :$
-        mock_response.model = "test-model"
-        mock_response.finish_reason = None
-        mock_response.tool_calls = None
-        
-        # Create execution context
-        context = FilterExecutionContext()
-        
-        # Process response - filter returns Response directly (new architecture)
-        result = await filter_instance.process_response(mock_response, context)
-
-        # Should get a Response object, not exception
-        assert result is not None
-        assert hasattr(result, "content")
-        assert result.content == "Now I will:"
-
-
-class TestFilterChainLogging:
-    """Tests for FilterChain logging integration."""
-
-    @pytest.fixture
-    def test_filter(self):
-        """Create a simple test filter."""
-        class TestFilter(Filter):
-            name = "test_filter"
-            
-            async def process_request(self, request, context):
-                return request
-            
-            async def process_response(self, response, context):
-                return response
-        
-        return TestFilter
-
-    @pytest.fixture
-    def chain_with_logging(self, temp_log_dir, test_filter):
-        """Create a FilterChain with logging enabled."""
-        filter_instance = test_filter()
-        
-        # Patch get_filter_logger to use test directory
-        with patch("keeprollming.orchestrator.filter.get_filter_logger") as mock_get:
-            mock_logger = MagicMock()
-            mock_get.return_value = mock_logger
-            
-            chain = FilterChain(
-                filters=[filter_instance],
-                execution_order=["test_filter"],
-            )
-            
-            yield chain, mock_logger
-
-    async def test_process_response_logs_chain_execution(self, chain_with_logging):
-        """Test that process_response logs complete chain execution."""
-        chain, mock_logger = chain_with_logging
-        
-        # Create mock response
-        mock_response = MagicMock()
-        mock_response.content = "Normal response"
-        mock_response.model = "test-model"
-        
-        context = FilterExecutionContext()
-        
-        await chain.process_response(mock_response, context)
-        
-        # Verify filter_chain_executed was called
-        mock_logger.filter_chain_executed.assert_called_once()
-        call_args = mock_logger.filter_chain_executed.call_args
-        
-        assert call_args.kwargs["filters_executed"] == ["test_filter"]
-        assert call_args.kwargs["total_filters"] == 1
-
-    async def test_process_response_logs_stopfilterchain(self, chain_with_logging):
-        """Test that StopFilterChain exceptions are logged."""
-        chain, mock_logger = chain_with_logging
-        
-        # Create filter that raises StopFilterChain
-        class FailingFilter(Filter):
-            name = "failing_filter"
-            
-            async def process_request(self, request, context):
-                return request
-            
-            async def process_response(self, response, context):
-                raise StopFilterChain("Test failure", action="regenerate")
-        
-        failing = FailingFilter()
-        
-        # Recreate chain with failing filter
-        with patch("keeprollming.orchestrator.filter.get_filter_logger") as mock_get:
-            mock_logger_instance = MagicMock()
-            mock_get.return_value = mock_logger_instance
-            
-            new_chain = FilterChain(
-                filters=[failing],
-                execution_order=["failing_filter"],
-            )
-        
-        mock_response = MagicMock()
-        mock_response.content = "Test"
-        mock_response.model = "test-model"
-        
-        context = FilterExecutionContext()
-        
-        with pytest.raises(StopFilterChain):
-            await new_chain.process_response(mock_response, context)
-        
-        # Verify filter_error was called
-        mock_logger_instance.filter_error.assert_called_once()
-        call_args = mock_logger_instance.filter_error.call_args
-        
-        assert call_args.kwargs["error_type"] == "StopFilterChain"
-
-
-class TestIntegration:
-    """Integration tests for logging with real filters."""
-
-    @pytest.fixture
-    def temp_log_dir(self):
-        """Create a temporary directory for log files."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir)
-
-    async def test_model_nudge_filter_integration_logging(
-        self, 
-        temp_log_dir,
-    ):
-        """Test ModelNudgeFilter writes to actual log file."""
-        # Reset any existing loggers
-        reset_filter_loggers()
-        
-        # Create filter with custom log directory and trigger patterns
-        config = FilterConfig(enabled=True)
-        filter_instance = ModelNudgeFilter(config)
-        
-        # Add default pattern for testing
-        import re
-        filter_instance._trigger_patterns = [re.compile(":$", re.IGNORECASE)]
-        
-        # Verify logger was created with correct name
-        assert hasattr(filter_instance, '_logger')
-        
-        # Create mock response matching lazy pattern
-        mock_response = MagicMock()
-        mock_response.content = "Now I will:"  # Ends with colon to match :$
-        mock_response.model = "test-model"
-        mock_response.finish_reason = None
-        mock_response.tool_calls = None
-        
-        context = FilterExecutionContext()
-        
-        # New architecture: filter returns Response directly
-        result = await filter_instance.process_response(mock_response, context)
-        assert result is not None
-        assert hasattr(result, "content")
-
-    def test_get_filter_logger_singleton(self, temp_log_dir):
-        """Test that get_filter_logger returns singleton instances."""
-        reset_filter_loggers()
-        
-        logger1 = get_filter_logger("test", str(temp_log_dir))
-        logger2 = get_filter_logger("test", str(temp_log_dir))
-        
-        assert logger1 is logger2
-        
-        # Different names should create different instances
-        logger3 = get_filter_logger("other", str(temp_log_dir))
-        assert logger1 is not logger3
+# ── Phase P6 cleanup: FilterLogger backward compat test removed ────
+# The test_filter_logger_still_works test was removed because FilterLogger
+# has been retired. Tests should now verify RuntimeEvent-based emission.

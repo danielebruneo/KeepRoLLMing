@@ -3,7 +3,7 @@
 import pytest
 
 from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
-from keeprollming.orchestrator.filters.tool_rewrite_filter import ToolRewriteFilter
+from keeprollming.filters.tool_rewrite.request import ToolRewriteFilter
 
 
 class TestToolRewriteFilterBasics:
@@ -29,8 +29,8 @@ class TestToolRewriteFilterPriority:
     """Verify priority: after Summarization (15), before ToolLoopStopper (25)."""
 
     def test_priority_is_20(self):
-        from keeprollming.orchestrator.filters.summarization_filter import SummarizationFilter
-        from keeprollming.orchestrator.filters.tool_loop_stopper import ToolLoopStopperFilter
+        from keeprollming.filters.summarization.request import SummarizationFilter
+        from keeprollming.filters.tool_loop_stopper.request import ToolLoopStopperFilter
         sf = SummarizationFilter()
         tr = ToolRewriteFilter()
         tls = ToolLoopStopperFilter()
@@ -162,89 +162,12 @@ class TestPipelineFromRouteConfig:
         from keeprollming.orchestrator.pipeline import Pipeline
 
         route_config = {
-            "order": ["tool_rewrite", "model_nudge"],
-            "filters": {
-                "tool_rewrite": {"enabled": True},
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [":$"],
-                },
-            },
+            "tool_rewrite": {"enabled": True},
+            "model_tool_loop_stopper": {"enabled": True, "max_attempts": 1},
+            "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
         }
         pipeline = Pipeline.from_route_config(route_config)
         assert pipeline is not None, "Pipeline should be created with tool_rewrite"
-        assert len(pipeline._filters) == 2
-
-        # Verify is_enabled works on both filters (this would crash before the fix)
-        for f in pipeline.filters:
-            assert f.is_enabled is True, f"Filter {f.name} should be enabled"
-
-    def test_tool_rewrite_disabled_dict_config(self):
-        """Disabled tool_rewrite with dict config should work too."""
-        from keeprollming.orchestrator.pipeline import Pipeline
-
-        route_config = {
-            "order": ["tool_rewrite", "model_nudge"],
-            "filters": {
-                "tool_rewrite": {"enabled": False},
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [":$"],
-                },
-            },
-        }
-        pipeline = Pipeline.from_route_config(route_config)
-        assert pipeline is not None
-
-        filters_list = list(pipeline.filters)
-        assert not filters_list[0].is_enabled  # tool_rewrite disabled
-        assert filters_list[1].is_enabled       # model_nudge enabled
-
-    def test_summarization_dict_config_does_not_crash(self):
-        """Pipeline with summarization using dict config should iterate all filters."""
-        from keeprollming.orchestrator.pipeline import Pipeline
-
-        route_config = {
-            "order": ["summarization", "model_nudge"],
-            "filters": {
-                "summarization": {"enabled": True},
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [":$"],
-                },
-            },
-        }
-        pipeline = Pipeline.from_route_config(route_config)
-        assert pipeline is not None
-        assert len(pipeline._filters) == 2
-
-        for f in pipeline.filters:
-            assert f.is_enabled is True
-
-    def test_all_filters_in_full_chain_do_not_crash(self):
-        """Production-like chain with tool_rewrite + tls + nudge should not crash."""
-        from keeprollming.orchestrator.pipeline import Pipeline
-
-        route_config = {
-            "order": ["tool_rewrite", "model_tool_loop_stopper", "model_nudge"],
-            "filters": {
-                "tool_rewrite": {"enabled": True},
-                "model_tool_loop_stopper": {
-                    "enabled": True,
-                    "max_attempts": 1,
-                },
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [
-                        ":$",
-                        r'(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$',
-                        r'(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$',
-                    ],
-                },
-            },
-        }
-        pipeline = Pipeline.from_route_config(route_config)
-        assert pipeline is not None, "Full production-like chain should be created"
         assert len(pipeline._filters) == 3
 
         # All filters must be accessible and iterable without crashing
@@ -252,3 +175,25 @@ class TestPipelineFromRouteConfig:
             name = f.name
             enabled = f.is_enabled  # This must not raise
             assert enabled is True, f"Filter {name} should be enabled"
+
+    def test_tool_rewrite_disabled_dict_config(self):
+        """Disabled modules are retained in config but not instantiated."""
+        from keeprollming.orchestrator.pipeline import Pipeline
+
+        pipeline = Pipeline.from_route_config({
+            "tool_rewrite": {"enabled": False},
+            "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
+        })
+        assert pipeline is not None
+        assert [filter_.name for filter_ in pipeline.filters] == ["model_nudge"]
+
+    def test_summarization_dict_config_does_not_crash(self):
+        """Summarization and nudge modules can coexist in canonical config."""
+        from keeprollming.orchestrator.pipeline import Pipeline
+
+        pipeline = Pipeline.from_route_config({
+            "summarization": {"enabled": True},
+            "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
+        })
+        assert pipeline is not None
+        assert len(pipeline._filters) == 2

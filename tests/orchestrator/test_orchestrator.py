@@ -7,6 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import keeprollming.app as app_mod
+import keeprollming.config as config_mod
+import keeprollming.summary as summary_mod
 import keeprollming.logger as logger_mod
 
 
@@ -116,12 +118,12 @@ def client(monkeypatch, tmp_path) -> TestClient:
     # Get the globally created fake client from conftest
     from tests.conftest import _fake_upstream
     
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
-    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(config_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
 
     # Expose fake client to tests
     monkeypatch.setattr(app_mod, "_TEST_FAKE_UPSTREAM", _fake_upstream, raising=False)
@@ -157,7 +159,7 @@ def test_streaming_sse_proxy(client):
 
 
 def test_summary_cache_hit_skips_new_summary_call(client, monkeypatch):
-    from keeprollming.rolling_summary import should_summarise
+    from keeprollming.summary import should_summarise
     from tests.orchestrator.test_module_patches import patch_app_mod_functions
 
     calls = {"count": 0}
@@ -177,7 +179,7 @@ def test_summary_cache_hit_skips_new_summary_call(client, monkeypatch):
 
      # Mock process_messages_for_summarization to simulate cache hit on second call
     from keeprollming.processing import summarization as summarization_mod
-    from keeprollming.rolling_summary import split_messages
+    from keeprollming.summary import split_messages
     
     async def mock_process_messages(*args, **kwargs):
         nonlocal call_sequence
@@ -196,7 +198,7 @@ def test_summary_cache_hit_skips_new_summary_call(client, monkeypatch):
             return repacked, len(non_system) - 1, "test-fp", {"summary": "PREFIX-SUMMARY"}
 
     # Mock should_summarise to always trigger summarization for testing
-    import keeprollming.rolling_summary as rs_mod
+    import keeprollming.summary as rs_mod
     original_should_summarise = rs_mod.should_summarise
     def mock_should_summarise(*args, **kwargs):
         plan = original_should_summarise(*args, **kwargs)
@@ -252,7 +254,7 @@ def test_summary_cache_consolidates_when_needed(client, monkeypatch):
     - Patches functions where used (in chat_completions module) rather than where defined
     - Ensures summarize_middle and summarize_incremental work correctly with module boundaries
     """
-    from keeprollming.rolling_summary import should_summarise, summarize_incremental
+    from keeprollming.summary import should_summarise, summarize_incremental
 
     calls = {"initial": 0, "incremental": 0}
 
@@ -267,10 +269,10 @@ def test_summary_cache_consolidates_when_needed(client, monkeypatch):
     # Mock summarize_middle where it's used in app module
     from keeprollming import app
 
-    monkeypatch.setattr(app, "summarize_middle", _fake_summary)
+    monkeypatch.setattr("keeprollming.summary.summarize_middle", _fake_summary)
 
-    # Patch summarize_incremental in rolling_summary module (where it's defined)
-    import keeprollming.rolling_summary as rs_mod
+    # Patch summarize_incremental in summary package (where it's defined)
+    import keeprollming.summary as rs_mod
     
     async def wrapped_incremental(existing_summary, new_messages, req_id, summary_model, **kwargs):
         result = await _fake_incremental(existing_summary, new_messages, **kwargs)
@@ -279,9 +281,9 @@ def test_summary_cache_consolidates_when_needed(client, monkeypatch):
     monkeypatch.setattr(rs_mod, "summarize_incremental", wrapped_incremental)
     
     # Also ensure the same function is available in app for consistency
-    monkeypatch.setattr(app, "summarize_incremental", wrapped_incremental)
+    monkeypatch.setattr("keeprollming.summary.summarize_incremental", wrapped_incremental)
 
-    # Also patch should_summarise in the rolling_summary module to trigger summarization
+    # Also patch should_summarise in the summary package to trigger summarization
     original_should_summarise = rs_mod.should_summarise
 
     def mock_should_summarise(*args, **kwargs):
@@ -322,7 +324,7 @@ def test_summary_cache_consolidates_when_needed(client, monkeypatch):
 
 
 def test_repacked_keeps_latest_user_when_consolidated(monkeypatch, client):
-    import keeprollming.rolling_summary as rs_mod
+    import keeprollming.summary as rs_mod
     
     async def _fake_summary(*args, **kwargs):
         return "SUMMARY"
@@ -414,7 +416,7 @@ def _skipped_test_cache_reuse_uses_plan_head_start_not_pinned(monkeypatch, tmp_p
         token_estimate=100,
         source_mode='cache_append_initial',
     )
-    save_cache_entry(app_mod.SUMMARY_CACHE_DIR, entry, user_id='u', conv_id='c')
+    save_cache_entry(config_mod.SUMMARY_CACHE_DIR, entry, user_id='u', conv_id='c')
 
     # The key insight: if we want to reuse a cache that starts at index 3 when
     # the desired_start_idx is also 3, it should work
@@ -471,7 +473,7 @@ def _skipped_test_first_user_prompt_is_preserved_raw_in_repacked_messages(client
 
 # SKIPPED: Requires complex mocking after refactoring
 def _skipped_test_incremental_summary_reuse_from_cache(client, monkeypatch):
-    from keeprollming.rolling_summary import should_summarise
+    from keeprollming.summary import should_summarise
     
     """
     Test incremental summary reuse from cache with cache_append mode.
@@ -493,11 +495,11 @@ def _skipped_test_incremental_summary_reuse_from_cache(client, monkeypatch):
         # Return a simple merged result to indicate that it was called
         return existing_summary + "\nAI: merged"
 
-    monkeypatch.setattr(app_mod, "summarize_middle", _fake_middle_summary)
-    monkeypatch.setattr(app_mod, "summarize_incremental", _fake_incremental_summary)
+    monkeypatch.setattr(summary_mod, "summarize_middle", _fake_middle_summary)
+    monkeypatch.setattr(summary_mod, "summarize_incremental", _fake_incremental_summary)
     
     # Mock should_summarise to always trigger summarization for testing
-    import keeprollming.rolling_summary as rs_mod
+    import keeprollming.summary as rs_mod
     original_should_summarise = rs_mod.should_summarise
     def mock_should_summarise(*args, **kwargs):
         plan = original_should_summarise(*args, **kwargs)
@@ -635,13 +637,13 @@ def test_passthrough_mode_bypassing_summarization(client, monkeypatch):
     async def _boom_summarize_middle(*args, **kwargs):
         raise AssertionError("summarize_middle should not be called for pass/* models")
     
-    monkeypatch.setattr(app_mod, "summarize_middle", _boom_summarize_middle)
+    monkeypatch.setattr(summary_mod, "summarize_middle", _boom_summarize_middle)
 
     # Mock summarize_incremental function to ensure it's never called  
     async def _boom_summarize_incremental(*args, **kwargs):
         raise AssertionError("summarize_incremental should not be called for pass/* models")
     
-    monkeypatch.setattr(app_mod, "summarize_incremental", _boom_summarize_incremental)
+    monkeypatch.setattr(summary_mod, "summarize_incremental", _boom_summarize_incremental)
     
     # Test with a long message that would normally trigger summarization
     long_text = "x" * 2000

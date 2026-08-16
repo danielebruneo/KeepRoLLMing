@@ -8,18 +8,8 @@ import keeprollming.app as app_mod
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    """Create a test client with ERROR logging to reduce noise."""
-    import keeprollming.logger as logger_mod
-    
-    # Temporarily disable verbose logging for tests
-    original_mode = getattr(logger_mod, 'LOG_MODE', None)
-    logger_mod.LOG_MODE = "ERROR"
-    
+    """Create a test client with isolated runtime state."""
     yield TestClient(app_mod.app)
-    
-    # Restore original mode
-    if original_mode:
-        logger_mod.LOG_MODE = original_mode
 
 
 @pytest.mark.asyncio
@@ -28,7 +18,7 @@ async def test_streaming_no_await_warning(client):
     
     Regression test for: RuntimeWarning: coroutine 'FilterChain.process_response' 
    never awaited in streaming_handlers.py line 464
-    This happens when filter_chain is configured as a dict and the post-stream
+    This happens when filters is configured as a dict and the post-stream
     filtering code path is executed without awaiting process_response().
     """
     # Make a simple streaming request (no filter chain configured, so code path
@@ -36,7 +26,7 @@ async def test_streaming_no_await_warning(client):
     response = client.post(
         "/v1/chat/completions",
         json={
-            "model": "local/quick",  # Uses quick route without filter_chain
+            "model": "local/quick",  # Uses quick route without filters
             "messages": [
                 {"role": "user", "content": "Hello"}
             ],

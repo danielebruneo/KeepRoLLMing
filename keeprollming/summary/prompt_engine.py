@@ -177,8 +177,8 @@ def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
     """Load a summary prompt template from config or file or fallback to default."""
     import sys
     
-    # Check if we're being monkeypatched via rolling_summary module (test compatibility)
-    rs_module = sys.modules.get('keeprollming.rolling_summary')
+    # Check if we're being monkeypatched via summary package (test compatibility)
+    rs_module = sys.modules.get('keeprollming.summary')
     
     # Always check for patched values first (for test compatibility)
     summary_prompt_dir = getattr(rs_module, 'SUMMARY_PROMPT_DIR', None) if rs_module else None
@@ -196,8 +196,8 @@ def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
 
     # If we have custom prompts defined in the configuration, check if this is one of them
     try:
-        # Support monkeypatching via rolling_summary module (test compatibility)
-        rs_module = sys.modules.get('keeprollming.rolling_summary')
+        # Support monkeypatching via summary package (test compatibility)
+        rs_module = sys.modules.get('keeprollming.summary')
         CONFIG = getattr(rs_module, 'CONFIG', None) if rs_module else None
         
         if CONFIG is None:
@@ -277,9 +277,9 @@ def get_summary_system_prompt(prompt_type: Optional[str] = None) -> str:
     Keep system prompt small and stable.
     The real task instructions live in the file-based user template.
     """
-    # Support monkeypatching via rolling_summary module (test compatibility)
+    # Support monkeypatching via summary package (test compatibility)
     import sys
-    rs_module = sys.modules.get('keeprollming.rolling_summary')
+    rs_module = sys.modules.get('keeprollming.summary')
     summary_prompt_type = getattr(rs_module, 'SUMMARY_PROMPT_TYPE', None) if rs_module else None
     
     if summary_prompt_type is None:
@@ -317,9 +317,9 @@ def render_incremental_summary_prompt(
     
     transcript = render_messages_for_summary(new_messages)
 
-    # Support monkeypatching via rolling_summary module (test compatibility)
+    # Support monkeypatching via summary package (test compatibility)
     import sys
-    rs_module = sys.modules.get('keeprollming.rolling_summary')
+    rs_module = sys.modules.get('keeprollming.summary')
     summary_prompt_dir = getattr(rs_module, 'SUMMARY_PROMPT_DIR', None) if rs_module else None
     
     if summary_prompt_dir is None:

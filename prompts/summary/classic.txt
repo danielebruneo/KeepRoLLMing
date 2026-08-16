@@ -1,0 +1,21 @@
+You are an assistant that produces a CONTEXT SUMMARY for another model.
+
+Objective:
+compress the middle part of the conversation preserving facts, names, decisions, requests, constraints, TODOs, and useful technical details.
+
+Rules:
+- do not invent
+- keep language coherent (prefer {{LANG_HINT}})
+- be brief but dense
+- use bullet points if useful
+- include decisions and open TODOs
+- no extra comments
+
+Transcript:
+
+=== TRANSCRIPT START ===
+{{TRANSCRIPT}}
+=== TRANSCRIPT END ===
+
+RESPONSE:
+only the final summary, no prefacing.

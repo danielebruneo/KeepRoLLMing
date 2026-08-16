@@ -15,6 +15,7 @@ from ..types import DEFAULT_REQUEST_TIMEOUT
 
 from ..config import DEFAULT_CTX_LEN, UPSTREAM_BASE_URL
 from ..logger import log, log_request, log_response
+from ..observability import events_upstream as _up
 
 _http_client: httpx.AsyncClient | None = None
 
@@ -37,9 +38,7 @@ async def http_client(request_timeout: float = DEFAULT_REQUEST_TIMEOUT) -> httpx
             ct = (response.headers.get("content-type") or "").lower()
 
             if ct.startswith("text/event-stream"):
-                log(
-                    "INFO",
-                    "response_received",
+                _up.emit_response_received(
                     url=str(response.request.url),
                     method=response.request.method,
                     status=response.status_code,
@@ -114,20 +113,18 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
                 ctx_len, ctx_src = ctx_tuple
 
             _ctx_cache[upstream_model] = (ctx_len, now)
-            log(
-                "INFO",
-                "ctx_len",
+            _up.emit_ctx_len(
                 upstream_model=upstream_model,
                 ctx_len=ctx_len,
                 source=f"{url}:{ctx_src}" if ctx_len != DEFAULT_CTX_LEN else "default",
             )
             return ctx_len
         except Exception as e:
-            log("WARN", "ctx_len_fallback", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
+            _up.emit_ctx_len_fallback(upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
             _ctx_cache[upstream_model] = (DEFAULT_CTX_LEN, now)
             continue
 
-    log("WARN", "all_endpoints_failed", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN)
+    _up.emit_all_endpoints_failed(upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN)
     return DEFAULT_CTX_LEN
 
 
@@ -169,9 +166,8 @@ def prepare_upstream_request(
         from ..overrides import apply_overrides
         applied = apply_overrides(upstream_payload, route.overrides)
         if applied:
-            from ..logger import log
             for key, old_val, new_val in applied:
-                log("INFO", "override_applied", req_id=req_id, param=key,
+                _up.emit_override_applied(req_id=req_id, param=key,
                     old_value=old_val, new_value=new_val)
 
     return upstream_payload

@@ -1,13 +1,10 @@
 """Minimal orchestration layer for KeepRollMing API.
 
-This is the main entry point that delegates all business logic to modular components.
-The original monolithic app.py (2,295 lines) has been extracted into:
+This is the main entry point that delegates business logic to modular components:
 - keeprollming/endpoints/ - API endpoint handlers
 - keeprollming/streaming/ - SSE handling and transformations
 - keeprollming/processing/ - Summarization and message processing
-- keeprollming/routing/ - Route resolution and HTTP client
-
-Original file preserved as: keeprollming/app.py.orig
+- keeprollming/routing/ - route resolution and HTTP client
 """
 
 from __future__ import annotations
@@ -18,6 +15,7 @@ import os
 import re
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
@@ -32,6 +30,8 @@ from .config import (
     get_route_settings,
 )
 from .logger import log
+from .observability import events_app as _app
+from .observability import events_request as _req_events
 
 
 def _parse_captured_sse_text(sse_text: str) -> tuple[str, str | None, dict | None, int]:
@@ -105,13 +105,9 @@ def _parse_captured_sse_text(sse_text: str) -> tuple[str, str | None, dict | Non
 # ----------------------------
 # Application Lifecycle
 # ----------------------------
-# ----------------------------
-# Application Lifecycle
-# ----------------------------
 
 async def _config_watcher():
-    """Background task to watch for config file changes."""
-    from .logger import log as log_app, log_config_reload as log_reload_event
+    """Watch for configuration changes and emit them through projectors."""
     from .config import check_config_reload, get_config_mtime
 
     while True:
@@ -119,23 +115,36 @@ async def _config_watcher():
             result = check_config_reload()
             if result:
                 current = get_config_mtime() or 0.0
-                log_reload_event(current - 1.0, current)
+                _app.emit_config_reloaded(
+                    message="Configuration reloaded",
+                    config_mtime=current,
+                    dispatcher=_event_dispatcher,
+                )
         except Exception as e:
-            log_app("ERROR", "config_reload_error", message=f"Config reload error: {e}")
+            _app.emit_config_reload_failed(
+                error=str(e), dispatcher=_event_dispatcher
+            )
 
         # Check every 2 seconds
         await asyncio.sleep(2)
 
 
+# ── Global EventDispatcher (O10) ──────────────────────────────────
+
+_event_dispatcher: Optional[Any] = None
+
+
+def get_event_dispatcher():
+    """Return the global EventDispatcher singleton."""
+    return _event_dispatcher
+
+
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
     """Startup/shutdown hooks."""
-    from .logger import log, setup_server_logging
+    from .logger import log
     from .performance import set_performance_logs_dir, set_summary_interval
     from .async_log_writer import get_async_writer, start_async_writer, stop_async_writer
-
-    # Setup file-based server logging
-    logger = setup_server_logging()
 
     # Start the async log writer (replaces sync flush() in hot path)
     await start_async_writer()
@@ -143,27 +152,111 @@ async def lifespan(_app: FastAPI):
     get_async_writer().register_sink("stream_debug", "/tmp/streaming_final_chunk.log")
 
     # Configure performance logs directory from config
-    perf_logs_dir = CONFIG.get("defaults", {}).get("performance_logs_dir", "__performance_logs")
+    perf_logs_dir = os.environ.get("PERFORMANCE_LOGS_DIR") or CONFIG.get(
+        "defaults", {}
+    ).get("performance_logs_dir", "__performance_logs")
     set_performance_logs_dir(perf_logs_dir)
 
     # Configure summary update interval (reduce I/O overhead)
     summary_interval = CONFIG.get("performance", {}).get("summary_update_interval", 100)
     set_summary_interval(summary_interval)
-    log("INFO", "perf_logs_dir", message=f"Performance logs directory: {perf_logs_dir}")
+
+    # ── O10: Initialize global EventDispatcher + PerformanceConsumer ──
+    global _event_dispatcher
+    from .observability.dispatcher import EventDispatcher
+    from .observability.consumers import PerformanceConsumer
+
+    _event_dispatcher = EventDispatcher()
+
+    # Register PerformanceConsumer for execution.performance.* namespace
+    perf_consumer = PerformanceConsumer(
+        perf_logs_dir=perf_logs_dir,
+        summary_interval=summary_interval,
+    )
+    _event_dispatcher.subscribe("execution.performance", perf_consumer)
+
+    # FIX-D072: Wire dispatcher through upstream_client so emit_* calls flow
+    # through the Projector architecture instead of bypassing to legacy log().
+    from .upstream.upstream_client import set_upstream_dispatcher
+    set_upstream_dispatcher(_event_dispatcher)
+
+    # ── BLOCKER-001 FIX: LoggerConsumer retired from production stdout path ──
+    # Previously subscribed to all root namespaces at DEBUG level, outputting
+    # JSON RuntimeEvents to stdout via Python logging.StreamHandler. This
+    # competed with the main projector (PLAIN, BASIC level) and contradicted
+    # D-072 §6. Default projectors now own stdout/file routing.
+
+    # ── O11: Initialize BodyCaptureConsumer for error payload capture ──
+    from .observability.body_capture_consumer import BodyCaptureConsumer
+
+    body_capture_policy = CONFIG.get("body_capture", {}).get("policy", "errors_only")
+    body_capture_consumer = BodyCaptureConsumer(policy=body_capture_policy)
+
+    # Subscribe to execution.* and request.* namespaces for error events
+    _event_dispatcher.subscribe("execution.chat", body_capture_consumer)
+    _event_dispatcher.subscribe("execution.streaming", body_capture_consumer)
+    _event_dispatcher.subscribe("request.lifecycle", body_capture_consumer)
+
+    # ── O12: Initialize RequestCaptureConsumer for raw request capture ──
+    from .observability.request_capture_consumer import RequestCaptureConsumer
+
+    request_capture_config = CONFIG.get("request_capture", {})
+    request_capture_policy = request_capture_config.get("policy", "disabled")
+    selected_routes = request_capture_config.get("selected_routes")
+    request_capture_consumer = RequestCaptureConsumer(
+        policy=request_capture_policy,
+        selected_routes=selected_routes,
+    )
+
+    # Subscribe to request.capture namespace for raw request capture events
+    _event_dispatcher.subscribe("request.capture", request_capture_consumer)
+
+    # The same RuntimeEvent stream feeds independently configured projections.
+    log_dir = os.environ.get("LOG_PATH", ".")
+    observability_config = CONFIG.get("observability", {})
+    from .observability.default_projectors import activate_default_projectors, create_default_projectors
+    default_projectors = create_default_projectors(log_dir, observability_config.get("projectors"))
+    activate_default_projectors(default_projectors, _event_dispatcher)
+
+    from .observability.raw_trace_consumer import RawTraceConsumer
+    raw_trace_config = observability_config.get("raw_trace", {})
+    raw_trace_path = Path(str(raw_trace_config.get("path", "__raw_traces__")))
+    if not raw_trace_path.is_absolute():
+        raw_trace_path = Path(log_dir) / raw_trace_path
+    raw_trace_consumer = RawTraceConsumer(
+        policy=raw_trace_config.get("policy", "disabled"),
+        selected_routes=raw_trace_config.get("selected_routes"),
+        base_dir=raw_trace_path,
+        max_bytes_per_request=raw_trace_config.get("max_bytes_per_request", 20 * 1024 * 1024),
+    )
+    _event_dispatcher.subscribe("transport.trace", raw_trace_consumer)
+
+    # FIX-D072: Thread dispatcher through emit_* calls so events flow through
+    # the Projector architecture instead of bypassing to legacy log().
+    _app.emit_perf_logs_dir(
+        message=f"Performance logs directory: {perf_logs_dir}",
+        dispatcher=_event_dispatcher,
+    )
 
     # Initial config reload check (in case config changed before startup)
     from .config import check_config_reload
     if check_config_reload():
-        log("INFO", "config_reloaded", message="Config was modified before startup, reloading...")
+        _app.emit_config_reloaded(
+            message="Config was modified before startup, reloading...",
+            dispatcher=_event_dispatcher,
+        )
 
     # Start the config watcher background task
     asyncio.create_task(_config_watcher())
 
-    log("INFO", "app_starting", message="Starting...")
+    _app.emit_starting(message="Starting...", dispatcher=_event_dispatcher)
     try:
         yield
     finally:
-        log("INFO", "app_stopping", message="Shutting down...")
+        _app.emit_stopping(
+            message="Shutting down...",
+            dispatcher=_event_dispatcher,
+        )
         await stop_async_writer()
 
 
@@ -192,11 +285,26 @@ async def request_id_middleware(request: Request, call_next):
     if not req_id:
         # Generate unique ID (8 chars)
         req_id = uuid.uuid4().hex[:8]
-    
+
     # Attach to request state for downstream access
     request.state.req_id = req_id
-    
+
+    # Emit request.lifecycle.received event
+    _req_events.emit_received(
+        req_id=req_id,
+        client_model=request.headers.get("x-client-model", ""),
+        stream=request.method.upper() == "POST",
+        endpoint=request.url.path,
+    )
+
     response = await call_next(request)
+
+    # Emit request.lifecycle.completed event
+    _req_events.emit_completed(
+        req_id=req_id,
+        status=response.status_code,
+    )
+
     return response
 
 
@@ -206,7 +314,7 @@ async def request_id_middleware(request: Request, call_next):
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: HTTPException):
     """Custom 404 handler with logging."""
-    log("WARNING", "not_found", path=request.url.path)
+    _app.emit_not_found(path=request.url.path, dispatcher=get_event_dispatcher())
     return JSONResponse(
         status_code=404,
         content={"detail": f"Path '{request.url.path}' not found"},
@@ -226,7 +334,7 @@ async def health_check():
 async def get_metrics():
     """Metrics endpoint - delegates to metrics module."""
     from .metrics import METRICS_COLLECTOR
-    return METRICS_COLLECTOR.get_metrics()
+    return METRICS_COLLECTOR.get_system_metrics()
 
 
 @app.get("/v1/models")
@@ -245,8 +353,8 @@ async def list_models():
 
         # Build config dict with resolved route details
         filters_list = None
-        if isinstance(route.filter_chain, dict) and route.filter_chain.get("order"):
-            filters_list = list(route.filter_chain["order"])
+        if isinstance(route.filters, dict):
+            filters_list = list(route.filters)
         route_config = {
             "upstream_model": route.model if route.model is not None else None,
             "max_tokens": route.max_tokens if route.max_tokens is not None else None,
@@ -320,93 +428,3 @@ async def embeddings(req: Request):
     
     result = await embeddings_handler(payload, headers, req_id)
     return result
-
-
-# ----------------------------
-# Legacy Exports for Test Compatibility
-# ----------------------------
-# These re-exports maintain compatibility with existing tests that import
-# directly from keeprollming.app. They delegate to the actual implementations
-# in the modular structure.
-
-from .logger import (
-    BASIC_SNIP_CHARS,
-    LOG_MODE,
-    LOG_MODE_CHOICES,
-    LOG_SNIP_CHARS,
-    classify_messages,
-    extract_last_user_text,
-    log_connection_error,
-    log_fallback_error,
-    log_streaming_response,
-    summarize_request_payload,
-    summarize_response_payload,
-    _snip_obj_active,
-    snip_json,
-)
-
-from .summary_cache import (
-    conversation_fingerprint,
-    find_best_prefix_entry_with_reasons,
-    load_cache_entries,
-    make_cache_entry,
-    save_cache_entry,
-)
-
-from .metrics import (
-    METRICS_COLLECTOR,
-    record_conversation_metrics,
-    record_summary_cache_hit,
-    record_summary_cache_miss,
-    record_summary_reuse,
-)
-
-from .performance import record_request_performance
-
-from .tool_rewrite import ToolCallRewriter
-
-from .upstream import (
-    close_http_client,
-    get_ctx_len_for_model,
-    http_client,
-)
-
-# Token counter singleton
-from .token_counter import TokenCounter
-TOK = TokenCounter()
-
-# Configuration constants
-from .config import (
-    SAFETY_MARGIN_TOK,
-    SUMMARY_MODE,
-    SUMMARY_CACHE_ENABLED,
-    SUMMARY_CACHE_DIR,
-    SUMMARY_CACHE_FINGERPRINT_MSGS,
-    SUMMARY_FORCE_CONSOLIDATE,
-    SUMMARY_CONSOLIDATE_WHEN_NEEDED,
-    UPSTREAM_BASE_URL,
-    DEFAULT_MAX_COMPLETION_TOKENS,
-)
-
-# Legacy summary functions for test compatibility
-from .rolling_summary import (
-    summarize_middle,
-    summarize_incremental,
-    should_summarise,
-    split_messages,
-    build_messages_from_summary_prefix,
-    build_repacked_messages,
-    choose_append_until_idx,
-    ensure_repacked_has_user_message,
-    _pinned_head_count,
-    is_summary_cacheable,
-)
-
-# Route resolution (delegates to routing module)
-def _get_fake_upstream(app_module=None):
-    """Legacy function for tests - returns global fake client from conftest."""
-    try:
-        from tests.conftest import _fake_upstream
-        return _fake_upstream
-    except ImportError:
-        return None

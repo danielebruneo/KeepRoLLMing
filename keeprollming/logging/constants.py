@@ -1,4 +1,9 @@
-"""ANSI codes, LOG_MODE choices, env vars, and global state for the logging system."""
+"""ANSI codes, env vars, and global state for the logging system.
+
+Phase P6 cleanup: legacy mode parsing removed. The Projector model with explicit
+level/formatter orthogonality replaces the legacy combined knob. Default
+projectors are configured at startup with fixed settings (see app.py lifespan).
+"""
 
 from __future__ import annotations
 
@@ -10,9 +15,9 @@ def _ts() -> float:
     return time.time()
 
 
-LOG_MODE_ENV = os.getenv("LOG_MODE", os.getenv("LOG_LEVEL", "DEBUG")).upper().strip()
-LOG_MODE_CHOICES = {"DEBUG", "MEDIUM", "BASIC", "BASIC_PLAIN"}
-LOG_MODE = LOG_MODE_ENV if LOG_MODE_ENV in LOG_MODE_CHOICES else "DEBUG"
+# ── Legacy mode selection removed (Phase P6 cleanup) ───────────────
+# The legacy environment parsing and choices are retired. Use the
+# Projector model with explicit level/formatter configuration instead.
 
 LOG_SNIP_CHARS = int(os.getenv("LOG_SNIP_CHARS", "4000"))
 BASIC_SNIP_CHARS = int(os.getenv("BASIC_SNIP_CHARS", "0"))
@@ -37,6 +42,8 @@ ANSI_YELLOW = "\x1b[33m"
 ANSI_BLUE = "\x1b[34m"
 ANSI_RED = "\x1b[31m"
 ANSI_GRAY = "\x1b[90m"
+ANSI_BRIGHT_YELLOW = "\x1b[93m"
+ANSI_BRIGHT_RED = "\x1b[91m"
 
 
 def _c(text: str, *codes: str) -> str:

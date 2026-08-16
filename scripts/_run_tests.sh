@@ -9,10 +9,6 @@ echo "Setting up test environment for parallel execution..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/set-tests-venv.sh"
 
-# Install requirements
-pip install -r "$SCRIPT_DIR/../requirements.txt"
-pip install -r "$SCRIPT_DIR/../requirements-dev.txt"
-
 # Check if specific tests are provided as arguments
 if [ $# -gt 0 ]; then
     # If specific tests are passed, run them normally
@@ -45,3 +41,7 @@ fi
 
 echo ""
 echo "Parallel test run completed"
+
+if [[ "${PHASE1_EXIT:-0}" -ne 0 || "${PHASE2_EXIT:-0}" -ne 0 ]]; then
+    exit 1
+fi

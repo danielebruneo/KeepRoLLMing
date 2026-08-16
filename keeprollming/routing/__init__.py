@@ -8,3 +8,4 @@ New code should import from keeprollming.routing directly.
 
 from .router import *  # noqa: F403
 from .router import Route, RouteMatch, DefaultSettings, ModelConfig, DEFAULT_FALLBACK_ROUTE  # noqa: F401
+from .plan import RoutePlan  # noqa: F401

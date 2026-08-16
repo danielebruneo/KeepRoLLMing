@@ -102,8 +102,8 @@ async def dump_failed_payload(
         return filepath
     except Exception as e:
         # Never let a dump failure propagate
-        from keeprollming.logger import log
-        log("WARN", "dump_failed_payload_error", req_id=req_id, error=str(e))
+        from keeprollming.observability import events_utils as _u
+        _u.emit_dump_failed(req_id=req_id, error=str(e))
         return None
 
 

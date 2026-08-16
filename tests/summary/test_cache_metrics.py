@@ -115,39 +115,6 @@ class TestStreamingCacheMetrics:
         assert cache_pct_u == 98.2
 
 
-class TestLoggerSafeFields:
-    """Test that logger.py SAFE_FIELDS includes cache-related fields."""
-
-    def test_safe_fields_includes_cache_fields(self):
-        """Verify SAFE_FIELDS set includes cached_tokens, cache_hit_ratio, cache_pct."""
-        # Read the logger.py file to check SAFE_FIELDS
-        with open("/home/daniele/LLM/orchestrator/keeprollming/logger.py", "r") as f:
-            content = f.read()
-
-        assert '"cached_tokens"' in content
-        assert '"cache_hit_ratio"' in content
-        assert '"cache_pct"' in content
-
-    def test_cache_metrics_event_in_whitelist(self):
-        """Verify 'cache_metrics' is in the _should_log whitelist."""
-        with open("/home/daniele/LLM/orchestrator/keeprollming/logger.py", "r") as f:
-            content = f.read()
-
-        assert '"cache_metrics"' in content
-
-
-class TestBASICPLAINCacheFormatter:
-    """Test that BASIC_PLAIN formatter handles cache_metrics event."""
-
-    def test_cache_metrics_event_dispatch(self):
-        """Verify format_plain dispatches cache_metrics event."""
-        with open("/home/daniele/LLM/orchestrator/keeprollming/logging/plain_text.py", "r") as f:
-            content = f.read()
-
-        assert 'msg == "cache_metrics"' in content
-        assert 'add_section_plain(parts, "CACHE"' in content
-
-
 class TestFakeBackend:
     """Test that fake backend can optionally include cached_tokens."""
 

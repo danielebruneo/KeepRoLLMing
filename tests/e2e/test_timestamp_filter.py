@@ -20,7 +20,7 @@ from keeprollming.orchestrator.filter import (
     FilterConfig,
     FilterExecutionContext,
 )
-from keeprollming.orchestrator.filters.timestamp_filter import TimestampFilter
+from keeprollming.filters.timestamp.request import TimestampFilter
 
 
 # ── Mock Request ──────────────────────────────────────────────────────
@@ -56,12 +56,12 @@ _DEFAULT_FOOTER_RE = re.compile(
 class TestTimestampFilterDefault:
     """Test default behavior: UTC timezone, default template."""
 
-    def test_filter_registered(self):
-        """Verify the filter is auto-registered."""
-        from keeprollming.orchestrator.filter import get_registered_filters
-        registry = get_registered_filters()
-        assert "timestamp" in registry
-        assert registry["timestamp"] is TimestampFilter
+    def test_filter_declared_in_builtin_registry(self):
+        """The explicit module registry is the only discovery mechanism."""
+        from keeprollming.filters import built_in_filter_modules
+
+        registry = built_in_filter_modules()
+        assert registry["timestamp"].request_factory is TimestampFilter
 
     def test_default_priority(self):
         """Verify priority is 100 (runs last)."""
@@ -77,7 +77,6 @@ class TestTimestampFilterDefault:
         assert f.is_enabled is True
         assert f._template == TimestampFilter._DEFAULT_TEMPLATE
         assert f._timezone == "UTC"
-        assert f._always is False
         assert f._bare_format == "%Y-%m-%d %H:%M:%S UTC"
 
     def test_process_request_injects_system_message(self):
@@ -148,7 +147,7 @@ class TestTimestampFilterDefault:
         assert result.content == ""
 
     def test_process_response_tool_calls_only_unchanged(self):
-        """Response phase: tool_calls-only → unchanged (always=false)."""
+        """Response phase: tool_calls-only → unchanged (no timestamp emitted)."""
         f = TimestampFilter()
         ctx = FilterExecutionContext(req_id="test-req")
 
@@ -250,42 +249,7 @@ class TestTimestampFilterCustomConfig:
         result = asyncio.run(f.process_response(response, ctx))
         assert result is response
 
-    def test_always_mode_injects_on_tool_calls_only(self):
-        """always=true: timestamp injected on tool_calls-only response."""
-        f = TimestampFilter(config={"always": True})
-        ctx = FilterExecutionContext(req_id="test-req")
-
-        response = MockResponse(
-            content="",
-            tool_calls=[{"id": "call_1", "type": "function", "function": {"name": "test"}}],
-        )
-        result = asyncio.run(f.process_response(response, ctx))
-
-        assert result is not response
-        assert _DEFAULT_FOOTER_RE.search(result.content)
-        assert result.tool_calls is not None
-        assert len(result.tool_calls) == 1
-
-    def test_always_mode_tool_calls_and_content_appends_once(self):
-        """always=true with content + tool_calls: single append, no duplicate."""
-        f = TimestampFilter(config={"always": True})
-        ctx = FilterExecutionContext(req_id="test-req")
-
-        response = MockResponse(
-            content="Assistant text",
-            tool_calls=[{"id": "call_1", "type": "function", "function": {"name": "test"}}],
-        )
-        result = asyncio.run(f.process_response(response, ctx))
-
-        assert result is not response
-        assert "Assistant text" in result.content
-        # Exactly one footer match
-        assert len(_DEFAULT_FOOTER_RE.findall(result.content)) == 1
-        assert result.tool_calls is not None
-        assert len(result.tool_calls) == 1
-
-
-# ── Pipeline integration tests ────────────────────────────────────────
+ # ── Pipeline integration tests ────────────────────────────────────────
 
 class TestTimestampFilterPipeline:
     """Test TimestampFilter integration with Pipeline."""
@@ -295,13 +259,10 @@ class TestTimestampFilterPipeline:
         from keeprollming.orchestrator.pipeline import Pipeline
 
         route_config = {
-            "order": ["timestamp"],
-            "filters": {
-                "timestamp": {
-                    "enabled": True,
-                    "template": "\n\n---\nTest: %Y-%m-%d %H:%M:%S UTC",
-                    "timezone": "UTC",
-                },
+            "timestamp": {
+                "enabled": True,
+                "template": "\n\n---\nTest: %Y-%m-%d %H:%M:%S UTC",
+                "timezone": "UTC",
             },
         }
 
@@ -315,14 +276,11 @@ class TestTimestampFilterPipeline:
     def test_pipeline_timestamp_runs_last(self):
         """Timestamp filter has highest priority (runs last)."""
         from keeprollming.orchestrator.pipeline import Pipeline
-        from keeprollming.orchestrator.filters.system_prompt_filter import SystemPromptFilter
+        from keeprollming.filters.system_prompt.request import SystemPromptFilter
 
         route_config = {
-            "order": ["system_prompt", "timestamp"],
-            "filters": {
-                "system_prompt": {"enabled": True, "prompt": "You are helpful."},
-                "timestamp": {"enabled": True},
-            },
+            "system_prompt": {"enabled": True, "prompt": "You are helpful."},
+            "timestamp": {"enabled": True},
         }
 
         pipeline = Pipeline.from_route_config(route_config)

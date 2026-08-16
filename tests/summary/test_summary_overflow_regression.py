@@ -3,7 +3,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_summary_middle_recursively_chunks_on_repeated_overflow(monkeypatch):
-    import keeprollming.rolling_summary as rs
+    import keeprollming.summary as rs
     from keeprollming.summary import summary_orchestrator
 
     calls = []
@@ -47,7 +47,7 @@ async def test_summary_middle_recursively_chunks_on_repeated_overflow(monkeypatc
 
 @pytest.mark.asyncio
 async def test_summary_incremental_recursively_chunks_on_repeated_overflow(monkeypatch):
-    import keeprollming.rolling_summary as rs
+    import keeprollming.summary as rs
     from keeprollming.summary import summary_orchestrator
 
     calls = []
@@ -91,7 +91,7 @@ async def test_summary_incremental_recursively_chunks_on_repeated_overflow(monke
 
 @pytest.mark.asyncio
 async def test_summary_middle_preflight_chunks_before_400(monkeypatch):
-    import keeprollming.rolling_summary as rs
+    import keeprollming.summary as rs
     from keeprollming.summary import summary_orchestrator, decision_engine, chunking_strategy
 
     calls = []

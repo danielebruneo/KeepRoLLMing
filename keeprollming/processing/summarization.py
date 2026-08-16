@@ -14,11 +14,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..config import SUMMARY_CACHE_DIR
 from ..logger import log
+from ..observability import events_summary as _events
 
 TOK = TokenCounter()
 
-# Import from rolling_summary module (existing)
-from ..rolling_summary import (
+# Import from summary package (existing)
+from ..summary import (
     build_messages_from_summary_prefix,
     build_repacked_messages,
     choose_append_until_idx,
@@ -274,8 +275,7 @@ async def _execute_summarization(
     summary_tokens = 0
 
     try:
-        log(
-            "INFO", "summary_needed",
+        _events.emit_summary_needed(
             req_id=req_id,
             prompt_tok_est=plan.prompt_tok_est or 0,
             threshold=plan.threshold or 0,
@@ -301,7 +301,7 @@ async def _execute_summarization(
         )
 
         # Lazy imports for monkeypatch compatibility
-        from ..rolling_summary import split_messages as _split_msgs
+        from ..summary import split_messages as _split_msgs
         _, non_system = _split_msgs(messages)
 
         # Calculate head/tail/middle for potential summarization
@@ -315,14 +315,13 @@ async def _execute_summarization(
             did_summarize = True
             summary_tokens = 0
 
-            log(
-                "INFO", "cache_hit_used",
+            _events.emit_cache_hit_used(
                 req_id=req_id,
                 cache_entry=fingerprint,
                 messages_count=len(cache_repacked),
             )
         elif middle and plan.middle_count > 0:
-            from ..rolling_summary import summarize_incremental as _summarize_inc
+            from ..summary import summarize_incremental as _summarize_inc
             summary_text = await _summarize_inc(
                 existing_summary="",
                 new_messages=middle,
@@ -338,14 +337,13 @@ async def _execute_summarization(
             did_summarize = True
             summary_tokens = _count_tokens_safe(summary_text) or 0
 
-            log(
-                "INFO", "incremental_summary_called",
+            _events.emit_incremental_summary_called(
                 req_id=req_id,
                 messages_count=len(middle),
                 summary_model=summary_model,
             )
         else:
-            from ..rolling_summary import summarize_middle as _summarize_mid
+            from ..summary import summarize_middle as _summarize_mid
             summary_text = await _summarize_mid(
                 middle, req_id=req_id,
                 summary_model=summary_model,
@@ -361,8 +359,7 @@ async def _execute_summarization(
 
         repacked_messages = ensure_repacked_has_user_message(repacked_messages)
 
-        log(
-            "INFO", "repacked",
+        _events.emit_repacked(
             req_id=req_id,
             did_summarize=did_summarize,
             repacked_msg_count=len(repacked_messages),
@@ -371,7 +368,7 @@ async def _execute_summarization(
             pinned_head_n=pinned_head_n,
         )
     except Exception as e:
-        log("ERROR", "summary_failed_fallback_passthrough", req_id=req_id, err=str(e))
+        _events.emit_summary_failed_fallback_passthrough(req_id=req_id, err=str(e))
         repacked_messages = messages
         did_summarize = False
 

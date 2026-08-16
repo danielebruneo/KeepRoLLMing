@@ -9,7 +9,7 @@ def test_sanitize_summary_text_removes_prompt_echo():
     This is critical to prevent the summary from including its own instructions
     in the output, which would cause infinite loops or confusion.
     """
-    from keeprollming.rolling_summary import _sanitize_summary_text
+    from keeprollming.summary import _sanitize_summary_text
 
     raw = """=== EXISTING SUMMARY START ===
 [ARCHIVED_COMPACT_CONTEXT]
@@ -42,7 +42,7 @@ async def test_summary_middle_overflow_chunks(monkeypatch):
     Scenario: First summary attempt exceeds backend context limit (4096 tokens).
     Expected behavior: Automatically chunk messages and retry with smaller set.
     """
-    import keeprollming.rolling_summary as rs
+    import keeprollming.summary as rs
     from keeprollming.summary import summary_orchestrator
 
     calls = []

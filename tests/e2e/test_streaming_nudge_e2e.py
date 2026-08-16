@@ -52,7 +52,7 @@ def test_nudge_through_orchestrator(
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",  # ← ORCHESTRATOR, not backend!
         json={
-            "model": "local/deep",  # Route with filter_chain in config.test.yaml!
+            "model": "local/deep",  # Route with filters in config.test.yaml!
             "messages": [{"role": "user", "content": "Rispondi esattamente con 'Prova:'"}],
             "stream": False,
         },
@@ -142,7 +142,7 @@ def test_nudge_streaming_through_orchestrator(
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
-            "model": "local/deep",  # Route with filter_chain in config.test.yaml!
+            "model": "local/deep",  # Route with filters in config.test.yaml!
             "messages": [{"role": "user", "content": "Rispondi esattamente con 'Prova:'"}],
             "stream": True,
         },

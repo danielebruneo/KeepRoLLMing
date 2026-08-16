@@ -16,10 +16,27 @@ import httpx
 
 from ..config import DEFAULT_CTX_LEN, UPSTREAM_BASE_URL
 from ..logger import log, log_request, log_response
+from ..observability import events_upstream as _up
 from ..types import DEFAULT_REQUEST_TIMEOUT
 
 # Global client singleton
 _http_client: httpx.AsyncClient | None = None
+
+# FIX-D072: EventDispatcher for upstream emit_* calls.
+# Set by app.py lifespan() after initialization.
+_upstream_dispatcher: Any | None = None
+
+
+def set_upstream_dispatcher(dispatcher: Any) -> None:
+    """Set the EventDispatcher for upstream event emission.
+
+    Called from app.py lifespan() after dispatcher initialization so that
+    emit_* calls flow through the Projector architecture instead of bypassing
+    to legacy log().
+    """
+    global _upstream_dispatcher
+    _upstream_dispatcher = dispatcher
+
 
 # Context length cache: {model_name: (ctx_len, last_updated_timestamp)}
 _ctx_cache: Dict[str, Tuple[int, float]] = {}
@@ -61,9 +78,7 @@ class UpstreamClient:
         
         # Handle SSE streaming responses
         if ct.startswith("text/event-stream"):
-            log(
-                "INFO",
-                "response_received",
+            _up.emit_response_received(
                 url=str(response.request.url),
                 method=response.request.method,
                 status=response.status_code,
@@ -71,9 +86,10 @@ class UpstreamClient:
                 headers=dict(response.headers),
                 body="",
                 note="SSE response headers received (body logged by stream tee when consumed)",
+                dispatcher=_upstream_dispatcher,
             )
             return
-        
+
         # Non-streaming: body is available
         await log_response(response, elapsed_ms=elapsed_ms)
     
@@ -123,9 +139,7 @@ async def http_client(request_timeout: float = DEFAULT_REQUEST_TIMEOUT) -> httpx
             ct = (response.headers.get("content-type") or "").lower()
             
             if ct.startswith("text/event-stream"):
-                log(
-                    "INFO",
-                    "response_received",
+                _up.emit_response_received(
                     url=str(response.request.url),
                     method=response.request.method,
                     status=response.status_code,
@@ -133,9 +147,10 @@ async def http_client(request_timeout: float = DEFAULT_REQUEST_TIMEOUT) -> httpx
                     headers=dict(response.headers),
                     body="",
                     note="SSE response headers received (body logged by stream tee when consumed)",
+                    dispatcher=_upstream_dispatcher,
                 )
                 return
-            
+
             await log_response(response, elapsed_ms=elapsed_ms)
         
         _http_client = httpx.AsyncClient(
@@ -244,21 +259,29 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
             
             # Cache the result
             _ctx_cache[upstream_model] = (ctx_len, now)
-            
-            log(
-                "INFO",
-                "ctx_len",
+
+            _up.emit_ctx_len(
                 upstream_model=upstream_model,
                 ctx_len=ctx_len,
                 source=f"{url}:{ctx_src}" if ctx_len != DEFAULT_CTX_LEN else "default",
+                dispatcher=_upstream_dispatcher,
             )
             return ctx_len
-            
+
         except Exception as e:
-            log("WARN", "ctx_len_fallback", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
+            _up.emit_ctx_len_fallback(
+                upstream_model=upstream_model,
+                ctx_len=DEFAULT_CTX_LEN,
+                err=str(e),
+                dispatcher=_upstream_dispatcher,
+            )
             _ctx_cache[upstream_model] = (DEFAULT_CTX_LEN, now)
             continue
-    
+
     # All endpoints failed
-    log("WARN", "all_endpoints_failed", upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN)
+    _up.emit_all_endpoints_failed(
+        upstream_model=upstream_model,
+        ctx_len=DEFAULT_CTX_LEN,
+        dispatcher=_upstream_dispatcher,
+    )
     return DEFAULT_CTX_LEN

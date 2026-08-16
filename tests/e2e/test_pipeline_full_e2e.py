@@ -1,7 +1,7 @@
 """E2E tests for the full Pipeline through a running orchestrator.
 
 Verifies that filters work together (SystemPrompt, Summarization,
-ToolRewrite, ToolLoopStopper, ModelNudge) through the V2 Pipeline.
+ToolRewrite, ToolLoopStopper, ModelNudge) through the streaming pipeline.
 """
 
 import httpx

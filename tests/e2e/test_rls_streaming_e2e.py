@@ -5,18 +5,17 @@ Config produzione-like.
 """
 
 import asyncio
-import json
-import time
-import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
 
-import httpx
 import pytest
-import uvicorn
+
+from tests.e2e.streaming_harness import (
+    collect_streaming_chunks as _collect_streaming_chunks,
+    configure_scenario as _step_scenario,
+)
 
 
-RLS_PORT = 19995
+_fake_backend_url: str | None = None
 
 _SAME_REASONING = "Let me search for the footer file to fix the copyright..."
 _DIFF_REASONING = "Now I need to sync the file to the server and flush cache."
@@ -42,73 +41,31 @@ class _Route:
     transform_reasoning_content: bool = False
     add_empty_content_when_reasoning_only: bool = False
     reasoning_placeholder_content: str = ""
-    filter_chain: dict | None = None
+    filters: dict | None = None
     request_timeout: float = 30.0
     fallback_chain: list = field(default_factory=list)
     model_pattern: str | None = None
     cost_priority: int = 999
 
 
-@pytest.fixture(scope="module")
-def fake_backend():
-    from tests.e2e.fake_backend import create_app
-    app = create_app()
-    config = uvicorn.Config(app, host="127.0.0.1", port=RLS_PORT, log_level="error")
-    server = uvicorn.Server(config)
-    def run():
-        asyncio.run(server.serve())
-    t = threading.Thread(target=run, daemon=True)
-    t.start()
-    time.sleep(2)
-    yield f"http://127.0.0.1:{RLS_PORT}"
-    server.should_exit = True
-
-
-def _step_scenario(fake_backend: str, scenario: dict):
-    httpx.post(f"{fake_backend}/__scenario", json={"scenario": scenario}, timeout=5)
+@pytest.fixture
+def fake_backend(fake_backend_server):
+    """Use the dynamically allocated canonical fake backend."""
+    global _fake_backend_url
+    _fake_backend_url = fake_backend_server.base_url
+    return _fake_backend_url
 
 
 def _route(override: dict | None = None) -> _Route:
+    assert _fake_backend_url is not None
     cfg = {
         "enabled": True,
         "max_repeats": 1,
-        "max_retries": 2,
+        "max_attempts": 2,
         **(override or {}),
-        "upstream_url": f"http://127.0.0.1:{RLS_PORT}",
+        "upstream_url": _fake_backend_url,
     }
-    return _Route(filter_chain={
-        "order": ["reasoning_loop_stopper"],
-        "filters": {"reasoning_loop_stopper": cfg},
-    })
-
-
-async def _collect_streaming_chunks(
-    route: _Route, fake_backend_url: str, payload: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    from keeprollming.endpoints.streaming_handlers import process_streaming_request
-    chunks = []
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        t_start = time.perf_counter()
-        async for raw_chunk in process_streaming_request(
-            url=f"{fake_backend_url}/v1/chat/completions",
-            client=client, payload=dict(payload), route_headers={},
-            route=route, req_id="rls-test", request_timeout=15.0,
-            fallback_attempts=[], visited_models=set(),
-            upstream_model="test-model", is_passthrough=True,
-            transform_reasoning_content=False,
-            add_empty_content_when_reasoning_only=False,
-            reasoning_placeholder="", t_start=t_start,
-            record_metrics_func=lambda _: None,
-        ):
-            text = raw_chunk.decode("utf-8", errors="replace")
-            for line in text.split("\n"):
-                line = line.strip()
-                if line.startswith("data:") and "[DONE]" not in line:
-                    try:
-                        chunks.append(json.loads(line[5:].strip()))
-                    except json.JSONDecodeError:
-                        pass
-    return chunks
+    return _Route(filters={"reasoning_loop_stopper": cfg})
 
 
 class TestRLSStreaming:
@@ -135,7 +92,7 @@ class TestRLSStreaming:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 0}), fake_backend, payload,
+            _route({"max_attempts": 0}), fake_backend, payload,
         ))
         reasoning_seen = any(
             c.get("choices", [{}])[0].get("delta", {}).get("reasoning_content")
@@ -165,7 +122,7 @@ class TestRLSStreaming:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 0}), fake_backend, payload,
+            _route({"max_attempts": 0}), fake_backend, payload,
         ))
         reasoning_parts = []
         for c in chunks:
@@ -177,8 +134,8 @@ class TestRLSStreaming:
         assert _DIFF_REASONING in full, \
             f"Different reasoning should reach client, got: {full[:100]}"
 
-    def test_max_retries_zero_immediate_fallback(self, fake_backend):
-        """max_retries=0 → fallback subito, nessun reasoning al client."""
+    def test_max_attempts_zero_immediate_fallback(self, fake_backend):
+        """max_attempts=0 → fallback subito, nessun reasoning al client."""
         _step_scenario(fake_backend, {
             "chat": {
                 "stream_pieces": [[]],
@@ -198,13 +155,13 @@ class TestRLSStreaming:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 0}), fake_backend, payload,
+            _route({"max_attempts": 0}), fake_backend, payload,
         ))
         reasoning_seen = any(
             c.get("choices", [{}])[0].get("delta", {}).get("reasoning_content")
             for c in chunks
         )
-        assert not reasoning_seen, "Reasoning in loop with max_retries=0!"
+        assert not reasoning_seen, "Reasoning in loop with max_attempts=0!"
 
     def test_no_previous_reasoning_passes(self, fake_backend):
         """Nessun reasoning precedente → reasoning arriva al client."""
@@ -257,7 +214,7 @@ class TestRLSStreaming:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 0}), fake_backend, payload,
+            _route({"max_attempts": 0}), fake_backend, payload,
         ))
         reasoning_parts = []
         for c in chunks:
@@ -293,7 +250,7 @@ class TestRLSStreaming:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 0}), fake_backend, payload,
+            _route({"max_attempts": 0}), fake_backend, payload,
         ))
         # Reasoning DEVE arrivare al client (tool call diversa = non loop)
         reasoning_seen = any(
@@ -325,7 +282,7 @@ class TestRLSStreaming:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 0}), fake_backend, payload,
+            _route({"max_attempts": 0}), fake_backend, payload,
         ))
         # Reasoning NON deve arrivare al client (loop con stessa tool call)
         reasoning_seen = any(

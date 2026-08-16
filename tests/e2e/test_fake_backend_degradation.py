@@ -11,33 +11,12 @@ Run with:
 import asyncio
 import json
 import pytest
-import uvicorn
-import threading
-import time
-
-from tests.e2e.fake_backend import create_app
 
 
-FAKE_PORT = 19997
-
-
-@pytest.fixture(scope="module")
-def fake_backend():
-    """Start fake backend server for testing."""
-    app = create_app()
-    config = uvicorn.Config(app, host="127.0.0.1", port=FAKE_PORT, log_level="error")
-    server = uvicorn.Server(config)
-    
-    def run():
-        asyncio.run(server.serve())
-    
-    t = threading.Thread(target=run, daemon=True)
-    t.start()
-    time.sleep(2)  # Wait for server to start
-    
-    yield f"http://127.0.0.1:{FAKE_PORT}"
-    
-    server.should_exit = True
+@pytest.fixture
+def fake_backend(fake_backend_server):
+    """Use the dynamically allocated canonical fake backend."""
+    return fake_backend_server.base_url
 
 
 async def _set_degradation(base_url: str, level: int, seed: int):

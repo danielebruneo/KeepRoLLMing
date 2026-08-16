@@ -16,7 +16,6 @@ payload *before* any summarisation or clamping logic runs.
 
 from __future__ import annotations
 
-import copy
 from typing import Any, Dict, Optional, Tuple
 
 # Whitelist of parameters that can be overridden at route level.
@@ -31,6 +30,10 @@ ALLOWED_OVERRIDE_KEYS = frozenset({
     "seed",
     "min_p",
     "repetition_penalty",
+    # OpenAI-compatible reasoning control.  LibreChat sends this as a
+    # top-level request field, and Qwen-compatible gateways may use it to
+    # select the model's thinking intensity.
+    "reasoning_effort",
 })
 
 

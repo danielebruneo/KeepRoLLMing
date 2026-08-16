@@ -2,6 +2,8 @@
 Test suite for custom summary prompts functionality
 """
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 import keeprollming.app as app_mod
@@ -20,6 +22,10 @@ class _FakeResponse:
 
     def json(self) -> dict:
         return self._json_data
+
+    @property
+    def content(self) -> bytes:
+        return json.dumps(self._json_data).encode("utf-8")
 
 
 class _FakeAsyncClient:
@@ -58,8 +64,10 @@ def client(monkeypatch) -> TestClient:
     async def _fake_ctx(_model: str) -> int:
         return 512
 
-    monkeypatch.setattr(app_mod, "http_client", _fake_http_client)
-    monkeypatch.setattr(app_mod, "get_ctx_len_for_model", _fake_ctx)
+    from keeprollming.endpoints import chat_completions
+    import keeprollming.upstream as upstream
+    monkeypatch.setattr(chat_completions, "http_client", _fake_http_client)
+    monkeypatch.setattr(upstream, "get_ctx_len_for_model", _fake_ctx)
 
     return TestClient(app_mod.app)
 
@@ -76,7 +84,7 @@ def test_custom_prompt_in_payload(client):
     })
 
     # Should not fail with parsing errors
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
 
 
 @pytest.mark.non_parallelizable

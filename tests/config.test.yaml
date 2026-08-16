@@ -1,5 +1,12 @@
 # Test configuration for keeprollming orchestrator
-# Updated for current architecture (extends, filter_chain, upstream_url per route)
+# Updated for current architecture (extends, filters, upstream_url per route)
+
+observability:
+  raw_trace:
+    policy: selected_routes
+    selected_routes: [internal/timestamp-v2]
+    path: raw_trace
+    max_bytes_per_request: 1048576
 
 routes:
   # Base profiles
@@ -39,22 +46,19 @@ routes:
   local/deep:
     extends: base/deep
     pattern: "local/deep"
-    filter_chain:
-      order: [system_prompt, model_nudge, model_tool_loop_stopper]
-      filters:
-        system_prompt:
-          enabled: true
-          prompt: "Test system prompt"
-          override: false
-        model_nudge:
-          enabled: true
-          trigger_patterns: [":$"]
-          nudge_message: "Continue."
-          max_nudge_attempts: 3
-
-        model_tool_loop_stopper:
-          enabled: true
-          max_attempts: 1
+    filters:
+      system_prompt:
+        enabled: true
+        prompt: "Test system prompt"
+        override: false
+      model_nudge:
+        enabled: true
+        trigger_patterns: [":$"]
+        nudge_message: "Continue."
+        max_attempts: 3
+      model_tool_loop_stopper:
+        enabled: true
+        max_attempts: 1
 
   # Passthrough route for pass/* patterns
   passthrough:
@@ -64,7 +68,7 @@ routes:
     ctx_len: 8192
     max_tokens: 4096
     passthrough_enabled: true
-    backend_model_pattern: "${1}"
+    model_pattern: "${1}"
 
   # Production-like route matching code/red config
   code/red:
@@ -72,30 +76,28 @@ routes:
     pattern: "code/red"
     summary_enabled: false
     request_timeout: 600.0
-    filter_chain:
-      order: [model_nudge, model_tool_loop_stopper]
-      filters:
-        model_nudge:
-          enabled: true
-          trigger_patterns:
-            - ":$"
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Ora\b[\s\S]*\.$'
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Devo\b[\s\S]*\.$'
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Basta\b.*\.$'
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*((?:\S+\s+){0,4}\S+)\.$'
-          action: nudge
-          nudge_message: "Continue."
-          max_nudge_attempts: 3
-        model_tool_loop_stopper:
-          enabled: true
-          max_attempts: 1
-          tls_message: >
-            You've already executed this tool call with the same arguments.
-            Please proceed with the next step or try a different approach.
-          fallback_message: >
-            I notice I'm repeating the same tool call. Let me try a different approach.
+    filters:
+      model_nudge:
+        enabled: true
+        trigger_patterns:
+          - ":$"
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Ora\b[\s\S]*\.$'
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Devo\b[\s\S]*\.$'
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Basta\b.*\.$'
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*((?:\S+\s+){0,4}\S+)\.$'
+        action: nudge
+        nudge_message: "Continue."
+        max_attempts: 3
+      model_tool_loop_stopper:
+        enabled: true
+        max_attempts: 1
+        tls_message: >
+          You've already executed this tool call with the same arguments.
+          Please proceed with the next step or try a different approach.
+        fallback_message: >
+          I notice I'm repeating the same tool call. Let me try a different approach.
 
   # Internal test routes with filter chains (for e2e pipeline tests)
   internal/sp:
@@ -104,13 +106,11 @@ routes:
     summary_model: "test-summary-3b"
     ctx_len: 2048
     max_tokens: 1024
-    filter_chain:
-      order: [system_prompt]
-      filters:
-        system_prompt:
-          enabled: true
-          prompt: "/nothink reply in french"
-          override: false
+    filters:
+      system_prompt:
+        enabled: true
+        prompt: "/nothink reply in french"
+        override: false
 
   internal/full:
     pattern: "internal/full"
@@ -118,18 +118,56 @@ routes:
     summary_model: "test-summary-3b"
     ctx_len: 2048
     max_tokens: 1024
-    filter_chain:
-      order: [system_prompt, model_nudge]
-      filters:
-        system_prompt:
-          enabled: true
-          prompt: "/nothink"
-          override: false
-        model_nudge:
-          enabled: true
-          trigger_patterns: [":$"]
-          nudge_message: "Continue."
-          max_nudge_attempts: 3
+    filters:
+      system_prompt:
+        enabled: true
+        prompt: "/nothink"
+        override: false
+      model_nudge:
+        enabled: true
+        trigger_patterns: [":$"]
+        nudge_message: "Continue."
+        max_attempts: 3
+
+  # Client-visible recovery chain.  Kept as a named route so E2E tests do not
+  # manufacture an alternate application configuration at runtime.
+  internal/with-tool-rewrite:
+    pattern: "internal/with-tool-rewrite"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filters:
+      system_prompt:
+        enabled: true
+        prompt: "/nothink"
+        override: false
+      tool_rewrite:
+        enabled: true
+      model_nudge:
+        enabled: true
+        trigger_patterns: [":$"]
+        nudge_message: "Continue."
+        max_attempts: 2
+      timestamp:
+        enabled: true
+        template: "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
+        timezone: "UTC"
+        tail_buffer_size: 1024
+
+  # Explicit bounded-recovery route for exact-attempt regression assertions.
+  internal/nudge-two-attempts:
+    pattern: "internal/nudge-two-attempts"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filters:
+      model_nudge:
+        enabled: true
+        trigger_patterns: [":$"]
+        nudge_message: "Continue."
+        max_attempts: 2
 
   # ── Production-like routes with tool_rewrite + nudge (extends inheritance) ──
 
@@ -140,20 +178,18 @@ routes:
     summary_enabled: false
     ctx_len: 8192
     max_tokens: 4096
-    filter_chain:
-      order: [tool_rewrite, model_nudge]
-      filters:
-        tool_rewrite:
-          enabled: true
-        model_nudge:
-          enabled: true
-          trigger_patterns:
-            - ":$"
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
-          action: nudge
-          nudge_message: "Continue."
-          max_nudge_attempts: 3
+    filters:
+      tool_rewrite:
+        enabled: true
+      model_nudge:
+        enabled: true
+        trigger_patterns:
+          - ":$"
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
+        action: nudge
+        nudge_message: "Continue."
+        max_attempts: 3
 
   # Child: inherits chain/tr-nudge via extends (production pattern)
   chain/tr-nudge/inherited:
@@ -167,40 +203,79 @@ routes:
     summary_enabled: false
     ctx_len: 8192
     max_tokens: 4096
-    filter_chain:
-      order: [tool_rewrite, model_tool_loop_stopper, model_nudge]
-      filters:
-        tool_rewrite:
-          enabled: true
-        model_tool_loop_stopper:
-          enabled: true
-          max_attempts: 1
-          tls_message: "You already tried this. Try something different."
-          fallback_message: "Let me try a different approach."
-        model_nudge:
-          enabled: true
-          trigger_patterns:
-            - ":$"
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
-            - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
-          action: nudge
-          nudge_message: "Continue."
-          max_nudge_attempts: 3
+    filters:
+      tool_rewrite:
+        enabled: true
+      model_tool_loop_stopper:
+        enabled: true
+        max_attempts: 1
+        tls_message: "You already tried this. Try something different."
+        fallback_message: "Let me try a different approach."
+      model_nudge:
+        enabled: true
+        trigger_patterns:
+          - ":$"
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$'
+          - '(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$'
+        action: nudge
+        nudge_message: "Continue."
+        max_attempts: 3
 
-  # Route with Timestamp filter for E2E testing
+  # Route with Timestamp filter for E2E testing (V1 path)
   internal/timestamp:
     pattern: "internal/timestamp"
     model: "test-main-model"
     summary_model: "test-summary-3b"
     ctx_len: 2048
     max_tokens: 1024
-    filter_chain:
-      order: [timestamp]
-      filters:
-        timestamp:
-          enabled: true
-          template: "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
-          timezone: "UTC"
+    filters:
+      timestamp:
+        enabled: true
+        template: "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
+        timezone: "UTC"
+
+  # Route with Timestamp filter for E2E testing
+  internal/timestamp-v2:
+    pattern: "internal/timestamp-v2"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filters:
+      timestamp:
+        enabled: true
+        template: "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
+        timezone: "UTC"
+        tail_buffer_size: 1024
+
+  # ── Streaming routes for ToolRewrite e2e coverage ──
+
+  # tool_rewrite filter only (valid XML rewriting e2e)
+  tool-rewrite-v2:
+    pattern: "tool-rewrite-v2"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filters:
+      tool_rewrite:
+        enabled: true
+
+  # tool_rewrite + timestamp (timestamp coexistence e2e)
+  tool-rewrite-v2-timestamp:
+    pattern: "tool-rewrite-v2-timestamp"
+    model: "test-main-model"
+    summary_model: "test-summary-3b"
+    ctx_len: 2048
+    max_tokens: 1024
+    filters:
+      tool_rewrite:
+        enabled: true
+      timestamp:
+        enabled: true
+        template: "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
+        timezone: "UTC"
+        tail_buffer_size: 1024
 
   # Catch-all for any other model names (MUST be last to avoid shadowing)
   catchall:
@@ -209,6 +284,6 @@ routes:
     ctx_len: 8192
     max_tokens: 4096
     passthrough_enabled: true
-    backend_model_pattern: "${1}"
+    model_pattern: "${1}"
 
 summary_cache_dir: "/tmp/summary_cache_test"

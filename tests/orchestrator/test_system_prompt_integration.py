@@ -5,7 +5,7 @@ that reaches the upstream model.
 
 import asyncio
 import pytest
-from keeprollming.orchestrator.filters.system_prompt_filter import SystemPromptFilter
+from keeprollming.filters.system_prompt.request import SystemPromptFilter
 from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
 
 
@@ -27,15 +27,17 @@ def _make_ctx(req_id="test123", upstream_model="local/deep", upstream_url="http:
     return ctx
 
 
+def _chain(config):
+    filter_ = SystemPromptFilter(config["system_prompt"])
+    return FilterChain(filters=[filter_], execution_order=[filter_.name])
+
+
 class TestFilterChainProcessRequest:
     @pytest.mark.asyncio
     async def test_system_prompt_inserted_by_filter_chain(self):
         """System prompt is injected when filter chain runs process_request."""
-        chain = FilterChain.from_route_config({
-            "order": ["system_prompt"],
-            "filters": {
-                "system_prompt": {"enabled": True, "prompt": "Be helpful", "override": False},
-            },
+        chain = _chain({
+            "system_prompt": {"enabled": True, "prompt": "Be helpful", "override": False},
         })
         req = _TestRequest([{"role": "user", "content": "Hello"}])
         ctx = _make_ctx()
@@ -46,11 +48,8 @@ class TestFilterChainProcessRequest:
     @pytest.mark.asyncio
     async def test_system_prompt_preserves_existing_messages(self):
         """Existing messages are preserved after system prompt injection."""
-        chain = FilterChain.from_route_config({
-            "order": ["system_prompt"],
-            "filters": {
-                "system_prompt": {"enabled": True, "prompt": "X", "override": False},
-            },
+        chain = _chain({
+            "system_prompt": {"enabled": True, "prompt": "X", "override": False},
         })
         req = _TestRequest([{"role": "user", "content": "Hello"}])
         ctx = _make_ctx()
@@ -60,11 +59,8 @@ class TestFilterChainProcessRequest:
     @pytest.mark.asyncio
     async def test_disabled_filter_passes_through(self):
         """Disabled filter does not modify messages."""
-        chain = FilterChain.from_route_config({
-            "order": ["system_prompt"],
-            "filters": {
-                "system_prompt": {"enabled": False, "prompt": "X"},
-            },
+        chain = _chain({
+            "system_prompt": {"enabled": False, "prompt": "X"},
         })
         req = _TestRequest([{"role": "user", "content": "Hello"}])
         ctx = _make_ctx()
@@ -74,11 +70,8 @@ class TestFilterChainProcessRequest:
     @pytest.mark.asyncio
     async def test_override_replaces_system_prompt(self):
         """Override=True replaces existing system prompt."""
-        chain = FilterChain.from_route_config({
-            "order": ["system_prompt"],
-            "filters": {
-                "system_prompt": {"enabled": True, "prompt": "NEW", "override": True},
-            },
+        chain = _chain({
+            "system_prompt": {"enabled": True, "prompt": "NEW", "override": True},
         })
         req = _TestRequest([
             {"role": "system", "content": "OLD system"},

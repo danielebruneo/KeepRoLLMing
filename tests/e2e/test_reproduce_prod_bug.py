@@ -1,9 +1,9 @@
 """Reproduce the production bug with nudge filter causing 500 error.
 
 Production logs show:
-- Route bot/heartbeat has filter_chain configured as dict
+- Route bot/heartbeat has filters configured as dict
 - Request is NON-streaming (process_non_streaming_request)
-- Error occurs immediately after "About to call filter_chain.process_response"
+- Error occurs immediately after "About to call filters.process_response"
 - Response content appears to be just "..." (three dots)
 
 This test reproduces the exact scenario.
@@ -17,16 +17,8 @@ import keeprollming.app as app_mod
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    """Create a test client with ERROR logging."""
-    import keeprollming.logger as logger_mod
-    
-    original_mode = getattr(logger_mod, 'LOG_MODE', None)
-    logger_mod.LOG_MODE = "ERROR"
-    
+    """Create a test client with isolated runtime state."""
     yield TestClient(app_mod.app)
-    
-    if original_mode:
-        logger_mod.LOG_MODE = original_mode
 
 
 def test_nudge_filter_with_ellipsis_content(client):
@@ -41,7 +33,7 @@ def test_nudge_filter_with_ellipsis_content(client):
     response = client.post(
         "/v1/chat/completions",
         json={
-            "model": "local/quick",  # Uses quick route without filter_chain
+            "model": "local/quick",  # Uses quick route without filters
             "messages": messages,
             "stream": False,
             "max_tokens": 64,
@@ -56,10 +48,10 @@ def test_nudge_filter_with_ellipsis_content(client):
 
 
 def test_streaming_with_filter_chain_dict(client):
-    """Test streaming with a route that has filter_chain as dict.
+    """Test streaming with a route that has filters as dict.
     
     This is the exact scenario from production:
-    - Route has filter_chain configured as dict (not None)
+    - Route has filters configured as dict (not None)
     - Streaming request
     - Should not cause RuntimeWarning or 500 error
     """
@@ -72,7 +64,7 @@ def test_streaming_with_filter_chain_dict(client):
     response = client.post(
         "/v1/chat/completions",
         json={
-            "model": "local/quick",  # Uses quick route (no filter_chain)
+            "model": "local/quick",  # Uses quick route (no filters)
             "messages": messages,
             "stream": True,
             "max_tokens": 64,

@@ -15,7 +15,13 @@ def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(mon
     - Incremental summary should NOT be called (cache hit + tail fits)
     """
     from keeprollming import app as app_mod
+    import keeprollming.config as config_mod
     from keeprollming.config import DefaultSettings
+    from keeprollming.summary_cache import (
+        conversation_fingerprint,
+        make_cache_entry,
+        save_cache_entry,
+    )
 
     messages = [
         {"role": "system", "content": "sys"},
@@ -24,20 +30,20 @@ def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(mon
         {"role": "user", "content": "u1"},
     ]
 
-    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
-    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
-    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
+    monkeypatch.setattr(config_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(config_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
 
     # Mock DEFAULTS with smaller ctx_len to trigger max_tokens clamping
     test_defaults = DefaultSettings(ctx_len=2000, max_tokens=4096, summary_enabled=True)
     monkeypatch.setattr("keeprollming.app.DEFAULTS", test_defaults)
     monkeypatch.setattr("keeprollming.config.DEFAULTS", test_defaults)
 
-    fp = app_mod.conversation_fingerprint(messages, 1)
-    entry = app_mod.make_cache_entry(
+    fp = conversation_fingerprint(messages, 1)
+    entry = make_cache_entry(
         fingerprint=fp,
         start_idx=0,
         end_idx=1,
@@ -47,12 +53,12 @@ def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(mon
         token_estimate=10,
         source_mode="test",
     )
-    app_mod.save_cache_entry(str(tmp_path / "summary_cache"), entry)
+    save_cache_entry(str(tmp_path / "summary_cache"), entry)
 
     async def _boom(*args, **kwargs):
         raise AssertionError("incremental summary should not be called")
 
-    monkeypatch.setattr(app_mod, "summarize_incremental", _boom)
+    monkeypatch.setattr(__import__("keeprollming.summary", fromlist=["*"]), "summarize_incremental", _boom)
 
     sent = {}
 
@@ -133,8 +139,8 @@ def test_cache_append_preserves_first_user_raw(client, monkeypatch, tmp_path):
 
     # Patch where the function is used (in app module)
     from keeprollming import app
-    monkeypatch.setattr(app, "summarize_middle", _fake_summary)
-    monkeypatch.setattr(app, "SUMMARY_CACHE_DIR", str(tmp_path / 'summary_cache2'))
+    monkeypatch.setattr("keeprollming.summary.summarize_middle", _fake_summary)
+    monkeypatch.setattr("keeprollming.config.SUMMARY_CACHE_DIR", str(tmp_path / 'summary_cache2'))
 
     messages = [
         {"role": "system", "content": "SYSTEM RULES"},
@@ -285,6 +291,6 @@ def test_failed_placeholder_summary_is_not_cacheable():
     )
 
     # Placeholder summaries should be marked as non-cacheable
-    from keeprollming.rolling_summary import is_summary_cacheable
+    from keeprollming.summary import is_summary_cacheable
     assert not is_summary_cacheable(entry.summary_text), \
         "Placeholder summaries should not be cacheable"

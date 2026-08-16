@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 import tempfile
 import os
 
-from keeprollming.rolling_summary import load_summary_prompt_template
+from keeprollming.summary import load_summary_prompt_template
 
 
 def test_load_custom_prompt_from_file():
@@ -30,8 +30,8 @@ def test_load_custom_prompt_from_file():
             }
         }
         
-        with patch('keeprollming.rolling_summary.SUMMARY_PROMPT_DIR', tmpdir):
-            with patch('keeprollming.rolling_summary.CONFIG', mock_config):
+        with patch('keeprollming.summary.SUMMARY_PROMPT_DIR', tmpdir):
+            with patch('keeprollming.summary.CONFIG', mock_config):
                 result = load_summary_prompt_template("test_custom")
                 assert result == prompt_content
 
@@ -46,7 +46,7 @@ def test_load_direct_text_from_config():
         }
     }
     
-    with patch('keeprollming.rolling_summary.CONFIG', mock_config):
+    with patch('keeprollming.summary.CONFIG', mock_config):
         result = load_summary_prompt_template("direct_template")
         assert result == "Direct text prompt content here"
 

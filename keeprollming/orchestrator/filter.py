@@ -7,8 +7,11 @@ orchestration pipeline.
 
 Architecture:
 - Filter: Abstract base class for all filters
-- FilterChain: Orchestrates execution order of multiple filters
 - FilterExecutionContext: Manages state across filter invocations
+
+Runtime configuration and execution are owned by :class:`Pipeline` in
+``orchestrator.pipeline``. ``FilterChain`` remains a small direct-composition
+test helper; it does not parse route configuration and is not a runtime path.
 """
 
 from abc import ABC, abstractmethod
@@ -16,33 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol
 
 from keeprollming.logger import log
-from keeprollming.logging import get_filter_logger
-
-
-# ── Filter auto-registration ────────────────────────────────────────────────
-
-_filter_registry: dict[str, type] = {}
-
-
-def register_filter(name: str | None = None):
-    """Decorator to auto-register a filter class.
-
-    Usage:
-        @register_filter("model_nudge")
-        class ModelNudgeFilter(Filter):
-            priority = 50
-            ...
-    """
-    def decorator(cls):
-        key = name or cls.__name__
-        _filter_registry[key] = cls
-        return cls
-    return decorator
-
-
-def get_registered_filters() -> dict[str, type]:
-    """Return all registered filter classes."""
-    return dict(_filter_registry)
 
 
 # ── Base classes ────────────────────────────────────────────────────────────
@@ -57,43 +33,6 @@ class FilterConfig:
     def __post_init__(self):
         if self.name is None:
             self.name = self.__class__.__name__
-
-
-@dataclass
-class RetryDecision:
-    """Decision to retry an upstream call with augmented conversation.
-
-    Returned by StreamingFilterBase when intervention is needed.
-
-    Attributes:
-        messages: Augmented conversation to retry with
-        model: Model name for the retry
-        max_retries: Maximum retry attempts allowed
-        intervention_message: Message explaining the intervention
-    """
-    messages: List[Dict[str, Any]]
-    model: str
-    max_retries: int = 2
-    intervention_message: str = ""
-
-
-@dataclass
-class StreamChunkResult:
-    """Result of processing a single SSE chunk in streaming mode.
-
-    Returned by Filter.process_stream_chunk() and StreamingFilterBase
-    to communicate what should happen with the chunk.
-
-    Attributes:
-        emit: List of chunk bytes to forward to client immediately
-        buffer: If None, hold chunk; if list, flush buffer
-        retry: RetryDecision if upstream retry needed
-        stop: True if fatal error, stop streaming
-    """
-    emit: List[bytes] = field(default_factory=list)
-    buffer: Optional[List[bytes]] = None
-    retry: Optional[RetryDecision] = None
-    stop: bool = False
 
 
 @dataclass
@@ -140,7 +79,7 @@ class FilterExecutionContext:
     This allows filters to share data and maintain state when needed.
     """
 
-    def __init__(self, req_id: Optional[str] = None, upstream_payload: Optional[Dict[str, Any]] = None, route_name: Optional[str] = None, is_streaming_post_process: bool = False, upstream_model: Optional[str] = None, upstream_url: Optional[str] = None):
+    def __init__(self, req_id: Optional[str] = None, upstream_payload: Optional[Dict[str, Any]] = None, route_name: Optional[str] = None, is_streaming_post_process: bool = False, upstream_model: Optional[str] = None, upstream_url: Optional[str] = None, event_dispatcher: Any = None):
         self.state: Dict[str, Any] = {}
         self.request_history: List[Dict[str, Any]] = []
         self.response_history: List[Dict[str, Any]] = []
@@ -151,6 +90,7 @@ class FilterExecutionContext:
         self.route_name = route_name
         self.upstream_model = upstream_model
         self.upstream_url = upstream_url
+        self.event_dispatcher = event_dispatcher
         self.metadata: Dict[str, Any] = {
             "nudge_attempts": 0,
             "loop_detection": {"duplicates": 0, "last_response_hash": None},
@@ -293,32 +233,6 @@ class Filter(ABC):
         """
         pass
 
-    async def process_stream_chunk(self, chunk: bytes, context: FilterExecutionContext) -> StreamChunkResult:
-        """
-        Process a single SSE chunk during streaming.
-
-        Called for each chunk as it arrives from upstream.
-
-        Args:
-            chunk: Raw SSE chunk bytes (e.g., b'data: {"choices":...}\\n\\n')
-            context: Shared execution context
-
-        Returns:
-            StreamChunkResult with:
-            - emit: Chunks to forward to client (default: [chunk])
-            - buffer: None to hold, list to flush
-            - retry: Set if upstream retry needed
-            - stop: Set if fatal error
-
-        Filters that need to hold and inspect chunks can:
-            1. Return StreamChunkResult(buffer=None) to hold
-            2. Make decisions when they have enough context
-            3. Return StreamChunkResult(emit=[...], buffer=[]) to flush
-
-        Default: pass-through (emit chunk unchanged).
-        """
-        return StreamChunkResult(emit=[chunk])
-
     def on_enable(self) -> None:
         """Called when filter is enabled. Override for initialization."""
         pass
@@ -452,12 +366,11 @@ class StopFilterChain(Exception):
 
 
 class FilterChain:
-    """
-    Orchestrates execution of multiple filters in a specific order.
+    """Direct-composition executor retained for focused filter tests.
 
-    The chain processes requests and responses through all enabled filters
-    in the configured order. Each filter can modify the data or raise
-    StopFilterChain to trigger regeneration.
+    Production code uses :class:`keeprollming.orchestrator.pipeline.Pipeline`.
+    This class intentionally accepts already-instantiated filters only, so it
+    cannot become a second route-configuration parser.
     """
 
     def __init__(self, filters: List[Filter], execution_order: List[str]):
@@ -471,9 +384,6 @@ class FilterChain:
         self.filters = {f.name: f for f in filters}
         self.execution_order = execution_order
         self._validate_order()
-        
-        # Initialize chain-level logger
-        self._logger = get_filter_logger("filter_chain")
 
     def _validate_order(self) -> None:
         """Validate that all filters in order exist."""
@@ -513,43 +423,6 @@ class FilterChain:
 
         return request
 
-    async def process_stream(
-        self, upstream_chunks, context: FilterExecutionContext
-    ):
-        """
-        Process streaming chunks through all enabled filters in priority order.
-        
-        Args:
-            upstream_chunks: Async iterable yielding raw SSE bytes from upstream
-            context: Shared execution context
-        
-        Yields:
-            Raw SSE bytes to forward to client
-        """
-        enabled = self.get_enabled_filters()
-        if not enabled:
-            async for chunk in upstream_chunks:
-                yield chunk
-            return
-        
-        async for chunk in upstream_chunks:
-            current = chunk
-            for filter_obj in enabled:
-                if current is None:
-                    break
-                result = await filter_obj.process_stream_chunk(current, context)
-                # Emit chunks from result
-                for out in result.emit:
-                    yield out
-                # If retry or stop is requested, stop processing
-                if result.retry or result.stop:
-                    return
-                # If buffer is not None, hold chunk (don't yield to next filter)
-                # If buffer is None (default), pass through to next filter
-                if result.buffer is not None:
-                    current = None  # Hold this chunk (buffering)
-                # else: current remains unchanged, pass to next filter
-
     async def process_response(
         self,
         response: Response,
@@ -581,8 +454,10 @@ class FilterChain:
                     nudge_count = context.metadata["nudge_attempts"]
                     
             except StopFilterChain as e:
-                # Log the exception
-                self._logger.filter_error(
+                # Emit filter error event
+                from keeprollming.orchestrator.filters.events import emit_filter_error
+                emit_filter_error(
+                    context,
                     error_type="StopFilterChain",
                     message=e.message,
                 )
@@ -600,10 +475,12 @@ class FilterChain:
                     nudge_message=getattr(e, 'nudge_message', None)
                 )
 
-        # Log complete execution if any filters were executed
+        # Emit filter chain executed event
         enabled_filters = self.get_enabled_filters()
         if enabled_filters:
-            self._logger.filter_chain_executed(
+            from keeprollming.orchestrator.filters.events import emit_filter_chain_executed
+            emit_filter_chain_executed(
+                context,
                 filters_executed=[f.name for f in enabled_filters],
                 total_filters=len(enabled_filters),
                 nudge_count=nudge_count,
@@ -622,82 +499,6 @@ class FilterChain:
             del self.filters[name]
             return True
         return False
-
-    @classmethod
-    def from_route_config(
-        cls,
-        filter_chain_config: Dict[str, Any],
-        filters_registry: Optional[Dict[str, Filter]] = None
-    ) -> "FilterChain":
-        """
-        Build a FilterChain from filter chain configuration.
-
-        Args:
-            filter_chain_config: Filter chain config dict with 'order' and 'filters' keys
-            filters_registry: Registry of available filter instances (optional)
-
-        Returns:
-            FilterChain instance configured from the filter chain config
-
-        Raises:
-            ValueError: If filter_chain config is invalid or required fields missing
-        """
-        if not isinstance(filter_chain_config, dict):
-            # This route has an invalid filter_chain - log and skip
-            raise ValueError(f"filter_chain_config must be a dict, got {type(filter_chain_config)}")
-            
-        # filter_chain_config is already the inner dict with 'order' and 'filters' keys
-        execution_order = filter_chain_config.get("order", [])
-        filters_config = filter_chain_config.get("filters", {})
-
-        if not execution_order:
-            raise ValueError("filter_chain.order is required in config")
-
-        # Build filter instances from registry or create new ones
-        filters_list = []
-        for filter_name in execution_order:
-            if filter_name not in filters_config:
-                log(
-                    "WARNING",
-                    f"Filter '{filter_name}' in order but no config found, skipping",
-                    req_id="filter_chain_builder",
-                )
-                continue
-
-            filter_cfg = filters_config[filter_name]
-
-            # Try to get from registry first (for shared instances)
-            if filters_registry and filter_name in filters_registry:
-                filter_instance = filters_registry[filter_name]
-            else:
-                # Create new instance based on filter type
-                filter_type = filter_cfg.get("type", filter_name)
-
-                # Import and instantiate the filter
-                from keeprollming.orchestrator.filters import (
-                    ModelNudgeFilter,
-                    ToolLoopStopperFilter,
-                    SystemPromptFilter,
-                )
-
-                if filter_type == "system_prompt":
-                    filters_list.append(SystemPromptFilter(filter_cfg))
-                elif filter_type == "model_tool_loop_stopper":
-                    filters_list.append(ToolLoopStopperFilter(filter_cfg))
-                elif filter_type == "model_nudge":
-                    # Pass entire config dict to ModelNudgeFilter (handles both FilterConfig and dict)
-                    filters_list.append(ModelNudgeFilter(filter_cfg))
-                else:
-                    log(
-                        "WARNING",
-                        f"Unknown filter type '{filter_type}', skipping",
-                        req_id="filter_chain_builder",
-                    )
-
-        if not filters_list:
-            raise ValueError("No valid filters found in filter_chain configuration")
-
-        return cls(filters=filters_list, execution_order=execution_order)
 
     def reset_all_filters(self) -> None:
         """Reset state for all filters in the chain."""

@@ -10,11 +10,6 @@ Default: only L0 (fast). Use --degrade-lvls 0,1,2,3,4 for full suite.
 """
 
 import json
-import os
-import subprocess
-import sys
-import time
-from pathlib import Path
 
 import httpx
 import pytest
@@ -47,10 +42,6 @@ def _check_streaming_order(body: str, expect_timestamp: bool = False, expect_too
         fr_data = fr_lines[0]
         assert '"tool_calls"' in fr_data, f"Expected tool_calls in finish_reason line: {fr_data[:200]}"
 
-
-FAKE_PORT = 19990
-ORCH_PORT = 18090
-PROJECT_DIR = str(Path(__file__).parent.parent.parent)
 
 # Default degradation levels to test (override with --degrade-lvls)
 DEFAULT_DEGRADE_LEVELS = [0]
@@ -94,96 +85,13 @@ def set_level(servers, degrade_level):
 
 class TestClientReceivesCorrectContent:
 
-    @pytest.fixture(scope="class")
-    def servers(self):
-        """Start orchestrator with all 3 filters pointing to the canonical fake backend."""
-        # Start canonical fake backend via wrapper script
-        backend = subprocess.Popen(
-            [sys.executable, str(Path(__file__).parent.parent.parent / "scripts" / "start-fake-backend.py"),
-             "--port", str(FAKE_PORT)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            cwd=PROJECT_DIR,
-        )
-        time.sleep(2)
-
-        _set_degradation(f"http://127.0.0.1:{FAKE_PORT}", level=0, seed=42)
-
-        config_path = f"/tmp/client_test_config_{os.getpid()}.yaml"
-        with open(config_path, "w") as f:
-            f.write(f"""
-models:
-  test-model: {{context_length: 131072}}
-routes:
-  base/test:
-    model: test-model
-    upstream_url: "http://127.0.0.1:{FAKE_PORT}"
-  internal/full:
-    extends: base/test
-    pattern: "internal/full"
-    tool_rewrite_enabled: false
-    filter_chain:
-      order: [system_prompt, model_nudge]
-      filters:
-        system_prompt:
-          enabled: true
-          prompt: "/nothink"
-          override: false
-        model_nudge:
-          enabled: true
-          trigger_patterns: [":$"]
-          nudge_message: "Continue."
-          max_nudge_attempts: 2
-          upstream_url: "http://127.0.0.1:{FAKE_PORT}"
-  internal/with-tool-rewrite:
-    extends: base/test
-    pattern: "internal/with-tool-rewrite"
-    tool_rewrite_enabled: true
-    filter_chain:
-      order: [system_prompt, tool_rewrite, model_nudge, timestamp]
-      filters:
-        system_prompt:
-          enabled: true
-          prompt: "/nothink"
-          override: false
-        tool_rewrite:
-          enabled: true
-        model_nudge:
-          enabled: true
-          trigger_patterns: [":$"]
-          nudge_message: "Continue."
-          max_nudge_attempts: 2
-          upstream_url: "http://127.0.0.1:{FAKE_PORT}"
-        timestamp:
-          enabled: true
-""")
-
-        env = os.environ.copy()
-        env["CONFIG_FILE"] = config_path
-        orch = subprocess.Popen(
-            [sys.executable, "-u", "keeprollming.py", "--port", str(ORCH_PORT)],
-            env=env, cwd=PROJECT_DIR,
-        )
-        time.sleep(5)
-        for _ in range(10):
-            try:
-                if httpx.get(f"http://127.0.0.1:{ORCH_PORT}/health").status_code == 200:
-                    break
-            except Exception:
-                pass
-            time.sleep(0.5)
-        else:
-            orch.kill()
-            backend.kill()
-            pytest.fail("Orchestrator did not start")
-
-        yield {"orch_url": f"http://127.0.0.1:{ORCH_PORT}",
-               "fake_url": f"http://127.0.0.1:{FAKE_PORT}"}
-
-        orch.kill()
-        orch.wait(timeout=5)
-        backend.kill()
-        backend.wait(timeout=5)
-        os.unlink(config_path)
+    @pytest.fixture
+    def servers(self, orchestrator_server, backend_target):
+        """Expose the shared dynamically allocated E2E services."""
+        return {
+            "orch_url": orchestrator_server.base_url,
+            "fake_url": backend_target.base_url,
+        }
 
     # ── Non-streaming: client receives accumulated content ──
 
@@ -315,7 +223,7 @@ routes:
                    timeout=5)
 
         resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
+            "model": "internal/nudge-two-attempts",
             "messages": [{"role": "user", "content": "Debug Redis"}],
             "stream": False,
         }, timeout=30)

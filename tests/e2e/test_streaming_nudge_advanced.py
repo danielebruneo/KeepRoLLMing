@@ -4,7 +4,7 @@ Il fake backend risponde sempre con "Prova:" (lazy pattern).
 Questo permette di verificare che:
 1. Il nudge triggera correttamente sul primo tentativo  
 2. Il retry viene eseguito con "Continue." aggiunto al prompt
-3. Dopo max_nudge_attempts, il filtro ritorna la risposta originale senza retry aggiuntivi
+3. Dopo max_attempts, il filtro ritorna la risposta originale senza retry aggiuntivi
 """
 
 import pytest
@@ -24,7 +24,7 @@ def test_nudge_max_retry_behavior(
     - Nudge triggera, aggiunge "Continue." al prompt
     - 2° richiesta: user dice "Rispondi... Continue." → backend risponde ancora "Prova:"
     - Nudge triggera di nuovo (attempt=2)
-    - Dopo max_nudge_attempts (3), il filtro smette di retryare e ritorna la risposta
+    - Dopo max_attempts (3), il filtro smette di retryare e ritorna la risposta
     
     Quindi dovremmo vedere solo "Prova:" nel response finale.
     """
@@ -49,7 +49,7 @@ def test_nudge_max_retry_behavior(
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
-            "model": "local/deep",  # Route with filter_chain in config.test.yaml!
+            "model": "local/deep",  # Route with filters in config.test.yaml!
             "messages": [{"role": "user", "content": "Rispondi esattamente con 'Prova:'"}],
             "stream": False,
         },
@@ -112,7 +112,7 @@ def test_nudge_with_complete_response(
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
-            "model": "local/deep",  # Route with filter_chain in config.test.yaml!
+            "model": "local/deep",  # Route with filters in config.test.yaml!
             "messages": [{"role": "user", "content": "Rispondi esattamente con 'Prova:'"}],
             "stream": False,
         },

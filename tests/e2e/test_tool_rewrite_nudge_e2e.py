@@ -5,7 +5,7 @@ creates all filters and iterates through them without crashing on is_enabled.
 
 Tests cover:
 - tool_rewrite + nudge chain (streaming + non-streaming)
-- Extends inheritance: child inherits parent's filter_chain
+- Extends inheritance: child inherits parent's filters
 - Full production chain: tool_rewrite + tls + nudge
 """
 
@@ -44,20 +44,22 @@ def _configure_lazy_response(configure_fake_backend):
         },
         "chat": {
             "content": "Let me check what format LibreChat expects for `allowedDomains`.",
-            "stream_pieces": [
-                "Let me check what format LibreChat expects for `allowedDomains`.\n",
-                "The format should be a CIDR range like '172.18.0.0/16' with quotes."
-            ],
             "include_usage": True,
             "script": [
-                # First call: lazy response (triggers nudge)
-                {"content": "Let me check what format LibreChat expects for `allowedDomains`."},
-                # Second call (nudge retry 1): completion
-                {"content": "The format should be a CIDR range like '172.18.0.0/16' with quotes."},
-                # Third call (nudge retry 2): non-lazy continuation
-                {"content": "The domain pattern supports IPv4 CIDR and simple hostnames."},
-                # Fourth call (nudge retry 3): non-lazy
-                {"content": "Make sure to enclose the value in quotes."},
+                # Stream pieces must be per-attempt. A section-level list is
+                # replayed on every recovery and keeps matching ``Let ... .``.
+                {
+                    "content": "Let me check what format LibreChat expects for `allowedDomains`.",
+                    "stream_pieces": [
+                        "Let me check what format LibreChat expects for `allowedDomains`."
+                    ],
+                },
+                {
+                    "content": "The format should be a CIDR range like '172.18.0.0/16' with quotes",
+                    "stream_pieces": [
+                        "The format should be a CIDR range like '172.18.0.0/16' with quotes"
+                    ],
+                },
             ],
         },
     })
@@ -133,7 +135,7 @@ class TestToolRewriteWithNudge:
 # ── Extends inheritance ─────────────────────────────────────────────
 
 class TestExtendsInheritance:
-    """Verify child route inherits parent's filter_chain via extends."""
+    """Verify child route inherits parent's filters via extends."""
 
     def test_streaming_child_inherits_chain(
         self,

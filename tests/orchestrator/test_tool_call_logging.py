@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import keeprollming.app as app_mod
+import keeprollming.config as config_mod
 import keeprollming.logger as logger_mod
 
 
@@ -125,16 +126,10 @@ def tool_call_tracking_client():
 @pytest.fixture
 def client(monkeypatch, tmp_path, tool_call_tracking_client) -> TestClient:
     """Create test client with mocked upstream."""
-    # Setup logging for BASIC_PLAIN mode
-    monkeypatch.setattr(logger_mod, "LOG_MODE", "BASIC_PLAIN")
     monkeypatch.setattr(logger_mod, "LOG_SNIP_CHARS", 2000)
     monkeypatch.setattr(logger_mod, "BASIC_SNIP_CHARS", 0)
     from keeprollming.logging import constants as logging_constants
     monkeypatch.setattr(logging_constants, "LOG_PLAIN_COLORS", False)
-
-    # Patch LOG_MODE in streaming_handlers module (it now uses logger.LOG_MODE)
-    from keeprollming.endpoints import streaming_handlers as sh_mod
-    monkeypatch.setattr(sh_mod._logger, "LOG_MODE", "BASIC_PLAIN")
 
     # Create fake client that mimics streaming behavior like test_sse_basic_plain_logs.py
     fake_client = tool_call_tracking_client
@@ -149,11 +144,11 @@ def client(monkeypatch, tmp_path, tool_call_tracking_client) -> TestClient:
     from keeprollming.endpoints import chat_completions as cc_mod
     monkeypatch.setattr(cc_mod, "http_client", _fake_http_client)
 
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
-    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(config_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
 
     from keeprollming.app import app
     return TestClient(app, raise_server_exceptions=True)

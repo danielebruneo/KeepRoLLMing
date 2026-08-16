@@ -1,0 +1,226 @@
+# KeepRoLLMing — complete configuration reference
+#
+# This file demonstrates every currently supported public configuration key.
+# It is valid as-is, but uses placeholder upstream URLs, model names and API
+# keys. Copy only the routes and filters you need into config.yaml.
+
+# Root defaults and summary behaviour
+upstream_base_url: "http://127.0.0.1:8080"
+ctx_len: 32768
+max_tokens: 4096
+default_max_completion_tokens: 4096
+summary_enabled: true
+passthrough_enabled: false
+default_request_timeout: 120
+performance_logs_dir: "__performance_logs"
+# Write the dashboard snapshot after the first request and then every N
+# completed requests. Lower values refresh the dashboard sooner at more I/O.
+performance:
+  summary_update_interval: 20
+summary_max_tokens: 512
+safety_margin_tok: 128
+summary_mode: "cache_append"
+summary_cache_enabled: true
+summary_cache_dir: "__summary_cache"
+summary_cache_fingerprint_msgs: 1
+summary_min_raw_tail: 1
+summary_force_consolidate: 0
+summary_consolidate_when_needed: 1
+log_payload_max_chars: 20000000
+
+# Logging projections and opt-in raw transport capture.
+observability:
+  projectors:
+    json:
+      enabled: true
+      level: INFO
+      path: "keeprollming.log.json"
+      max_bytes: 104857600
+      backup_count: 5
+    plain:
+      enabled: true
+      level: BASIC
+      path: "keeprollming.log"
+      stdout: true
+      max_bytes: 52428800
+      backup_count: 5
+    server:
+      enabled: true
+      level: INFO
+      path: "server.log"
+      max_bytes: 52428800
+      backup_count: 5
+  raw_trace:
+    policy: selected_routes  # disabled | all | selected_routes
+    selected_routes: ["debug/raw-trace"]
+    path: "__raw_traces__"
+    max_bytes_per_request: 20971520
+
+routes:
+  # Base routes can be composed with `extends`; private routes are not exposed
+  # by GET /v1/models.
+  base/local:
+    is_private: true
+    model: "your-local-model"
+    upstream_url: "http://127.0.0.1:8080"
+    ctx_len: 32768
+    max_tokens: 4096
+    summary_enabled: true
+    passthrough_enabled: false
+    request_timeout: 120
+
+  base/remote:
+    is_private: true
+    model: "remote-chat-model"
+    upstream_url: "https://api.example.com"
+    api_key: "replace-me"
+    upstream_headers:
+      X-Example-Header: "replace-me"
+
+  # Standard route fields
+  chat/local:
+    extends: base/local
+    pattern: "chat/local"
+    summary_model: "your-fast-summary-model"
+    transform_reasoning_content: false
+    add_empty_content_when_reasoning_only: false
+    reasoning_placeholder_content: "<thought>Reasoning omitted</thought>"
+    overrides:
+      temperature: 0.7
+      top_p: 0.95
+      max_tokens: 2048
+      # The same top-level field used by LibreChat's reasoning-effort control.
+      # The accepted values depend on the upstream model/runtime.
+      reasoning_effort: high
+
+  chat/remote:
+    extends: base/remote
+    pattern: "chat/remote"
+
+  # A fallback chain is evaluated after an upstream failure. `cost_priority`
+  # controls route selection where multiple fallback candidates apply.
+  chat/resilient:
+    extends: base/local
+    pattern: "chat/resilient"
+    fallback_chain: ["chat/remote"]
+    cost_priority: 100
+
+  # Raw traces are intentionally limited to explicitly selected routes.
+  debug/raw-trace:
+    extends: base/local
+    pattern: "debug/raw-trace"
+
+  # Request-only filters. Priority may override the module default when an
+  # integration requires it; YAML order has no semantic meaning.
+  filters/system-prompt:
+    extends: base/local
+    pattern: "filters/system-prompt"
+    filters:
+      system_prompt:
+        enabled: true
+        # Relative paths are resolved from this config file, not from the
+        # directory where `krm` is launched. Use `prompt` instead for a short
+        # inline instruction; the two settings are mutually exclusive.
+        prompt_file: "prompts/examples/code-assistant.md"
+        override: false
+
+  filters/summarization:
+    extends: base/local
+    pattern: "filters/summarization"
+    filters:
+      summarization:
+        enabled: true
+
+  filters/multimodal:
+    extends: base/local
+    pattern: "filters/multimodal"
+    filters:
+      multimodal_validator:
+        enabled: true
+        strip_orphaned_markers: true
+        marker_patterns: ["<__media__>", "<image>"]
+        log_level: "warning"
+        max_images: 4
+        max_images_replacement_text: "[image omitted]"
+        strip_all_images: false
+        strip_last_image_max_retries: 1
+        strip_last_image_on_error: false
+
+  # Filters with stream hooks. They are separated here so their documented
+  # defaults never create an accidental priority collision in one route.
+  filters/tool-rewrite:
+    extends: base/local
+    pattern: "filters/tool-rewrite"
+    filters:
+      tool_rewrite:
+        enabled: true
+        supported_patterns: ["nested", "separate"]
+
+  filters/timestamp:
+    extends: base/local
+    pattern: "filters/timestamp"
+    filters:
+      timestamp:
+        enabled: true
+        priority: 110
+        template: "[Timestamp: {timestamp}]"
+        timezone: "UTC"
+        tail_buffer_size: 512
+        always: false
+        format: "%Y-%m-%d %H:%M:%S UTC"
+
+  filters/model-nudge:
+    extends: base/local
+    pattern: "filters/model-nudge"
+    filters:
+      model_nudge:
+        enabled: true
+        trigger_patterns: [":$"]
+        action: "nudge"
+        nudge_message: "Continue."
+        max_attempts: 3
+        nudge_on_empty: false
+        nudge_fallback_message: "The response ended unexpectedly."
+        max_retries: 2
+        tail_buffer_size: 1024
+        upstream_url: "http://127.0.0.1:8080"
+        api_key: "replace-me"
+
+  filters/tool-loop-stopper:
+    extends: base/local
+    pattern: "filters/tool-loop-stopper"
+    filters:
+      model_tool_loop_stopper:
+        enabled: true
+        max_attempts: 3
+        max_repeats: 3
+        max_retries: 2
+        tls_message: "Choose a different action."
+        nudge_message: "Continue with a different tool call."
+        fallback_message: "Repeated tool call stopped."
+        fallback_streaming_message: "Repeated tool call stopped."
+        fallback_template: "Repeated call: {name}({args})"
+        trigger_patterns: [".*"]
+        fuzzy_max_repeats: 3
+        fuzzy_look_back: 5
+        fuzzy_threshold: 0.9
+        send_user_message: false
+        ab_loop_detection: true
+        upstream_url: "http://127.0.0.1:8080"
+        api_key: "replace-me"
+
+  filters/reasoning-loop-stopper:
+    extends: base/local
+    pattern: "filters/reasoning-loop-stopper"
+    filters:
+      reasoning_loop_stopper:
+        enabled: true
+        max_attempts: 3
+        max_repeats: 3
+        max_retries: 2
+        rls_message: "Use a different line of reasoning."
+        fallback_message: "Repeated reasoning stopped."
+        fallback_streaming_message: "Repeated reasoning stopped."
+        send_user_message: false
+        upstream_url: "http://127.0.0.1:8080"
+        api_key: "replace-me"

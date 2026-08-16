@@ -230,15 +230,15 @@ def _setup_patches():
     """Set up all necessary patches at module import time."""
     import keeprollming.upstream as upstream_mod
     from keeprollming.endpoints import chat_completions
-    import keeprollming.rolling_summary as rolling_summary_mod
+    import keeprollming.summary as summary_mod
 
     fake_client = _FakeAsyncClient()
 
     async def _fake_http_client(request_timeout: float = 120.0):
         return _FakeClientSession(fake_client)
 
-    # Patch http_client where it's used in rolling_summary module (imports from upstream)
-    rolling_summary_mod.http_client = _fake_http_client
+    # Patch http_client where it's used in summary package (imports from upstream)
+    summary_mod.http_client = _fake_http_client
     
     # Also patch in endpoints.chat_completions module
     chat_completions.http_client = _fake_http_client
@@ -291,7 +291,7 @@ async def _fake_summarize_middle(middle, req_id, summary_model, **kwargs):
     if _USE_MOCK_SUMMARY:
         return _FAKE_SUMMARY_RETURN_VALUE
     # Fall through to real implementation
-    from keeprollming.rolling_summary import summarize_middle as original_summarize_middle
+    from keeprollming.summary import summarize_middle as original_summarize_middle
     return await original_summarize_middle(middle, req_id, summary_model, **kwargs)
 
 

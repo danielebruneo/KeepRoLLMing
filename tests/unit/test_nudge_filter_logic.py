@@ -34,7 +34,7 @@ def create_filter(trigger_patterns: List[str] = None, action: str = "nudge",
                   nudge_message: str = "Continue.", max_attempts: int = 3):
     """Create a ModelNudgeFilter instance for testing."""
 
-    from keeprollming.orchestrator.filters.model_nudge_filter import ModelNudgeFilter
+    from keeprollming.filters.nudge.request import ModelNudgeFilter
 
     # Handle empty list vs None carefully - [] is valid (no triggers), None means use default
     patterns_to_use = trigger_patterns if trigger_patterns is not None else [":$"]
@@ -44,7 +44,7 @@ def create_filter(trigger_patterns: List[str] = None, action: str = "nudge",
         "trigger_patterns": patterns_to_use,
         "action": action,
         "nudge_message": nudge_message,
-        "max_nudge_attempts": max_attempts
+        "max_attempts": max_attempts
     }
 
     return ModelNudgeFilter(config=config)
@@ -360,10 +360,10 @@ class TestFilterIntegration:
             trigger_patterns=[":$"],
             action="nudge",
             nudge_message="Continue.",
-            max_nudge_attempts=3
+            max_attempts=3
         )
         
-        from keeprollming.orchestrator.filters.model_nudge_filter import ModelNudgeFilter
+        from keeprollming.filters.nudge.request import ModelNudgeFilter
         
         filter = ModelNudgeFilter(config=config)
         
@@ -371,13 +371,13 @@ class TestFilterIntegration:
     
     def test_process_response_not_lazy(self):
         """Test process_response with non-lazy response (should return unchanged)."""
-        from keeprollming.orchestrator.filters.model_nudge_filter import ModelNudgeFilter
+        from keeprollming.filters.nudge.request import ModelNudgeFilter
         
         config = {
             "enabled": True,
             "trigger_patterns": [":$"],
             "action": "nudge",
-            "max_nudge_attempts": 3,
+            "max_attempts": 3,
             "upstream_url": "http://fake-upstream:8000"  # Fake URL for testing HTTP retry flow
         }
         
@@ -393,13 +393,13 @@ class TestFilterIntegration:
     
     def test_process_response_lazy_triggers_retry_cycle(self):
         """Test process_response with lazy response triggers retry cycle (returns concatenated result)."""
-        from keeprollming.orchestrator.filters.model_nudge_filter import ModelNudgeFilter
+        from keeprollming.filters.nudge.request import ModelNudgeFilter
 
         config = {
             "enabled": True,
             "trigger_patterns": [":$"],
             "action": "nudge",
-            "max_nudge_attempts": 3,
+            "max_attempts": 3,
             "upstream_url": "http://fake-upstream:8000"  # Fake URL for testing HTTP retry flow
         }
 

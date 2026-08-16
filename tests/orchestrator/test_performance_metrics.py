@@ -556,10 +556,7 @@ class TestConfigurableLogsDirectory:
     @pytest.mark.asyncio
     async def test_custom_logs_directory(self, clean_perf_logs_dir):
         """Test that custom logs directory can be configured and used."""
-        from keeprollming.performance import record_request_performance, _PERF_LOGS_DIR
-        
-        # Verify default is None until set
-        assert _PERF_LOGS_DIR is None, "Default should be None until configured"
+        from keeprollming.performance import record_request_performance
         
         # Record with custom directory
         record_request_performance(

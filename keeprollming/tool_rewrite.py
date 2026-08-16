@@ -27,6 +27,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from .observability import events_tool_rewrite as _events
+
 
 @dataclass
 class PseudoToolCall:
@@ -117,9 +119,7 @@ class PseudoToolCallParser:
         except Exception as e:
             # Log the error for debugging; return None to avoid breaking the pipeline
             import traceback
-            from keeprollming.logger import log
-            log("ERROR", "tool_rewrite_parse_error",
-                error=str(e), traceback=traceback.format_exc())
+            _events.emit_parse_error(error=str(e), traceback=traceback.format_exc())
             pass
 
         return None
@@ -317,9 +317,7 @@ class ToolCallRewriter:
         except Exception as e:
             # Log the error for debugging; return original chunk to avoid breaking the stream
             import traceback
-            from keeprollming.logger import log
-            log("ERROR", "tool_rewrite_streaming_error",
-                error=str(e), traceback=traceback.format_exc())
+            _events.emit_streaming_error(error=str(e), traceback=traceback.format_exc())
             return chunk
 
     def _is_tool_call_chunk(self, obj: Dict) -> bool:
@@ -481,7 +479,5 @@ class ToolCallRewriter:
         except Exception as e:
             # Log the error for debugging; return original body to avoid breaking the response
             import traceback
-            from keeprollming.logger import log
-            log("ERROR", "tool_rewrite_body_error",
-                error=str(e), traceback=traceback.format_exc())
+            _events.emit_body_error(error=str(e), traceback=traceback.format_exc())
             return body

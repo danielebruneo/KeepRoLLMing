@@ -1,5 +1,5 @@
 """
-Typed configuration dataclasses for Architecture V2.
+Typed configuration dataclasses.
 
 Replaces bare dict-based route settings with strongly-typed, documented
 dataclasses. No more _UNSET sentinel — every field has an explicit default
@@ -67,8 +67,7 @@ class RouteSettings:
 
     # ── Filters ────────────────────────────────────────────────────
 
-    filter_chain: dict[str, Any] | None = None
-    filters: list[FilterConfig] = field(default_factory=list)
+    filters: dict[str, Any] | None = None
 
     # ── Factory methods ────────────────────────────────────────────
 
@@ -135,7 +134,7 @@ class RouteSettings:
             upstream_headers=dict(route.upstream_headers or {}),
             api_key=route.api_key,
             fallback_chain=list(route.fallback_chain or []),
-            filter_chain=route.filter_chain,
+            filters=route.filters,
         )
 
     @classmethod
@@ -164,7 +163,7 @@ class RouteSettings:
                 if route.request_timeout is not None
                 else 120.0
             ),
-            filter_chain=route.filter_chain,
+            filters=route.filters,
         )
 
     @classmethod

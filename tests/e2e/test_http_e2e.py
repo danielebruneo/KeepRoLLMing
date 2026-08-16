@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 import httpx
 import pytest
+
+
+def _plain_server_output(path: Path) -> str:
+    """Return projector output without terminal colour escapes."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 def resolve_perf_request_file(perf_dir: Path, client_model: str) -> Path:
     candidates = []
@@ -87,15 +94,9 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     # archived-context repack entirely after summary failure. The invariant we
     # care about is: no loop, bounded summary attempts, and a successful final
     # response from the main backend.
-    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
-    assert (
-        "summary_preflight_chunking" in stdout_text
-        or "summary_preflight_forced_split" in stdout_text
-        or "summary_retry_exhausted" in stdout_text
-        or "summary_failed_fallback_passthrough" in stdout_text
-        or '"did_summarize": false' in stdout_text
-        or '"did_summarize": true' in stdout_text
-    )
+    stdout_text = _plain_server_output(orchestrator_server.stdout_path)
+    assert "execution.chat.request_start" in stdout_text
+    assert "execution.chat.http_out" in stdout_text
     configure_fake_backend(
         {
             "models": {
@@ -150,15 +151,9 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     # archived-context repack entirely after summary failure. The invariant we
     # care about is: no loop, bounded summary attempts, and a successful final
     # response from the main backend.
-    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
-    assert (
-        "summary_preflight_chunking" in stdout_text
-        or "summary_preflight_forced_split" in stdout_text
-        or "summary_retry_exhausted" in stdout_text
-        or "summary_failed_fallback_passthrough" in stdout_text
-        or '"did_summarize": false' in stdout_text
-        or '"did_summarize": true' in stdout_text
-    )
+    stdout_text = _plain_server_output(orchestrator_server.stdout_path)
+    assert "execution.chat.request_start" in stdout_text
+    assert "execution.chat.http_out" in stdout_text
 
 @pytest.mark.e2e_fake
 @pytest.mark.e2e_live
@@ -527,15 +522,9 @@ def test_e2e_summary_single_oversized_message_does_not_loop(
     # archived-context repack entirely after summary failure. The invariant we
     # care about is: no loop, bounded summary attempts, and a successful final
     # response from the main backend.
-    stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
-    assert (
-        "summary_preflight_chunking" in stdout_text
-        or "summary_preflight_forced_split" in stdout_text
-        or "summary_retry_exhausted" in stdout_text
-        or "summary_failed_fallback_passthrough" in stdout_text
-        or '"did_summarize": false' in stdout_text
-        or '"did_summarize": true' in stdout_text
-    )
+    stdout_text = _plain_server_output(orchestrator_server.stdout_path)
+    assert "execution.chat.request_start" in stdout_text
+    assert "execution.chat.http_out" in stdout_text
 
 
 @pytest.mark.e2e_fake
@@ -832,5 +821,3 @@ def test_e2e_irrecoverable_summary_failure_falls_back_passthrough(
         assert len(stdout_text) > 0
     else:
         assert "summary_failed_fallback_passthrough" in stdout_text
-
-

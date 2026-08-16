@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+- Route-level `reasoning_effort` overrides forward LibreChat-compatible
+  reasoning controls to Qwen and other OpenAI-compatible upstreams.
+- Each completed request emits an `execution.chat.performance_metrics` PLAIN
+  event with the same derived values persisted for the performance dashboard.
+
+### Changed
+- Public onboarding now uses a verified Python/venv setup path, canonical
+  `filters:` configuration examples, and a fake-backend quick-start E2E test.
+- `config.example.full.yaml` is the single complete public configuration
+  reference; historical streaming design documents are dev-only.
+- Performance records now retain logical prompt tokens separately from
+  `cached_prompt_tokens` and `uncached_prompt_tokens`.
+
+### Fixes
+- **V2 NudgeContinuationFinalizer recovery** now sends `request_payload_patch`
+  using the `messages` key. The previous `nudge_message` key was silently
+  ignored by `_apply_request_payload_patch()`, causing retries to reuse the
+  original payload and eventually fall back. Nudge continuation now appends
+  the lazy assistant prefix and continuation prompt to the upstream request.
+- `prompt_tps` and `total_tps` no longer count KV-cached prompt tokens as
+  prefill work, avoiding inflated throughput values for long cached contexts.
+
 ## v0.9.1 — 2026-06-27
 
 Bug fixes and remote API support.

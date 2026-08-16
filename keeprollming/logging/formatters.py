@@ -201,7 +201,7 @@ def _fmt_tool_result_yaml(tool_call_id: str | None, name: str | None, result: An
         header_parts.append(f"[{tool_call_id}]")
     header = " ".join(header_parts) if header_parts else "TOOL_RESULT"
 
-    # Format result based on type - compact inline format for BASIC_PLAIN to avoid wrapping issues
+    # Format result based on type - compact inline representation avoids wrapping issues.
     if isinstance(result, (dict, list)):
         try:
             formatted_result = json.dumps(result, ensure_ascii=False, separators=(',', ':'))

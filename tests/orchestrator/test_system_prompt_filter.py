@@ -3,7 +3,7 @@ Tests for System Prompt Filter.
 """
 
 import pytest
-from keeprollming.orchestrator.filters.system_prompt_filter import SystemPromptFilter
+from keeprollming.filters.system_prompt.request import SystemPromptFilter
 from keeprollming.orchestrator.filter import FilterExecutionContext
 
 
@@ -86,5 +86,5 @@ class TestPriority:
     def test_priority_value(self):
         """System prompt filter runs first (lowest priority)."""
         assert SystemPromptFilter.priority == 10
-        from keeprollming.orchestrator.filters import ToolLoopStopperFilter
+        from keeprollming.filters.tool_loop_stopper import ToolLoopStopperFilter
         assert SystemPromptFilter.priority < ToolLoopStopperFilter.priority  # 10 < 25

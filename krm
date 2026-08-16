@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# KeepRoLLMing local lifecycle launcher.
+# Usage:
+#   ./krm serve   [--port 8000] [--config config.yaml]
+#   ./krm start   [--port 8000] [--config config.yaml] [--log-path ./logs]
+#   ./krm stop    [--port 8000] [--log-path ./logs] [--force]
+#   ./krm restart [--port 8000] [--config config.yaml] [--log-path ./logs]
+#   ./krm status  [--port 8000] [--log-path ./logs]
+#   ./krm logs    [--port 8000] [--log-path ./logs]
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
+
+# ── Defaults ──
+PORT=8000
+CONFIG="${CONFIG_FILE:-config.yaml}"
+LOG_PATH="$PROJECT_DIR/logs"
+ACTION=""
+FORCE=false
+
+# ── Parse action ──
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 {serve|start|stop|restart|status|logs} [options]" >&2
+    exit 1
+fi
+ACTION="$1"
+shift
+
+# ── Parse options ──
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --port)   PORT="$2"; shift 2 ;;
+        --config) CONFIG="$2"; shift 2 ;;
+        --log-path) LOG_PATH="$2"; shift 2 ;;
+        --force)  FORCE=true; shift ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# ── Derived paths ──
+PID_FILE="${LOG_PATH}/keeprollming_${PORT}.pid"
+[[ -d "$LOG_PATH" ]] || mkdir -p "$LOG_PATH"
+
+# ── Helpers ──
+resolve_python() {
+    # Resolve an interpreter that can actually import the server runtime.
+    # KRM_PYTHON is useful for managed environments and hermetic tests.
+    local candidate
+    local candidates=(
+        "${KRM_PYTHON:-}"
+        "$PROJECT_DIR/.venv/bin/python"
+        "$(command -v python3 2>/dev/null || true)"
+        "$(command -v python 2>/dev/null || true)"
+    )
+    for candidate in "${candidates[@]}"; do
+        [[ -n "$candidate" && -x "$candidate" ]] || continue
+        if "$candidate" -c "import uvicorn" >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    echo "ERROR: no Python interpreter with uvicorn is available; set KRM_PYTHON" >&2
+    return 1
+}
+
+is_running() {
+    if [[ -f "$PID_FILE" ]]; then
+        local pid
+        pid=$(cat "$PID_FILE" 2>/dev/null)
+        if kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    # Fallback: check by port
+    pgrep -f "keeprollming.py.*--port ${PORT}" &>/dev/null
+}
+
+get_pid() {
+    if [[ -f "$PID_FILE" ]]; then
+        cat "$PID_FILE" 2>/dev/null
+    else
+        pgrep -f "keeprollming.py.*--port ${PORT}" | head -1
+    fi
+}
+
+# ── serve ──
+do_serve() {
+    local python_bin
+    python_bin=$(resolve_python)
+    cd "$PROJECT_DIR"
+    CONFIG_FILE="$CONFIG" exec "$python_bin" -u keeprollming.py --port "$PORT"
+}
+
+# ── start ──
+do_start() {
+    if is_running; then
+        echo "ERROR: keeprollming on port ${PORT} is already running (PID: $(get_pid))" >&2
+        exit 1
+    fi
+
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
+    local log_file="${LOG_PATH}/server_${timestamp}.log"
+    local err_file="${LOG_PATH}/server_${timestamp}_err.log"
+
+    echo "Starting keeprollming on port ${PORT}..." >&2
+    echo "  Config:   ${CONFIG}" >&2
+    echo "  Log:      ${log_file}" >&2
+    echo "  Err:      ${err_file}" >&2
+
+    cd "$PROJECT_DIR"
+
+    local python_bin
+    python_bin=$(resolve_python)
+
+    CONFIG_FILE="$CONFIG" \
+        nohup "$python_bin" -u keeprollming.py --port "${PORT}" \
+            2> >(tee -a "${err_file}" >> "${log_file}") > "${log_file}" &
+    local pid=$!
+
+    echo "$pid" > "$PID_FILE"
+    echo "PID: ${pid}" >&2
+
+    # Health check
+    sleep 3
+    for i in $(seq 1 10); do
+        if curl -s "http://localhost:${PORT}/health" 2>/dev/null | grep -q '"status":"ok"'; then
+            echo "✓ keeprollming started (PID: ${pid}, port: ${PORT})" >&2
+            echo "  tail -f ${log_file}" >&2
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo "✗ Health check failed. Check ${err_file}" >&2
+    exit 1
+}
+
+# ── stop ──
+do_stop() {
+    if $FORCE; then
+        local pids
+        pids=$(pgrep -f "keeprollming.py.*--port ${PORT}" 2>/dev/null || true)
+        if [[ -z "$pids" ]]; then
+            echo "No keeprollming process on port ${PORT}" >&2
+            rm -f "$PID_FILE"
+            exit 0
+        fi
+        echo "Force-killing keeprollming process(es) on port ${PORT}: $pids" >&2
+        echo "$pids" | xargs kill 2>/dev/null || true
+        sleep 2
+        echo "$pids" | xargs kill -9 2>/dev/null || true
+        rm -f "$PID_FILE"
+        echo "✓ Killed" >&2
+        return 0
+    fi
+
+    if ! is_running; then
+        echo "keeprollming on port ${PORT} is not running" >&2
+        rm -f "$PID_FILE"
+        exit 0
+    fi
+
+    local pid
+    pid=$(get_pid)
+    echo "Stopping keeprollming (PID: ${pid})..." >&2
+    kill "$pid" 2>/dev/null || true
+
+    # Wait for graceful shutdown
+    for i in $(seq 1 10); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "✓ Stopped" >&2
+            rm -f "$PID_FILE"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo "Force-killing PID ${pid}" >&2
+    kill -9 "$pid" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    echo "✓ Killed" >&2
+}
+
+# ── restart ──
+do_restart() {
+    do_stop
+    sleep 1
+    do_start
+}
+
+# ── status ──
+do_status() {
+    if is_running; then
+        local pid
+        pid=$(get_pid)
+        echo "keeprollming: RUNNING" >&2
+        echo "  PID:    ${pid}" >&2
+        echo "  Port:   ${PORT}" >&2
+        echo "  Config: ${CONFIG}" >&2
+        echo "  Logs:   ${LOG_PATH}/" >&2
+        # Try to get uptime
+        local elapsed
+        elapsed=$(ps -o etime= -p "$pid" 2>/dev/null | grep -oE "[0-9]+-?[0-9:]+")
+        [[ -n "$elapsed" ]] && echo "  Uptime: ${elapsed}" >&2
+    else
+        echo "keeprollming: STOPPED (port: ${PORT})" >&2
+        exit 1
+    fi
+}
+
+# ── logs ──
+do_logs() {
+    local latest_log
+    latest_log=$(ls -t "${LOG_PATH}"/server_*.log 2>/dev/null | head -1)
+    local latest_err
+    latest_err=$(ls -t "${LOG_PATH}"/server_*_err.log 2>/dev/null | head -1)
+
+    if [[ -z "$latest_log" ]]; then
+        echo "No log files found in ${LOG_PATH}" >&2
+        exit 1
+    fi
+    echo "Tailing: ${latest_log}" >&2
+    [[ -n "$latest_err" ]] && echo "         ${latest_err}" >&2
+    tail -f "$latest_log" ${latest_err:+"$latest_err"}
+}
+
+# ── Dispatch ──
+case "$ACTION" in
+    serve)   do_serve ;;
+    start)   do_start ;;
+    stop)    do_stop ;;
+    restart) do_restart ;;
+    status)  do_status ;;
+    logs)    do_logs ;;
+    *) echo "Unknown action: $ACTION" >&2; exit 1 ;;
+esac

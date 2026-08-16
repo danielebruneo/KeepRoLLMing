@@ -17,9 +17,8 @@ import pytest
 from keeprollming.orchestrator.filter import (
     FilterConfig,
     FilterExecutionContext,
-    get_registered_filters,
 )
-from keeprollming.orchestrator.filters.multimodal_validator_filter import (
+from keeprollming.filters.multimodal_validator.request import (
     MultimodalValidatorFilter,
 )
 
@@ -51,10 +50,11 @@ _TYPICAL_IMAGE_URL_2 = {"type": "image_url", "image_url": {"url": "data:image/jp
 class TestRegistration:
     """Verify the filter is properly registered."""
 
-    def test_filter_registered(self):
-        registry = get_registered_filters()
-        assert "multimodal_validator" in registry
-        assert registry["multimodal_validator"] is MultimodalValidatorFilter
+    def test_filter_declared_in_builtin_registry(self):
+        from keeprollming.filters import built_in_filter_modules
+
+        registry = built_in_filter_modules()
+        assert registry["multimodal_validator"].request_factory is MultimodalValidatorFilter
 
     def test_default_priority(self):
         assert MultimodalValidatorFilter.priority == 30
@@ -413,13 +413,10 @@ class TestPipelineIntegration:
         from keeprollming.orchestrator.pipeline import Pipeline
 
         config = {
-            "order": ["multimodal_validator"],
-            "filters": {
-                "multimodal_validator": {
-                    "enabled": True,
-                    "strip_orphaned_markers": True,
-                }
-            },
+            "multimodal_validator": {
+                "enabled": True,
+                "strip_orphaned_markers": True,
+            }
         }
         pipeline = Pipeline.from_route_config(config)
         assert pipeline is not None
@@ -432,15 +429,9 @@ class TestPipelineIntegration:
         """Pipeline running multimodal_validator strips orphaned markers."""
         from keeprollming.orchestrator.pipeline import Pipeline
 
-        config = {
-            "order": ["multimodal_validator"],
-            "filters": {
-                "multimodal_validator": {
-                    "enabled": True,
-                }
-            },
-        }
-        pipeline = Pipeline.from_route_config(config)
+        pipeline = Pipeline.from_route_config({
+            "multimodal_validator": {"enabled": True},
+        })
         assert pipeline is not None
 
         payload = {
@@ -450,8 +441,7 @@ class TestPipelineIntegration:
             "model": "test-model",
         }
         result = await pipeline.process_request(
-            payload, req_id="test-001",
-            upstream_model="test-model",
+            payload, req_id="test-001", upstream_model="test-model",
         )
         assert "<image>" not in result["messages"][0]["content"]
 
@@ -460,14 +450,7 @@ class TestPipelineIntegration:
         """Pipeline does not modify consistent multimodal payloads."""
         from keeprollming.orchestrator.pipeline import Pipeline
 
-        config = {
-            "order": ["multimodal_validator"],
-            "filters": {
-                "multimodal_validator": {
-                    "enabled": True,
-                }
-            },
-        }
+        config = {"multimodal_validator": {"enabled": True}}
         pipeline = Pipeline.from_route_config(config)
         assert pipeline is not None
 

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
-from keeprollming.orchestrator.filters.model_nudge_filter import ModelNudgeFilter
+from keeprollming.filters.nudge.request import ModelNudgeFilter
 
 
 class MockResponse:

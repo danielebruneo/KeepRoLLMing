@@ -23,23 +23,17 @@ from keeprollming.config import (
     CONFIG,
     USER_ROUTES,
 )
-from keeprollming.logger import LOG_MODE, LOG_MODE_CHOICES, log
+from keeprollming.logger import log
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="KeepRoLLMing orchestrator")
-    parser.add_argument("--log-mode", "--log-level", dest="log_mode", choices=sorted(LOG_MODE_CHOICES), help="Logging verbosity (overrides env LOG_MODE/LOG_LEVEL)")
     parser.add_argument("--host", dest="host", default=os.getenv("HOST", "0.0.0.0"))
     parser.add_argument("--port", dest="port", type=int, default=int(os.getenv("PORT", "8000")))
     parser.add_argument("--tail", action="store_true", help="Tail the BASIC_PLAIN log after startup")
     parser.add_argument("--plain-log", dest="plain_log", action="store_true",
                         help="Also save BASIC_PLAIN output to keeprollming.log (reads from NDJSON)")
     args = parser.parse_args()
-
-    if args.log_mode:
-        # override module global
-        import keeprollming.logger as _logger
-        _logger.LOG_MODE = args.log_mode.upper()
 
     log(
         "INFO",

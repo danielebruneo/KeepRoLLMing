@@ -193,7 +193,7 @@ def test_performance_logging_integration():
 
 
 def test_streaming_handler_metrics_integration():
-    """End-to-end test verifying streaming handler calculates and passes metrics correctly."""
+    """The handler emits one final performance RuntimeEvent to its dispatcher."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock, patch
     
@@ -226,12 +226,11 @@ def test_streaming_handler_metrics_integration():
         
         mock_client.stream = MagicMock(return_value=MockStreamResponse())
         
-         # Metrics capture list
-        captured_metrics = []
-        
-        def capture_metrics(metrics_dict):
-            """Capture metrics as dict."""
-            captured_metrics.append(metrics_dict)
+        from keeprollming.observability import EventDispatcher
+
+        dispatcher = EventDispatcher()
+        captured_events = []
+        dispatcher.subscribe("execution", captured_events.append)
         
         # Create mock route
         class MockRoute:
@@ -268,7 +267,7 @@ def test_streaming_handler_metrics_integration():
             add_empty_content_when_reasoning_only=False,
             is_passthrough=False,
             t_start=t_start,
-            record_metrics_func=capture_metrics,
+            dispatcher=dispatcher,
             route_headers=route_headers,
             request_timeout=30.0,
             fallback_attempts=[],
@@ -281,38 +280,22 @@ def test_streaming_handler_metrics_integration():
         async for chunk in gen:
             result.append(chunk)
         
-        # Wait for async processing to complete
-        await asyncio.sleep(0.1)
-        
-        # Verify metrics were captured
-        assert len(captured_metrics) > 0, "Metrics should be captured"
-        
-        # Check that the last call contains all required fields
-        last_metrics = captured_metrics[-1]
-        
-        print(f"\nCaptured metrics: {list(last_metrics.keys())}")
-        
-        # Verify elapsed_ms is present and positive
-        assert 'elapsed_ms' in last_metrics, "elapsed_ms should be in metrics"
-        assert last_metrics['elapsed_ms'] is not None, "elapsed_ms should not be None"
-        assert last_metrics['elapsed_ms'] > 0, f"elapsed_ms should be positive, got {last_metrics['elapsed_ms']}"
-        
-        # Verify tps is present (may be None if no completion_tokens)
-        assert 'tps' in last_metrics, "tps should be in metrics"
-        print(f"tps value: {last_metrics['tps']}")
-        print(f"completion_tokens: {last_metrics['completion_tokens']}")
-        # tps could be 0 or None if there's an issue with calculation, but elapsed_ms should always be present
-        
-        # Verify total_tps is present
-        assert 'total_tps' in last_metrics, "total_tps should be in metrics"
-        print(f"total_tps value: {last_metrics['total_tps']}")
-        
-        print(f"✓ Streaming handler test passed:")
-        print(f"  - elapsed_ms: {last_metrics['elapsed_ms']:.2f}ms")
-        tps_val = last_metrics.get('tps')
-        print(f"  - tps: {tps_val:.2f}" if tps_val is not None else "  - tps: None")
-        total_tps_val = last_metrics.get('total_tps')
-        print(f"  - total_tps: {total_tps_val:.2f}" if total_tps_val is not None else "  - total_tps: None")
+        assert captured_events, "performance event should be emitted"
+        performance_event = next(
+            event for event in captured_events
+            if event.type == "execution.performance.request_complete"
+        )
+        assert performance_event.data["elapsed_ms"] > 0
+        assert performance_event.data["completion_tokens"] == 3
+        assert performance_event.data["prompt_tokens"] == 5
+        assert performance_event.data["total_tokens"] == 8
+
+        plain_metrics_event = next(
+            event for event in captured_events
+            if event.type == "execution.chat.performance_metrics"
+        )
+        assert plain_metrics_event.data["completion_tps"] is not None
+        assert plain_metrics_event.data["prompt_tps"] is not None
     
     asyncio.run(test_async())
 
@@ -344,5 +327,3 @@ def test_non_streaming_metrics_calculation():
     print(f"  - elapsed_ms: {elapsed_ms:.2f}ms")
     print(f"  - tps: {tps:.2f}")
     print(f"  - total_tps: {total_tps:.2f}")
-
-

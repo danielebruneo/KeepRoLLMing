@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import keeprollming.app as app_mod
+import keeprollming.config as config_mod
 import keeprollming.logger as logger_mod
 
 
@@ -141,16 +142,16 @@ def client(monkeypatch, tmp_path) -> TestClient:
     async def _fake_http_client(request_timeout: float):  # Added request_timeout parameter
         return fake
 
-    monkeypatch.setattr(app_mod, "http_client", _fake_http_client)
+    from keeprollming.endpoints import chat_completions
+    monkeypatch.setattr(chat_completions, "http_client", _fake_http_client)
 
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
-    monkeypatch.setattr(app_mod, "SUMMARY_MODE", "cache_append")
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_ENABLED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
-    monkeypatch.setattr(app_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
-    monkeypatch.setattr(app_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
+    monkeypatch.setattr(config_mod, "SUMMARY_MODE", "cache_append")
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_ENABLED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_CONSOLIDATE_WHEN_NEEDED", True)
+    monkeypatch.setattr(config_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
+    monkeypatch.setattr(config_mod, "SUMMARY_CACHE_FINGERPRINT_MSGS", 1)
 
     # Expose fake client to tests
     monkeypatch.setattr(app_mod, "_TEST_FAKE_UPSTREAM", fake, raising=False)
-
 

@@ -1,47 +1,49 @@
 # Deployment
 
-## Production Daemon
+## Local daemon
+
+Create and review `config.yaml`, then use the bundled local launcher. Its
+default log directory is `./logs`, so it works without writing to `/var/log`.
 
 ```bash
-bash scripts/daemon.sh start   --port 8000              # start
-bash scripts/daemon.sh status  --port 8000              # check
-bash scripts/daemon.sh stop    --port 8000              # stop
-bash scripts/daemon.sh logs    --port 8000              # tail logs
+./krm start --port 8000 --config config.yaml
+./krm status --port 8000
+./krm logs --port 8000
+./krm stop --port 8000
 ```
 
-## Uvicorn Direct
+Use `--log-path /srv/keeprollming/logs` when an operator-managed path is
+required. Set `KRM_PYTHON` for a managed interpreter; otherwise `krm` prefers
+the project `.venv`. Use `./krm serve` when the server should remain in the
+foreground.
 
-```bash
-uvicorn keeprollming.app:app --host 0.0.0.0 --port 8000 --workers 4
-```
+## Container
 
-## Docker
+Install from package metadata rather than a second dependency list:
 
 ```dockerfile
-FROM python:3.11-slim
+FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
 COPY . .
-CMD ["uvicorn", "keeprollming.app:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN pip install .
+CMD ["keeprollming", "--port", "8000"]
 ```
 
-## Reverse Proxy (nginx)
+Mount or provide `config.yaml` and set `CONFIG_FILE` when it is outside the
+working directory.
+
+## Reverse proxy
+
+Streaming requires buffering to remain disabled and an adequate read timeout.
 
 ```nginx
-server {
-    listen 443 ssl;
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
-        proxy_buffering off;
-    }
+location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_read_timeout 300s;
+    proxy_buffering off;
 }
 ```
 
-## Configuration File
-
-Set via `CONFIG_FILE` environment variable (default: `config.yaml`).
+Do not expose the proxy publicly without an authentication and network policy
+appropriate for the upstream credentials and transcript logging you use.

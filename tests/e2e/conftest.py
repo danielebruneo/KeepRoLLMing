@@ -222,7 +222,7 @@ def orchestrator_server(tmp_path: Path, backend_target: BackendTarget):
             "DEEP_SUMMARY_MODEL": backend_target.summary_model or "summary-model",
             "PERFORMANCE_LOGS_DIR": str(tmp_path / "performance_logs"),
             "SUMMARY_CACHE_DIR": str(tmp_path / "summary_cache"),
-            "LOG_MODE": "BASIC_PLAIN",
+            "LOG_PATH": str(tmp_path / "logs"),
             "DEFAULT_CTX_LEN": "4096",
             "MAX_SUMMARY_BACKEND_ATTEMPTS": "6",
         }

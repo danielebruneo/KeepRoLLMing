@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..token_counter import TokenCounter
+from ..observability import events_summary as _summ
 
 
 # ---------------------------------------------------------------------
@@ -289,24 +290,18 @@ def should_summarise(
         pinned_head_n=pinned_head_n,
     )
 
-    # Log the decision (lazy import to avoid circular dependency)
-    try:
-        from ..logger import log
-        log(
-            "INFO",
-            "summary_plan",
-            should=True,
-            reason="prompt_exceeds_threshold",
-            threshold=threshold,
-            prompt_tok_est=prompt_tok_est,
-            head_n=head_n,
-            tail_n=tail_n,
-            middle_count=middle_count,
-            repacked_tok_est=repacked_est,
-            pinned_head_n=pinned_head_n,
-        )
-    except ImportError:
-        pass  # Logging not available, continue without it
+    # Log the decision
+    _summ.emit_plan(
+        should=True,
+        reason="prompt_exceeds_threshold",
+        threshold=threshold,
+        prompt_tok_est=prompt_tok_est,
+        head_n=head_n,
+        tail_n=tail_n,
+        middle_count=middle_count,
+        repacked_tok_est=repacked_est,
+        pinned_head_n=pinned_head_n,
+    )
 
     return plan
 

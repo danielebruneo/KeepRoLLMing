@@ -3,7 +3,7 @@
 import pytest
 
 from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
-from keeprollming.orchestrator.filters.summarization_filter import SummarizationFilter
+from keeprollming.filters.summarization.request import SummarizationFilter
 
 
 class TestSummarizationFilterBasics:
@@ -29,8 +29,8 @@ class TestSummarizationFilterPriority:
     """Verify priority ordering: after SystemPrompt (10), before ToolRewrite (20)."""
 
     def test_priority_is_15(self):
-        from keeprollming.orchestrator.filters.system_prompt_filter import SystemPromptFilter
-        from keeprollming.orchestrator.filters.tool_rewrite_filter import ToolRewriteFilter
+        from keeprollming.filters.system_prompt.request import SystemPromptFilter
+        from keeprollming.filters.tool_rewrite.request import ToolRewriteFilter
         sp = SystemPromptFilter()
         sf = SummarizationFilter()
         tr = ToolRewriteFilter()

@@ -156,8 +156,6 @@ class TestSummarizationBypass:
 
     def test_summary_not_triggered_when_disabled(self):
         """Verify summarization logic is skipped when summary_enabled=False."""
-        import keeprollming.app as app_mod
-
         messages = [
             {"role": "user", "content": "A" * 5000},
             {"role": "assistant", "content": "B" * 5000},
@@ -171,21 +169,19 @@ class TestSummarizationBypass:
             summary_called = True
             return "SHOULD_NOT_BE_CALLED"
 
-        with patch.object(app_mod, 'summarize_middle', _fake_summarize_middle):
-            # Simulate a request with summary_enabled=False
-            route_with_no_summary = MagicMock()
-            route_with_no_summary.summary_enabled = False
+        # Simulate a request with summary_enabled=False.
+        route_with_no_summary = MagicMock()
+        route_with_no_summary.summary_enabled = False
 
-            # Check that the app checks summary_enabled before calling summarization
-            import inspect
-            
-            # The logic was moved to endpoints.chat_completions module
-            from keeprollming.endpoints import chat_completions
-            source = inspect.getsource(chat_completions)
-            
-            # The key check: endpoints/chat_completions.py should have logic like "if not summary_enabled: skip"
-            assert 'summary_enabled' in source.lower() or 'not.*summary' in source.lower(), \
-                "Chat completions handler should check summary_enabled before calling summarization"
+        # The endpoint owns this decision; this is a structural regression
+        # check and does not need to patch a compatibility façade.
+        import inspect
+        from keeprollming.endpoints import chat_completions
+        source = inspect.getsource(chat_completions)
+
+        # The key check: the handler guards summarization by route settings.
+        assert 'summary_enabled' in source.lower() or 'not.*summary' in source.lower(), \
+            "Chat completions handler should check summary_enabled before calling summarization"
 
     def test_summary_triggered_when_enabled(self):
         """Verify summarization logic runs when summary_enabled=True."""
@@ -198,79 +194,6 @@ class TestSummarizationBypass:
         # Should have calls to summarize_middle or summarize_incremental
         assert 'summarize_middle' in source or 'summarize_incremental' in source, \
             "Chat completions handler should call summarization functions"
-
-
-class TestBasicPlainLogging:
-    """Test basic plain logging with proper formatting and highlighting."""
-
-    def test_basic_plain_formatting_highlights_ai_human(self, monkeypatch):
-        """Verify BASIC_PLAIN logging highlights AI and Human chunks."""
-        import keeprollming.logger as logger_mod
-        from keeprollming.logging import constants as logging_constants
-
-        # Reset state
-        logger_mod.LOG_MODE = "BASIC_PLAIN"
-        monkeypatch.setattr(logging_constants, "LOG_PLAIN_COLORS", True)
-        logger_mod._PLAIN_LAST_REQ_ID = None
-        logger_mod._PLAIN_CLOSED_REQ_IDS = set()
-
-        log_entry = {
-            "msg": "summary_reply",
-            "req_id": "abc123",
-            "elapsed_ms": 1.5,
-            "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300},
-            "summary_snip": "Human: hello there\nAI: hi how can I help",
-        }
-
-        rendered = logger_mod._format_plain(log_entry)
-
-        # Should contain ANSI color codes
-        assert "\x1b[" in rendered or "[Human:" in rendered or "Human:" in str(rendered)
-
-        plain_text = logger_mod._strip_ansi(rendered) if isinstance(rendered, str) else rendered
-
-        # Should preserve the summary content
-        assert "Human: hello there" in plain_text or "hello there" in plain_text
-        assert "AI: hi how can I help" in plain_text or "hi how can I help" in plain_text
-
-    def test_basic_plain_handles_empty_summary(self, monkeypatch):
-        """BASIC_PLAIN logging handles empty or missing summary_snip."""
-        import keeprollming.logger as logger_mod
-        from keeprollming.logging import constants as logging_constants
-
-        logger_mod.LOG_MODE = "BASIC_PLAIN"
-        monkeypatch.setattr(logging_constants, "LOG_PLAIN_COLORS", True)
-
-        log_entry = {
-            "msg": "request_started",
-            "req_id": "xyz789",
-        }
-
-        # Should not crash on missing summary_snip
-        rendered = logger_mod._format_plain(log_entry)
-        assert rendered is not None
-        assert len(rendered) > 0
-
-    def test_basic_plain_json_serialization(self):
-        """BASIC_PLAIN logging handles various data types gracefully."""
-        import keeprollming.logger as logger_mod
-        from datetime import datetime, timedelta
-
-        logger_mod.LOG_MODE = "BASIC_PLAIN"
-
-        # Test with various edge cases
-        log_entry = {
-            "msg": "test_event",
-            "timestamp": datetime.now(),  # datetime object
-            "count": 42,
-            "data": {"nested": {"value": "test"}},
-            "unicode": "Hello 世界 🌍",
-            "control_chars": "line1\nline2\ttabbed",
-        }
-
-        # Should not crash on any type
-        rendered = logger_mod._format_plain(log_entry)
-        assert rendered is not None
 
 
 class TestHierarchicalRouteResolution:

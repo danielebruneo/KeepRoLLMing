@@ -4,29 +4,28 @@ E2E test: TLS streaming buffer — blocca tool_call in loop PRIMA del client.
 Configurazione realistica (produzione):
   - max_repeats: 1, fuzzy_max_repeats: 2, fuzzy_look_back: 4
   - ab_loop_detection: true, send_user_message: true
-  - max_retries: 3, tls_message personalizzato, fallback personalizzati
+  - max_attempts: 3, tls_message personalizzato, fallback personalizzati
 """
 
 import asyncio
-import json
-import time
-import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
 
-import httpx
 import pytest
-import uvicorn
+
+from tests.e2e.streaming_harness import (
+    collect_streaming_chunks as _collect_streaming_chunks,
+    configure_scenario as _step_scenario,
+)
 
 
-FAKE_PORT = 19997
+_fake_backend_url: str | None = None
 
 # ── Produzione-like TLS config ───────────────────────────────────────
 
 _PROD_TLS_CONFIG = {
     "enabled": True,
     "max_repeats": 1,
-    "max_retries": 3,
+    "max_attempts": 3,
     "fuzzy_max_repeats": 2,
     "fuzzy_look_back": 4,
     "ab_loop_detection": True,
@@ -49,13 +48,10 @@ _PROD_TLS_CONFIG = {
     ),
 }
 
-_PROD_TLS_FILTER_CHAIN = {
-    "order": ["model_tool_loop_stopper"],
-    "filters": {
-        "model_tool_loop_stopper": {
-            **_PROD_TLS_CONFIG,
-            "upstream_url": f"http://127.0.0.1:{FAKE_PORT}",
-        },
+_PROD_TLS_FILTERS = {
+    "model_tool_loop_stopper": {
+        **_PROD_TLS_CONFIG,
+        "upstream_url": None,
     },
 }
 
@@ -76,7 +72,7 @@ class _Route:
     transform_reasoning_content: bool = False
     add_empty_content_when_reasoning_only: bool = False
     reasoning_placeholder_content: str = ""
-    filter_chain: dict | None = None
+    filters: dict | None = None
     request_timeout: float = 30.0
     fallback_chain: list = field(default_factory=list)
     model_pattern: str | None = None
@@ -85,81 +81,25 @@ class _Route:
 
 # ── Fixture ──────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="module")
-def fake_backend():
-    from tests.e2e.fake_backend import create_app
-    app = create_app()
-    config = uvicorn.Config(app, host="127.0.0.1", port=FAKE_PORT, log_level="error")
-    server = uvicorn.Server(config)
-    def run():
-        asyncio.run(server.serve())
-    t = threading.Thread(target=run, daemon=True)
-    t.start()
-    time.sleep(2)
-    yield f"http://127.0.0.1:{FAKE_PORT}"
-    server.should_exit = True
-
-
-# ── Helper ───────────────────────────────────────────────────────────
-
-async def _collect_streaming_chunks(
-    route: _Route,
-    fake_backend_url: str,
-    payload: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    from keeprollming.endpoints.streaming_handlers import process_streaming_request
-
-    chunks: List[Dict[str, Any]] = []
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        t_start = time.perf_counter()
-        async for raw_chunk in process_streaming_request(
-            url=f"{fake_backend_url}/v1/chat/completions",
-            client=client,
-            payload=dict(payload),
-            route_headers={},
-            route=route,
-            req_id="tls-test",
-            request_timeout=15.0,
-            fallback_attempts=[],
-            visited_models=set(),
-            upstream_model="test-model",
-            is_passthrough=True,
-            transform_reasoning_content=False,
-            add_empty_content_when_reasoning_only=False,
-            reasoning_placeholder="",
-            t_start=t_start,
-            record_metrics_func=lambda _: None,
-        ):
-            text = raw_chunk.decode("utf-8", errors="replace")
-            for line in text.split("\n"):
-                line = line.strip()
-                if line.startswith("data:") and "[DONE]" not in line:
-                    try:
-                        data = json.loads(line[5:].strip())
-                        chunks.append(data)
-                    except json.JSONDecodeError:
-                        pass
-    return chunks
-
-
-def _step_scenario(fake_backend: str, scenario: dict):
-    """Configure fake backend scenario."""
-    httpx.post(f"{fake_backend}/__scenario", json={"scenario": scenario}, timeout=5)
+@pytest.fixture
+def fake_backend(fake_backend_server):
+    """Use the dynamically allocated canonical fake backend."""
+    global _fake_backend_url
+    _fake_backend_url = fake_backend_server.base_url
+    return _fake_backend_url
 
 
 def _route(tls_config_override: dict | None = None) -> _Route:
     """Build route with production TLS config, optionally overridden."""
-    fc = {
-        "order": ["model_tool_loop_stopper"],
-        "filters": {
-            "model_tool_loop_stopper": {
-                **_PROD_TLS_CONFIG,
-                **(tls_config_override or {}),
-                "upstream_url": f"http://127.0.0.1:{FAKE_PORT}",
-            },
+    assert _fake_backend_url is not None
+    filters = {
+        "model_tool_loop_stopper": {
+            **_PROD_TLS_CONFIG,
+            **(tls_config_override or {}),
+            "upstream_url": _fake_backend_url,
         },
     }
-    return _Route(filter_chain=fc, upstream_url=f"http://127.0.0.1:{FAKE_PORT}")
+    return _Route(filters=filters, upstream_url=_fake_backend_url)
 
 
 # ── Constants ────────────────────────────────────────────────────────
@@ -219,7 +159,7 @@ class TestTLSStreamingBuffer:
             "chat": {
                 "stream_pieces": [[]],
                 "tool_calls": _READFILE_TC,
-                "content": "Should not appear (max_retries exhausted)",
+                "content": "Should not appear (max_attempts exhausted)",
                 "include_usage": False,
             },
         })
@@ -235,7 +175,7 @@ class TestTLSStreamingBuffer:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 1}),
+            _route({"max_attempts": 1}),
             fake_backend, payload,
         ))
         tc_seen = False
@@ -248,11 +188,11 @@ class TestTLSStreamingBuffer:
                 content_parts.append(delta["content"])
         assert not tc_seen, "Loop tool_call forwarded to client!"
         full = "".join(content_parts)
-        assert "system stopped repeated" in full.lower() or "you've already executed" in full.lower(), \
-            f"Expected TLS fallback, got: {full[:200]}"
+        assert full == _PROD_TLS_CONFIG["fallback_streaming_message"], \
+            f"Expected configured TLS streaming fallback, got: {full[:200]}"
 
-    def test_max_retries_zero_immediate_fallback(self, fake_backend):
-        """max_retries=0 → fallback subito, nessun retry."""
+    def test_max_attempts_zero_immediate_fallback(self, fake_backend):
+        """max_attempts=0 → fallback subito, nessun retry."""
         _step_scenario(fake_backend, {
             "chat": {
                 "stream_pieces": [[]],
@@ -272,20 +212,20 @@ class TestTLSStreamingBuffer:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"max_retries": 0}),
+            _route({"max_attempts": 0}),
             fake_backend, payload,
         ))
         tc_seen = any(
             c.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
             for c in chunks
         )
-        assert not tc_seen, "Loop tool_call forwarded with max_retries=0!"
+        assert not tc_seen, "Loop tool_call forwarded with max_attempts=0!"
         content = "".join(
             c.get("choices", [{}])[0].get("delta", {}).get("content", "")
             for c in chunks
         )
-        assert "system stopped repeated" in content.lower() or "you've already executed" in content.lower(), \
-            f"Expected TLS fallback, got empty: {content[:200]}"
+        assert content == _PROD_TLS_CONFIG["fallback_streaming_message"], \
+            f"Expected configured TLS streaming fallback, got: {content[:200]}"
 
     def test_content_before_tool_call_is_yielded(self, fake_backend):
         """Content/reasoning chunks BEFORE tool_call sono yieldati subito."""
@@ -334,7 +274,7 @@ class TestTLSStreamingBuffer:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"fuzzy_max_repeats": 2, "fuzzy_look_back": 4, "max_retries": 0}),
+            _route({"fuzzy_max_repeats": 2, "fuzzy_look_back": 4, "max_attempts": 0}),
             fake_backend, payload,
         ))
         tc_seen = any(
@@ -373,7 +313,7 @@ class TestTLSStreamingBuffer:
             ],
         }
         chunks = asyncio.run(_collect_streaming_chunks(
-            _route({"ab_loop_detection": True, "max_retries": 0}),
+            _route({"ab_loop_detection": True, "max_attempts": 0}),
             fake_backend, payload,
         ))
         tc_seen = any(

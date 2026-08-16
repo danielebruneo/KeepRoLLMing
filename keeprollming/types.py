@@ -145,8 +145,8 @@ class Route:
     # Parameter overrides to apply to upstream requests (replace downstream values)
     overrides: Dict[str, Any] = field(default_factory=dict)
 
-    # Filter chain configuration for this route
-    filter_chain: Optional[Dict[str, Any]] = None
+    # Canonical filter configuration for this route.
+    filters: Optional[Dict[str, Any]] = None
 
     # Track if this route is private (@private decorator)
     _is_private: bool = False

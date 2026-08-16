@@ -5,7 +5,9 @@ import os
 # ---------------------------------------------------------------------
 # Prompt configuration
 # ---------------------------------------------------------------------
-SUMMARY_PROMPT_DIR = os.getenv("SUMMARY_PROMPT_DIR", "./_prompts")
+# Bundled runtime templates live in the public `prompts/` directory.  `_prompts/`
+# is reserved for development-only historical material and is not shipped.
+SUMMARY_PROMPT_DIR = os.getenv("SUMMARY_PROMPT_DIR", "./prompts/summary")
 SUMMARY_PROMPT_TYPE = os.getenv("SUMMARY_PROMPT_TYPE", "curated")
 SUMMARY_TEMPERATURE = float(os.getenv("SUMMARY_TEMPERATURE", "0.2"))
 

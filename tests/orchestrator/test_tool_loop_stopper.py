@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 import pytest
 
 from keeprollming.orchestrator.filter import FilterExecutionContext
-from keeprollming.orchestrator.filters.tool_loop_stopper import (
+from keeprollming.filters.tool_loop_stopper.request import (
     ToolLoopStopperFilter,
     ToolLoopStopperConfig,
 )
@@ -585,83 +585,6 @@ class TestFuzzyLookBack:
         }])
         result = asyncio.run(f.process_response(resp, ctx))
         assert result is not resp
-
-
-# ── BASIC_PLAIN Logging Tests ─────────────────────────────────────────────────
-
-
-class TestLogging:
-
-    @staticmethod
-    def _strip_ansi(text):
-        import re
-        return re.sub(r'\x1b\[[0-9;]*m', '', text)
-
-    def test_tool_loop_detected_format(self):
-        """format_plain output for tool_loop_detected."""
-        from keeprollming.logging.plain_text import format_plain
-
-        record = {
-            "ts": 1.0,
-            "level": "INFO",
-            "msg": "tool_loop_detected",
-            "req_id": "abc123",
-            "function_name": "search_file",
-            "repeated": True,
-        }
-        output = self._strip_ansi(format_plain(record))
-        assert "TLS_DETECTED" in output
-        assert "function_name=search_file" in output
-        assert "repeated=True" in output
-
-    def test_tls_intervention_format(self):
-        """format_plain output for tls_intervention."""
-        from keeprollming.logging.plain_text import format_plain
-
-        record = {
-            "ts": 1.0,
-            "level": "INFO",
-            "msg": "tls_intervention",
-            "req_id": "abc123",
-            "injected_tool_result": True,
-            "messages_count": 6,
-        }
-        output = self._strip_ansi(format_plain(record))
-        assert "TLS_INTERVENTION" in output
-        assert "injected_tool_result=True" in output
-        assert "messages_count=6" in output
-
-    def test_tls_retry_format(self):
-        """format_plain output for tls_retry."""
-        from keeprollming.logging.plain_text import format_plain
-
-        record = {
-            "ts": 1.0,
-            "level": "INFO",
-            "msg": "tls_retry",
-            "req_id": "abc123",
-            "model": "local/deep",
-            "messages_count": 6,
-        }
-        output = self._strip_ansi(format_plain(record))
-        assert "TLS_RETRY" in output
-        assert "model=local/deep" in output
-        assert "messages_count=6" in output
-
-    def test_tls_fallback_format(self):
-        """format_plain output for tls_fallback."""
-        from keeprollming.logging.plain_text import format_plain
-
-        record = {
-            "ts": 1.0,
-            "level": "INFO",
-            "msg": "tls_fallback",
-            "req_id": "abc123",
-            "reason": "model_repeated_after_tls",
-        }
-        output = self._strip_ansi(format_plain(record))
-        assert "TLS_FALLBACK" in output
-        assert "reason=model_repeated_after_tls" in output
 
 
 if __name__ == "__main__":

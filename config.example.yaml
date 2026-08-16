@@ -1,35 +1,45 @@
-# KeepRoLLMing — Minimal Configuration Example
-# ==============================================
-# Copy this file to config.yaml and adjust for your setup.
-# A complete example with all options is in docs/examples/config.full.example.yaml
+# KeepRoLLMing — minimal, working configuration
+#
+# Copy this file to config.yaml, then replace the model name and upstream URL.
+# For every supported setting, see config.example.full.yaml.
+
+# Defaults inherited by routes that do not provide their own value.
+ctx_len: 32768
+max_tokens: 4096
+default_request_timeout: 120
 
 routes:
-  # Local backend (llama.cpp, vLLM, etc.)
-  local/chat:
-    model: "qwen2.5-7b"
+  # A private base route shares the upstream settings without being advertised
+  # through GET /v1/models.
+  base/local:
+    is_private: true
+    model: "your-upstream-model"
     upstream_url: "http://127.0.0.1:8080"
-    max_tokens: 8192
-    ctx_len: 32768
 
-  # Remote OpenAI-compatible API (DeepSeek, OpenRouter, etc.)
-  remote/deepseek:
-    model: "deepseek-chat"
-    upstream_url: "https://api.deepseek.com"
-    api_key: "sk-your-api-key-here"            # → Authorization: Bearer
-    max_tokens: 8192
+  # Send clients to this route with: "model": "chat/local".
+  chat/local:
+    extends: base/local
+    pattern: "chat/local"
 
-  # Route with filters
+  # The same backend with two optional reliability filters enabled.
   code/assistant:
-    extends: [local/chat]
-    filter_chain:
-      timestamp:
-        enabled: true                           # Adds timestamp footer
+    extends: base/local
+    pattern: "code/assistant"
+    filters:
+      system_prompt:
+        enabled: true
+        prompt: "You are a concise coding assistant."
+        override: false
       model_nudge:
-        enabled: true                           # Detects lazy responses
+        enabled: true
+        trigger_patterns: [":$"]
+        nudge_message: "Continue."
+        max_attempts: 3
 
-# Global defaults
-default_ctx_len: 8192
-default_max_completion_tokens: 4096
-
-# Logging
-LOG_MODE: BASIC_PLAIN                          # or DEBUG for verbose
+observability:
+  projectors:
+    plain:
+      level: BASIC
+      stdout: true
+  raw_trace:
+    policy: disabled  # disabled | all | selected_routes

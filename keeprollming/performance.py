@@ -1,6 +1,23 @@
-# See: performance.py
-# Full file content would be very long, let's just write the function
+"""Performance module — per-request performance data.
+
+**Ownership boundary:**
+- `performance.py` = per-request performance data (TPS, TTFT, elapsed time,
+  token counts for logging).
+- `metrics.py` = cost/load/retry accounting (consumes ExecutionUsage directly
+  from the pipeline after stream completion).
+
+Token counts in this module are for logging purposes only. Cost/load/retry
+accounting is handled by `metrics.py` which consumes `ExecutionUsage` directly.
+
+**Key invariants:**
+- I2: performance.py owns per-request performance data (TPS, TTFT, elapsed
+  time).
+- I5: Token counts in metrics.py are derived from ExecutionUsage, not tracked
+  independently.
+"""
+
 import json
+import math
 import yaml
 import shutil
 from pathlib import Path
@@ -48,14 +65,23 @@ class RouteStats:
 
     Populated incrementally by ``update()`` and dumped to a YAML-compatible
     dict by ``to_route_entry()``.  No disk I/O on the hot path.
+
+    **Ownership boundary:**
+    - performance.py = per-request performance data (TPS, TTFT, elapsed time,
+      token counts for logging) + ExecutionUsage aggregates for dashboard display.
+    - metrics.py = cost/load/retry accounting (consumes ExecutionUsage directly
+      from the pipeline, independent of performance.py).
     """
 
     __slots__ = (
         "route_name", "model", "route_hierarchy",
-        "count", "last_ts",
+        "count", "last_ts", "first_completed_at", "last_completed_at", "window_request_count",
         "total_tps", "completion_tps", "prompt_tps",
-        "completion_tokens", "prompt_tokens",
+        "completion_tokens", "prompt_tokens", "cached_prompt_tokens", "uncached_prompt_tokens",
         "ttft_ms", "elapsed_ms",
+        # ExecutionUsage accumulators (Phase 12)
+        "upstream_attempts", "usage_reported_attempts",
+        "recovery_count", "retry_amplification_ratio", "usage_complete_count",
     )
 
     def __init__(self, entry: Dict[str, Any]) -> None:
@@ -65,19 +91,37 @@ class RouteStats:
         self.route_hierarchy: List[str] = rh if isinstance(rh, list) else [self.route_name]
         self.count = 1
         self.last_ts = time.time()
+        completed_at = _safe_float(entry.get("completed_at"))
+        self.first_completed_at = completed_at
+        self.last_completed_at = completed_at
+        self.window_request_count = 1 if completed_at is not None else 0
         self.total_tps = _MetricAccum()
         self.completion_tps = _MetricAccum()
         self.prompt_tps = _MetricAccum()
         self.completion_tokens = _MetricAccum()
         self.prompt_tokens = _MetricAccum()
+        self.cached_prompt_tokens = _MetricAccum()
+        self.uncached_prompt_tokens = _MetricAccum()
         self.ttft_ms = _MetricAccum()
         self.elapsed_ms = _MetricAccum()
+        # ExecutionUsage accumulators (Phase 12)
+        self.upstream_attempts = _MetricAccum()
+        self.usage_reported_attempts = _MetricAccum()
+        self.recovery_count = _MetricAccum()
+        self.retry_amplification_ratio = _MetricAccum()
+        self.usage_complete_count = 0  # Count of requests with usage_complete=True
         self._apply_entry(entry)
 
     def update(self, entry: Dict[str, Any]) -> None:
         """Incorporate a single request entry (O(1))."""
         self.count += 1
         self.last_ts = time.time()
+        completed_at = _safe_float(entry.get("completed_at"))
+        if completed_at is not None:
+            if self.first_completed_at is None:
+                self.first_completed_at = completed_at
+            self.last_completed_at = completed_at
+            self.window_request_count += 1
         # Update model name if it changed (rare, but handle gracefully)
         model = str(entry.get("model") or self.route_name)
         if model != self.model:
@@ -88,14 +132,48 @@ class RouteStats:
         self._apply_entry(entry)
 
     def _apply_entry(self, entry: Dict[str, Any]) -> None:
+        # Performance metrics
         for name in ("total_tps", "completion_tps", "prompt_tps",
-                     "completion_tokens", "prompt_tokens",
+                     "completion_tokens", "prompt_tokens", "cached_prompt_tokens", "uncached_prompt_tokens",
                      "ttft_ms", "elapsed_ms"):
             v = _safe_float(entry.get(name))
             if v is not None:
                 getattr(self, name).update(v)
 
+        # ExecutionUsage metrics (Phase 12)
+        upstream = _safe_int(entry.get("upstream_attempts"))
+        if upstream is not None:
+            self.upstream_attempts.update(float(upstream))
+
+        reported = _safe_int(entry.get("usage_reported_attempts"))
+        if reported is not None:
+            self.usage_reported_attempts.update(float(reported))
+
+        recovery = _safe_int(entry.get("recovery_count"))
+        if recovery is not None:
+            self.recovery_count.update(float(recovery))
+
+        ratio = _safe_float(entry.get("retry_amplification_ratio"))
+        if ratio is not None:
+            self.retry_amplification_ratio.update(ratio)
+
+        # Track usage_complete as a count (for computing percentage)
+        if entry.get("usage_complete") is True:
+            self.usage_complete_count += 1
+
     def to_route_entry(self) -> Dict[str, Any]:
+        # Calculate usage_complete percentage
+        usage_complete_pct = 0.0
+        if self.count > 0:
+            usage_complete_pct = self.usage_complete_count / self.count
+
+        requests_per_hour = None
+        if (self.first_completed_at is not None and self.last_completed_at is not None
+                and self.last_completed_at > self.first_completed_at):
+            requests_per_hour = self.window_request_count * 3600.0 / (
+                self.last_completed_at - self.first_completed_at
+            )
+
         return {
             "route_name": self.route_name,
             "model": self.model,
@@ -106,8 +184,20 @@ class RouteStats:
             "prompt_tps": self.prompt_tps.stats(),
             "completion_tokens": self.completion_tokens.stats(),
             "prompt_tokens": self.prompt_tokens.stats(),
+            "cached_prompt_tokens": self.cached_prompt_tokens.stats(),
+            "uncached_prompt_tokens": self.uncached_prompt_tokens.stats(),
             "ttft_ms": self.ttft_ms.stats(),
             "elapsed_ms": self.elapsed_ms.stats(),
+            # ExecutionUsage metrics (Phase 12)
+            "upstream_attempts": self.upstream_attempts.stats(),
+            "usage_reported_attempts": self.usage_reported_attempts.stats(),
+            "recovery_count": self.recovery_count.stats(),
+            "retry_amplification_ratio": self.retry_amplification_ratio.stats(),
+            "usage_complete_pct": round(usage_complete_pct, 4),
+            "requests_per_hour": round(requests_per_hour, 4) if requests_per_hour is not None else None,
+            "window_started_at": self.first_completed_at,
+            "window_ended_at": self.last_completed_at,
+            "window_requests": self.window_request_count,
             "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         }
 
@@ -165,7 +255,8 @@ def _safe_float(v: Any) -> Optional[float]:
     if v is None:
         return None
     try:
-        return float(v)
+        result = float(v)
+        return result if math.isfinite(result) else None
     except (TypeError, ValueError):
         return None
 
@@ -278,18 +369,44 @@ def _update_summary(base_dir: Path) -> None:
         routes.sort(key=lambda r: r.get("requests", 0), reverse=True)
         models_list.append({"model": model, "routes": routes})
 
-    summary_data = {"models": models_list}
+    summary_data = {
+        "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        "models": models_list,
+    }
     with open(base_dir / "summary.yaml", 'w', encoding='utf-8') as f:
         yaml.dump(summary_data, f, allow_unicode=True, sort_keys=False)
 
 
 # ── Performance computation ─────────────────────────────────────────
 
-def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft_ms: Any = None, prompt_tokens: Any = None, total_tokens: Any = None) -> Dict[str, Any]:
+def compute_request_performance(
+    *, elapsed_ms: Any, completion_tokens: Any, ttft_ms: Any = None,
+    prompt_tokens: Any = None, total_tokens: Any = None,
+    cached_prompt_tokens: Any = None,
+) -> Dict[str, Any]:
+    """Compute physical throughput while retaining logical token counts.
+
+    ``prompt_tokens`` and ``total_tokens`` describe the client-visible logical
+    request.  When an upstream reports KV-cache hits, only the uncached part of
+    the prompt consumed prefill time; ``prompt_tps`` and ``total_tps`` must use
+    that physical workload rather than the full logical context.
+    """
     elapsed = _safe_float(elapsed_ms)
     completion = _safe_int(completion_tokens)
     ttft = _safe_float(ttft_ms)
     prompt = _safe_int(prompt_tokens)
+    cached_prompt = _safe_int(cached_prompt_tokens)
+
+    # Providers occasionally report an invalid cache count.  Keep token
+    # accounting robust and never turn a malformed value into negative TPS.
+    if cached_prompt is not None:
+        cached_prompt = max(0, cached_prompt)
+        if prompt is not None:
+            cached_prompt = min(cached_prompt, prompt)
+    uncached_prompt = (
+        prompt - (cached_prompt or 0)
+        if prompt is not None else None
+    )
 
     # Calculate total if not provided
     if total_tokens is None and prompt is not None and completion is not None:
@@ -307,14 +424,14 @@ def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft
             if gen_time > 0:
                 completion_tps = completion / (gen_time / 1000.0)
 
-        if prompt is not None and prompt >= 0:
+        if uncached_prompt is not None and uncached_prompt >= 0:
             if ttft is not None and ttft > 0:
-                prompt_tps = prompt / (ttft / 1000.0)
+                prompt_tps = uncached_prompt / (ttft / 1000.0)
             else:
-                prompt_tps = prompt / (elapsed / 1000.0)
+                prompt_tps = uncached_prompt / (elapsed / 1000.0)
 
-        if prompt is not None and completion is not None:
-            total_tps = (prompt + completion) / (elapsed / 1000.0)
+        if uncached_prompt is not None and completion is not None:
+            total_tps = (uncached_prompt + completion) / (elapsed / 1000.0)
         else:
             total_tps = None
 
@@ -322,6 +439,8 @@ def compute_request_performance(*, elapsed_ms: Any, completion_tokens: Any, ttft
         "elapsed_ms": round(elapsed, 4) if elapsed is not None else None,
         "completion_tokens": completion,
         "prompt_tokens": prompt,
+        "cached_prompt_tokens": cached_prompt,
+        "uncached_prompt_tokens": uncached_prompt,
         "total_tokens": total,
         "ttft_ms": round(ttft, 4) if ttft is not None else None,
         "tps": round(completion_tps, 4) if completion_tps is not None else None,
@@ -343,11 +462,13 @@ def record_request_performance(
     ttft_ms: Any = None,
     prompt_tokens: Any = None,
     total_tokens: Any = None,
+    cached_prompt_tokens: Any = None,
     finish_reason: Any = None,
     did_summarize: Any = None,
     passthrough: Any = None,
     completion_tokens_source: Any = None,
     performance_logs_dir: str | None = None,
+    execution_usage: Any = None,
 ) -> Dict[str, Any]:
     """Record request performance metrics.
 
@@ -370,12 +491,18 @@ def record_request_performance(
     else:
         base_dir = _ensure_dir()
 
+    if cached_prompt_tokens is None and execution_usage is not None:
+        cached_prompt_tokens = getattr(
+            execution_usage, "final_cached_prompt_tokens", None
+        )
+
     perf = compute_request_performance(
         elapsed_ms=elapsed_ms,
         completion_tokens=completion_tokens,
         ttft_ms=ttft_ms,
         prompt_tokens=prompt_tokens,
         total_tokens=total_tokens,
+        cached_prompt_tokens=cached_prompt_tokens,
     )
 
     record: Dict[str, Any] = {
@@ -388,10 +515,31 @@ def record_request_performance(
         "did_summarize": did_summarize,
         "passthrough": passthrough,
         "completion_tokens_source": completion_tokens_source,
+        "completed_at": time.time(),
     }
 
     if route_hierarchy is not None:
         record["route_hierarchy"] = route_hierarchy
+
+    # ── Extract ExecutionUsage fields (Phase 12) ───────────────────
+    if execution_usage is not None:
+        # execution_usage is an ExecutionUsage dataclass
+        record["upstream_attempts"] = getattr(execution_usage, 'upstream_attempts', 0)
+        record["usage_reported_attempts"] = getattr(execution_usage, 'usage_reported_attempts', 0)
+        record["recovery_count"] = getattr(execution_usage, 'recovery_count', 0)
+        record["retry_amplification_ratio"] = _safe_float(
+            getattr(execution_usage, 'retry_amplification_ratio', None)
+        )
+        record["usage_complete"] = getattr(execution_usage, 'usage_complete', False)
+        record["upstream_prompt_tokens"] = getattr(
+            execution_usage, 'upstream_prompt_tokens', None
+        )
+        record["upstream_completion_tokens"] = getattr(
+            execution_usage, 'upstream_completion_tokens', None
+        )
+        record["upstream_total_tokens"] = getattr(
+            execution_usage, 'upstream_total_tokens', None
+        )
 
     # ── Seed in-memory stats from disk BEFORE any async I/O ──
     # This ensures existing data is loaded even if the async writer hasn't
@@ -448,5 +596,3 @@ def get_performance_summary() -> Dict[str, Any]:
         return {"models": []}
     except Exception:
         return {"models": []}
-
-

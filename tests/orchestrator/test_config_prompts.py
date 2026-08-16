@@ -8,7 +8,7 @@ import tempfile
 import os
 
 # Import our function directly to test it
-import keeprollming.rolling_summary as rs
+import keeprollming.summary as rs
 
 
 def test_custom_prompt_from_file():
@@ -32,8 +32,8 @@ def test_custom_prompt_from_file():
         }
         
         # Mock both the SUMMARY_PROMPT_DIR and CONFIG 
-        with patch('keeprollming.rolling_summary.SUMMARY_PROMPT_DIR', tmpdir):
-            with patch('keeprollming.rolling_summary.CONFIG', mock_config):
+        with patch('keeprollming.summary.SUMMARY_PROMPT_DIR', tmpdir):
+            with patch('keeprollming.summary.CONFIG', mock_config):
                 result = rs.load_summary_prompt_template("test_custom_prompt")
                 
         assert result == prompt_content
@@ -49,7 +49,7 @@ def test_custom_prompt_direct_text():
         }
     }
 
-    with patch('keeprollming.rolling_summary.CONFIG', mock_config):
+    with patch('keeprollming.summary.CONFIG', mock_config):
         result = rs.load_summary_prompt_template("structured_explainer")
 
     assert result == "Direct text content for the prompt template"

@@ -25,15 +25,12 @@ class TestSystemPromptInUpstreamPayload:
 
         route = MagicMock()
         route.name = "local/sp_test"
-        route.filter_chain = {
-            "order": ["system_prompt"],
-            "filters": {
+        route.filters = {
                 "system_prompt": {
                     "enabled": True,
                     "prompt": "/nothink reply in french",
                     "override": False,
                 }
-            },
         }
         route.summary_enabled = False
         route.ctx_len = 131072

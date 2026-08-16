@@ -9,6 +9,7 @@ import sys
 
 logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, Optional, Tuple, Any, List
 
 # Import shared types from types.py to avoid circular imports
@@ -62,29 +63,22 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     else:
                         return default  # type: ignore
 
-                # Support both 'model' and 'main_model' (backward compatibility)
                 model = get_or_unset("model")
-                if model is None:
-                    model = get_or_unset("main_model")
-
-                # Support both 'model_pattern' and 'backend_model_pattern' (backward compatibility)
                 model_pattern = get_or_unset("model_pattern")
-                if model_pattern is None:
-                    model_pattern = get_or_unset("backend_model_pattern")
 
                 route = Route(
                     name=name,
                     pattern=pattern,
                     summary_enabled=get_or_unset("summary_enabled", None),  # type: ignore
                     passthrough_enabled=get_or_unset("passthrough_enabled", False),  # type: ignore
-                    model=model,  # Uses the variable with main_model fallback
+                    model=model,
                     summary_model=get_or_unset("summary_model"),  # type: ignore
                     ctx_len=get_or_unset("ctx_len", None),  # type: ignore
                     max_tokens=get_or_unset("max_tokens", None),  # type: ignore
                     transform_reasoning_content=get_or_unset("transform_reasoning_content", False),  # type: ignore
                     add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
                     reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
-                    model_pattern=model_pattern,  # Uses the variable with backend_model_pattern fallback
+                    model_pattern=model_pattern,
                     upstream_url=get_or_unset("upstream_url", None),  # Use None to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     api_key=get_or_unset("api_key", None),  # type: ignore
@@ -97,7 +91,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     performance_logs_dir=get_or_unset("performance_logs_dir", None),  # type: ignore
                     extends=route_data.get("extends"),
                     overrides=route_data.get("overrides", {}),
-                    filter_chain=get_or_unset("filter_chain", None),  # Use None for inheritance support
+                    filters=get_or_unset("filters", None),
                 )
                 user_routes.append(route)
             except Exception as e:
@@ -139,29 +133,22 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                 # Extract is_private flag from config (default False for non-private routes)
                 is_private = route_data.get("is_private", False)
 
-                # Support both 'model' and 'main_model' (backward compatibility)
                 model = get_or_unset("model")
-                if model is None:
-                    model = get_or_unset("main_model")
-
-                # Support both 'model_pattern' and 'backend_model_pattern' (backward compatibility)
                 model_pattern = get_or_unset("model_pattern")
-                if model_pattern is None:
-                    model_pattern = get_or_unset("backend_model_pattern")
 
                 route = Route(
                     name=name,
                     pattern=pattern,
                     summary_enabled=get_or_unset("summary_enabled", None),  # type: ignore
                     passthrough_enabled=get_or_unset("passthrough_enabled", False),  # type: ignore
-                    model=model,  # Uses the variable with main_model fallback
+                    model=model,
                     summary_model=get_or_unset("summary_model"),  # type: ignore
                     ctx_len=get_or_unset("ctx_len", None),  # type: ignore
                     max_tokens=get_or_unset("max_tokens", None),  # type: ignore
                     transform_reasoning_content=get_or_unset("transform_reasoning_content", False),  # type: ignore
                     add_empty_content_when_reasoning_only=get_or_unset("add_empty_content_when_reasoning_only", False),  # type: ignore
                     reasoning_placeholder_content=get_or_unset("reasoning_placeholder_content", ""),  # type: ignore
-                    model_pattern=model_pattern,  # Uses the variable with backend_model_pattern fallback
+                    model_pattern=model_pattern,
                     upstream_url=get_or_unset("upstream_url", None),  # Use None to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     api_key=get_or_unset("api_key", None),  # type: ignore
@@ -174,7 +161,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     performance_logs_dir=get_or_unset("performance_logs_dir", None),  # type: ignore
                     extends=extends,
                     overrides=route_data.get("overrides", {}),
-                    filter_chain=get_or_unset("filter_chain", None),  # Use None for inheritance support
+                    filters=get_or_unset("filters", None),
                     _is_private=is_private,
                 )
                 user_routes.append(route)
@@ -182,6 +169,35 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                 logger.warning("Failed to parse route '%s': %s", name, e)
 
     return user_routes
+
+
+def validate_resolved_route_filters(routes: List[Route]) -> None:
+    """Validate canonical filters after route inheritance has been resolved.
+
+    This is deliberately a bootstrap/reload check: a typo in an inherited
+    filter must fail configuration loading, not silently surface on the first
+    client request for the child route.
+    """
+    from keeprollming.filters import (
+        normalize_filters,
+        request_priorities,
+        validate_filter_module_settings,
+    )
+    from keeprollming.routing.router import resolve_inherited_route
+
+    routes_by_name = {route.name: route for route in routes}
+    priorities = request_priorities()
+    for route in routes:
+        resolved = resolve_inherited_route(route, routes_by_name)
+        try:
+            normalized = normalize_filters(
+                resolved.filters, default_priorities=priorities
+            )
+            validate_filter_module_settings(normalized)
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid filters for resolved route '{route.name}': {exc}"
+            ) from exc
 
 
 def resolve_route_settings(
@@ -236,30 +252,25 @@ def resolve_route_settings(
 def load_config() -> Dict[str, Any]:
     """Load configuration from config.yaml or config.json file."""
 
-    # Check for custom config file via environment variable
-    custom_config_path = os.getenv("CONFIG_FILE")
-
-    if custom_config_path and os.path.exists(custom_config_path):
-        # Load from custom config path
-        if custom_config_path.endswith(".yaml") or custom_config_path.endswith(".yml"):
-            with open(custom_config_path, "r") as f:
-                config = yaml.safe_load(f)
-        else:
-            with open(custom_config_path, "r") as f:
-                config = json.load(f)
+    config_path = _find_config_file()
+    if config_path is None:
+        config = {}
+        config_directory = Path.cwd()
+    elif config_path.suffix.lower() in {".yaml", ".yml"}:
+        with config_path.open(encoding="utf-8") as source:
+            config = yaml.safe_load(source)
+        config_directory = config_path.parent
     else:
-        # Try to load from config.yaml first
-        try:
-            with open("config.yaml", "r") as f:
-                config = yaml.safe_load(f)
-        except FileNotFoundError:
-            # Try to load from config.json if yaml doesn't exist
-            try:
-                with open("config.json", "r") as f:
-                    config = json.load(f)
-            except FileNotFoundError:
-                # If no config file exists, use defaults
-                config = {}
+        with config_path.open(encoding="utf-8") as source:
+            config = json.load(source)
+        config_directory = config_path.parent
+
+    if config is None:
+        config = {}
+    if not isinstance(config, dict):
+        raise ValueError("configuration root must be a mapping")
+
+    _materialize_system_prompt_files(config, config_directory)
 
     # Set defaults for missing values (flat structure now)
     config.setdefault("upstream_base_url", "http://127.0.0.1:1234/v1")
@@ -305,17 +316,56 @@ def load_config() -> Dict[str, Any]:
     return config
 
 
+def _find_config_file() -> Path | None:
+    """Return the actual configuration file selected for this process."""
+    custom_config_path = os.getenv("CONFIG_FILE")
+    if custom_config_path:
+        candidate = Path(custom_config_path).expanduser()
+        if candidate.exists():
+            return candidate.resolve()
+    for candidate in (Path("config.yaml"), Path("config.json")):
+        if candidate.exists():
+            return candidate.resolve()
+    return None
+
+
+def _materialize_system_prompt_files(config: Dict[str, Any], config_directory: Path) -> None:
+    """Load every route's file-backed system prompt during configuration load."""
+    from keeprollming.filters.system_prompt import materialize_prompt_file
+
+    routes = config.get("routes")
+    if isinstance(routes, dict):
+        route_items = routes.items()
+    elif isinstance(routes, list):
+        route_items = (
+            (str(route.get("name", "unnamed")), route)
+            for route in routes
+            if isinstance(route, dict)
+        )
+    else:
+        return
+
+    for route_name, route in route_items:
+        filters = route.get("filters")
+        if not isinstance(filters, dict):
+            continue
+        system_prompt = filters.get("system_prompt")
+        if isinstance(system_prompt, dict):
+            filters["system_prompt"] = materialize_prompt_file(
+                system_prompt,
+                config_directory=config_directory,
+                route_name=route_name,
+            )
+
+
 # Load configuration
 CONFIG = load_config()
 
 # Track config file modification time for hot reload
 _CONFIG_FILE_PATH: str | None = None
-try:
-    _config_path = os.getenv("CONFIG_FILE", "config.yaml")
-    if os.path.exists(_config_path):
-        _CONFIG_FILE_PATH = _config_path
-except Exception:
-    pass
+_resolved_config_path = _find_config_file()
+if _resolved_config_path is not None:
+    _CONFIG_FILE_PATH = str(_resolved_config_path)
 
 # Store initial modification time
 _CONFIG_LAST_MTIME: float = 0.0
@@ -364,6 +414,7 @@ def check_config_reload() -> bool:
             CONFIG.update(new_config)
             USER_ROUTES.clear()
             USER_ROUTES.extend(load_user_routes(CONFIG))
+            validate_resolved_route_filters(USER_ROUTES)
             
             # Update DEFAULTS
             ctx_len = CONFIG["defaults"]["ctx_len"] if "defaults" in CONFIG else 8192
@@ -394,6 +445,7 @@ def check_config_reload() -> bool:
 
 # Parse user-defined routes from config
 USER_ROUTES: List[Route] = load_user_routes(CONFIG)
+validate_resolved_route_filters(USER_ROUTES)
 
 # Create DefaultSettings object for resolution
 DEFAULTS = DefaultSettings(
@@ -406,7 +458,10 @@ DEFAULTS = DefaultSettings(
 # Models config removed - now defined inline in routes
 
 
-def resolve_route(client_model: str) -> Tuple[Optional[Route], str]:
+def resolve_route(
+    client_model: str,
+    req_id: Optional[str] = None,
+) -> Tuple[Optional[Route], str]:
     """
     Resolve a client-facing model name to the appropriate route and backend model.
 
@@ -414,13 +469,14 @@ def resolve_route(client_model: str) -> Tuple[Optional[Route], str]:
 
     Args:
         client_model: The model name from the client request (e.g., "local/quick", "pass/openai/gpt-4")
+        req_id: Optional request ID for observability event emission.
 
     Returns:
         Tuple of (matched_route, model_name)
         - route can be None if no match found (shouldn't happen with fallback)
         - model is the actual model to use for routing
     """
-    return _resolve_route(client_model, USER_ROUTES)
+    return _resolve_route(client_model, USER_ROUTES, req_id=req_id)
 
 
 def resolve_fallback_chain(
@@ -450,7 +506,7 @@ def get_route_settings(route: Route, model: str) -> "RouteSettings":
     """
     Extract all settings from a matched route for use in the application.
 
-    Returns a typed RouteSettings object (Architecture V2).
+    Returns a typed RouteSettings object.
     """
     return _get_route_settings(route, model)
 

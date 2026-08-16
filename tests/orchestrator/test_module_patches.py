@@ -28,22 +28,18 @@ def patch_app_mod_functions(monkeypatch, func_patches: dict):
         monkeypatch: pytest monkeypatch fixture
         func_patches: dict mapping function names to mock implementations
     """
-    import keeprollming.app as app_mod
-    import keeprollming.rolling_summary as rolling_summary_mod
+    import keeprollming.summary as summary_mod
+    import keeprollming.summary as summary_mod
     from keeprollming.endpoints import chat_completions
     from keeprollming.processing import summarization as processing_summarization_mod
     import keeprollming.summary_cache as summary_cache_mod
     import keeprollming.metrics as metrics_mod
 
-    # Patch at the module level where tests traditionally patch (for backward compat)
-    for name, func in func_patches.items():
-        monkeypatch.setattr(app_mod, name, func)
-
     # Also patch at import locations for modular code to work
-    # This is critical: chat_completions.py imports from rolling_summary directly
+    # This is critical: chat_completions.py imports from summary directly
     for name, func in func_patches.items():
-        if hasattr(rolling_summary_mod, name):
-            monkeypatch.setattr(rolling_summary_mod, name, func)
+        if hasattr(summary_mod, name):
+            monkeypatch.setattr(summary_mod, name, func)
         if hasattr(chat_completions, name):
             monkeypatch.setattr(chat_completions, name, func)
         if hasattr(processing_summarization_mod, name):
