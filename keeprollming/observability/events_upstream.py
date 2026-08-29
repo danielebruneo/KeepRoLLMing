@@ -76,71 +76,126 @@ def emit_upstream_event(
 
 
 def emit_response_received(
-    url: str, method: str, status: int, elapsed_ms: float = 0.0,
-    headers: dict = None, body: str = "", note: str = "",
+    url: str,
+    method: str,
+    status: int,
+    elapsed_ms: float = 0.0,
+    headers: dict = None,
+    body: str = "",
+    note: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_upstream_event("", "execution.upstream.response_received",
-                         url=url, method=method, status=status,
-                         elapsed_ms=elapsed_ms or None,
-                         headers=headers or {},
-                         body=body or None,
-                         note=note or None,
-                         dispatcher=dispatcher)
+    return emit_upstream_event(
+        "",
+        "execution.upstream.response_received",
+        url=url,
+        method=method,
+        status=status,
+        elapsed_ms=elapsed_ms or None,
+        headers=headers or {},
+        body=body or None,
+        note=note or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_ctx_len(
-    upstream_model: str, ctx_len: int, source: str = "default",
+    upstream_model: str,
+    ctx_len: int,
+    source: str = "default",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_upstream_event("", "execution.upstream.ctx_len",
-                         upstream_model=upstream_model,
-                         ctx_len=ctx_len, source=source,
-                         dispatcher=dispatcher)
+    return emit_upstream_event(
+        "",
+        "execution.upstream.ctx_len",
+        upstream_model=upstream_model,
+        ctx_len=ctx_len,
+        source=source,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_ctx_len_fallback(
-    upstream_model: str, ctx_len: int = 0, err: str = "",
+    upstream_model: str,
+    ctx_len: int = 0,
+    err: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_upstream_event("", "execution.upstream.ctx_len_fallback",
-                         level="WARN",
-                         upstream_model=upstream_model,
-                         ctx_len=ctx_len or None,
-                         err=err or None,
-                         dispatcher=dispatcher)
+    return emit_upstream_event(
+        "",
+        "execution.upstream.ctx_len_fallback",
+        level="WARN",
+        upstream_model=upstream_model,
+        ctx_len=ctx_len or None,
+        err=err or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_all_endpoints_failed(
-    upstream_model: str, ctx_len: int = 0,
+    upstream_model: str,
+    ctx_len: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_upstream_event("", "execution.upstream.all_endpoints_failed",
-                         level="WARN",
-                         upstream_model=upstream_model,
-                         ctx_len=ctx_len or None,
-                         dispatcher=dispatcher)
+    return emit_upstream_event(
+        "",
+        "execution.upstream.all_endpoints_failed",
+        level="WARN",
+        upstream_model=upstream_model,
+        ctx_len=ctx_len or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_override_applied(
-    req_id: str, param: str, old_value: Any, new_value: Any,
+    req_id: str,
+    param: str,
+    old_value: Any,
+    new_value: Any,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_upstream_event(req_id, "execution.upstream.override_applied",
-                         param=param, old_value=old_value,
-                         new_value=new_value,
-                         dispatcher=dispatcher)
+    return emit_upstream_event(
+        req_id,
+        "execution.upstream.override_applied",
+        param=param,
+        old_value=old_value,
+        new_value=new_value,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_connection_error(
-    req_id: str, error_type: str, upstream_url: str,
-    model: str = "", elapsed_ms: float = 0.0,
+    req_id: str,
+    error_type: str,
+    upstream_url: str,
+    model: str = "",
+    elapsed_ms: float = 0.0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_upstream_event(req_id, "execution.upstream.connection_error",
-                         level="ERROR",
-                         error_type=error_type,
-                         upstream_url=upstream_url,
-                         model=model or None,
-                         elapsed_ms=elapsed_ms or None,
-                         dispatcher=dispatcher)
+    return emit_upstream_event(
+        req_id,
+        "execution.upstream.connection_error",
+        level="ERROR",
+        error_type=error_type,
+        upstream_url=upstream_url,
+        model=model or None,
+        elapsed_ms=elapsed_ms or None,
+        dispatcher=dispatcher,
+    )
+
+
+def emit_transport_configured(
+    settings: dict[str, Any],
+    dispatcher: Optional[Any] = None,
+) -> None:
+    """Publish the effective shared upstream-pool policy at startup."""
+    return emit_upstream_event(
+        "",
+        "execution.upstream.transport_configured",
+        max_connections=settings.get("max_connections"),
+        max_keepalive_connections=settings.get("max_keepalive_connections"),
+        keepalive_expiry=settings.get("keepalive_expiry"),
+        pool_timeout=settings.get("pool_timeout"),
+        connect_timeout=settings.get("connect_timeout"),
+        dispatcher=dispatcher,
+    )

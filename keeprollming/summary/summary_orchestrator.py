@@ -26,11 +26,11 @@ def _get_config():
 async def _request_summary_completion(body: Dict[str, Any], timeout: float = 120.0) -> Dict[str, Any]:
     """Make HTTP request to summary backend."""
     from ..config import UPSTREAM_BASE_URL
-    from ..upstream import http_client
+    from ..upstream import http_client, make_request_timeout
     
     url = f"{UPSTREAM_BASE_URL}/v1/chat/completions"
     client = await http_client(request_timeout=timeout)
-    r = await client.post(url, json=body)
+    r = await client.post(url, json=body, timeout=make_request_timeout(timeout))
     r.raise_for_status()
     return r.json()
 

@@ -202,6 +202,21 @@ Built-in modules include:
 
 Do not copy placeholder API keys or URLs from the full example.
 
+### Route access and status
+
+Routes can be protected with one or more client API keys declared in YAML. Keys
+are inherited through route composition, so a private base route can secure a
+family of public-facing models while selected routes can opt out explicitly.
+KRM accepts the standard `Authorization: Bearer <key>` header and never forwards
+that client credential to an upstream backend.
+
+For trusted operational networks, `GET /routes` exposes a read-only status
+snapshot of public routes: resolved backend details, declared capabilities,
+rolling activity/errors/performance, and requests currently in flight. See
+[Configuration](docs/CONFIGURATION.md#client-api-keys) for API-key setup and
+[the route-status endpoint](docs/CONFIGURATION.md#private-route-status-endpoint)
+for its security boundary and response contract.
+
 ## Documentation
 
 | Guide | Purpose |

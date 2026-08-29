@@ -5,22 +5,76 @@ Moved from keeprollming/upstream.py as part of modularization.
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
 
+from ..config import DEFAULT_CTX_LEN, UPSTREAM_BASE_URL
+from ..logger import log_request, log_response
+from ..observability import events_upstream as _up
 from ..types import DEFAULT_REQUEST_TIMEOUT
 
-from ..config import DEFAULT_CTX_LEN, UPSTREAM_BASE_URL
-from ..logger import log, log_request, log_response
-from ..observability import events_upstream as _up
-
 _http_client: httpx.AsyncClient | None = None
+_upstream_dispatcher: Any | None = None
+_transport_options: dict[str, float | int | None] = {
+    "max_connections": 100,
+    "max_keepalive_connections": 20,
+    "keepalive_expiry": 30.0,
+    "pool_timeout": 10.0,
+    "connect_timeout": 60.0,
+}
 
 _ctx_cache: Dict[str, Tuple[int, float]] = {}
 _CTX_TTL_SEC = 60.0
+
+
+def set_upstream_dispatcher(dispatcher: Any | None) -> None:
+    """Set the dispatcher used by the canonical shared upstream client.
+
+    The process-wide client lives in this module.  Keeping its event hooks and
+    dispatcher in the same owner prevents a compatibility module from silently
+    maintaining a second, unused transport state.
+    """
+    global _upstream_dispatcher
+    _upstream_dispatcher = dispatcher
+
+
+def get_http_transport_settings() -> dict[str, float | int]:
+    """Return a copy of the effective shared-pool policy for diagnostics."""
+    return {
+        "max_connections": int(_transport_options["max_connections"]),
+        "max_keepalive_connections": int(_transport_options["max_keepalive_connections"]),
+        "keepalive_expiry": float(_transport_options["keepalive_expiry"]),
+        "pool_timeout": float(_transport_options["pool_timeout"]),
+        "connect_timeout": float(_transport_options["connect_timeout"]),
+    }
+
+
+def configure_http_transport(config: dict[str, Any] | None = None) -> None:
+    """Configure the shared HTTP pool before it is created.
+
+    Request deadlines are intentionally *not* client settings: routes can have
+    different deadlines while all requests must share one bounded pool.
+    """
+    global _transport_options
+    values = config or {}
+    _transport_options = {
+        "max_connections": max(1, int(values.get("max_connections", 100))),
+        "max_keepalive_connections": max(0, int(values.get("max_keepalive_connections", 20))),
+        "keepalive_expiry": max(0.0, float(values.get("keepalive_expiry", 30.0))),
+        "pool_timeout": max(0.01, float(values.get("pool_timeout", 10.0))),
+        "connect_timeout": max(0.01, float(values.get("connect_timeout", 60.0))),
+    }
+
+
+def make_request_timeout(timeout: float) -> httpx.Timeout:
+    """Build a per-request timeout without changing the shared pool policy."""
+    return httpx.Timeout(
+        float(timeout),
+        connect=float(_transport_options["connect_timeout"]),
+        pool=float(_transport_options["pool_timeout"]),
+    )
 
 
 async def http_client(request_timeout: float = DEFAULT_REQUEST_TIMEOUT) -> httpx.AsyncClient:
@@ -46,13 +100,21 @@ async def http_client(request_timeout: float = DEFAULT_REQUEST_TIMEOUT) -> httpx
                     headers=dict(response.headers),
                     body="",
                     note="SSE response headers received (body logged by stream tee when consumed)",
+                    dispatcher=_upstream_dispatcher,
                 )
                 return
 
             await log_response(response, elapsed_ms=elapsed_ms)
 
         _http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(request_timeout, connect=60.0),
+            # Call sites pass their route-specific timeout explicitly. The
+            # default remains defensive for less specialised callers.
+            timeout=make_request_timeout(request_timeout),
+            limits=httpx.Limits(
+                max_connections=int(_transport_options["max_connections"]),
+                max_keepalive_connections=int(_transport_options["max_keepalive_connections"]),
+                keepalive_expiry=float(_transport_options["keepalive_expiry"]),
+            ),
             event_hooks={"request": [_on_request], "response": [_on_response]},
         )
 
@@ -69,7 +131,14 @@ async def close_http_client() -> None:
 def _extract_ctx_len_from_model_obj(obj: Optional[Dict[str, Any]]) -> Optional[Tuple[int, str]]:
     if not isinstance(obj, dict):
         return None
-    for k in ("loaded_context_length", "context_length", "context_window", "n_ctx", "ctx_len", "max_context_length"):
+    for k in (
+        "loaded_context_length",
+        "context_length",
+        "context_window",
+        "n_ctx",
+        "ctx_len",
+        "max_context_length",
+    ):
         v = obj.get(k)
         if isinstance(v, int) and v > 0:
             return (v, k)
@@ -82,7 +151,11 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
     if cached and (now - cached[1]) < _CTX_TTL_SEC:
         return cached[0]
 
-    url_list = [f"{UPSTREAM_BASE_URL}/api/v0/models", f"{UPSTREAM_BASE_URL}/v1/models", f"{UPSTREAM_BASE_URL}/v0/models"]
+    url_list = [
+        f"{UPSTREAM_BASE_URL}/api/v0/models",
+        f"{UPSTREAM_BASE_URL}/v1/models",
+        f"{UPSTREAM_BASE_URL}/v0/models",
+    ]
     for url in url_list:
         try:
             client = await http_client(request_timeout=30.0)
@@ -117,18 +190,32 @@ async def get_ctx_len_for_model(upstream_model: str) -> int:
                 upstream_model=upstream_model,
                 ctx_len=ctx_len,
                 source=f"{url}:{ctx_src}" if ctx_len != DEFAULT_CTX_LEN else "default",
+                dispatcher=_upstream_dispatcher,
             )
             return ctx_len
         except Exception as e:
-            _up.emit_ctx_len_fallback(upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN, err=str(e))
+            _up.emit_ctx_len_fallback(
+                upstream_model=upstream_model,
+                ctx_len=DEFAULT_CTX_LEN,
+                err=str(e),
+                dispatcher=_upstream_dispatcher,
+            )
             _ctx_cache[upstream_model] = (DEFAULT_CTX_LEN, now)
             continue
 
-    _up.emit_all_endpoints_failed(upstream_model=upstream_model, ctx_len=DEFAULT_CTX_LEN)
+    _up.emit_all_endpoints_failed(
+        upstream_model=upstream_model,
+        ctx_len=DEFAULT_CTX_LEN,
+        dispatcher=_upstream_dispatcher,
+    )
     return DEFAULT_CTX_LEN
 
 
 __all__ = [
+    "configure_http_transport",
+    "get_http_transport_settings",
+    "set_upstream_dispatcher",
+    "make_request_timeout",
     "http_client",
     "close_http_client",
     "get_ctx_len_for_model",
@@ -164,10 +251,12 @@ def prepare_upstream_request(
     # Apply route-level overrides
     if route and getattr(route, "overrides", None):
         from ..overrides import apply_overrides
+
         applied = apply_overrides(upstream_payload, route.overrides)
         if applied:
             for key, old_val, new_val in applied:
-                _up.emit_override_applied(req_id=req_id, param=key,
-                    old_value=old_val, new_value=new_val)
+                _up.emit_override_applied(
+                    req_id=req_id, param=key, old_value=old_val, new_value=new_val
+                )
 
     return upstream_payload

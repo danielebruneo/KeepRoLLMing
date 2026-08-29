@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
+import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -9,8 +10,20 @@ import pytest
 
 def _plain_server_output(path: Path) -> str:
     """Return projector output without terminal colour escapes."""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def _wait_for_plain_server_output(path: Path, *needles: str, timeout_s: float = 2.0) -> str:
+    """Wait briefly for queued optional projection without delaying the response."""
+    deadline = time.monotonic() + timeout_s
+    text = ""
+    while time.monotonic() < deadline:
+        text = _plain_server_output(path)
+        if all(needle in text for needle in needles):
+            return text
+        time.sleep(0.02)
+    return text
 
 def resolve_perf_request_file(perf_dir: Path, client_model: str) -> Path:
     candidates = []
@@ -94,7 +107,11 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     # archived-context repack entirely after summary failure. The invariant we
     # care about is: no loop, bounded summary attempts, and a successful final
     # response from the main backend.
-    stdout_text = _plain_server_output(orchestrator_server.stdout_path)
+    stdout_text = _wait_for_plain_server_output(
+        orchestrator_server.stdout_path,
+        "execution.chat.request_start",
+        "execution.chat.http_out",
+    )
     assert "execution.chat.request_start" in stdout_text
     assert "execution.chat.http_out" in stdout_text
     configure_fake_backend(
@@ -151,7 +168,11 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     # archived-context repack entirely after summary failure. The invariant we
     # care about is: no loop, bounded summary attempts, and a successful final
     # response from the main backend.
-    stdout_text = _plain_server_output(orchestrator_server.stdout_path)
+    stdout_text = _wait_for_plain_server_output(
+        orchestrator_server.stdout_path,
+        "execution.chat.request_start",
+        "execution.chat.http_out",
+    )
     assert "execution.chat.request_start" in stdout_text
     assert "execution.chat.http_out" in stdout_text
 
@@ -522,7 +543,11 @@ def test_e2e_summary_single_oversized_message_does_not_loop(
     # archived-context repack entirely after summary failure. The invariant we
     # care about is: no loop, bounded summary attempts, and a successful final
     # response from the main backend.
-    stdout_text = _plain_server_output(orchestrator_server.stdout_path)
+    stdout_text = _wait_for_plain_server_output(
+        orchestrator_server.stdout_path,
+        "execution.chat.request_start",
+        "execution.chat.http_out",
+    )
     assert "execution.chat.request_start" in stdout_text
     assert "execution.chat.http_out" in stdout_text
 

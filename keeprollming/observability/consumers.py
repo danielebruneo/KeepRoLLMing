@@ -15,6 +15,7 @@ Invariants:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -22,7 +23,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from .events import RuntimeEvent
-from .formatters import FORMAT_ERROR, Formatter, JsonFormatter
+from .formatters import JsonFormatter
 from .routing import RoutingEngine
 
 logger = logging.getLogger(__name__)
@@ -87,20 +88,24 @@ class PerformanceConsumer:
 
         # Request counter for periodic summary flush and archive
         self._request_counter: int = 0
+        # Production schedules this consumer asynchronously. The lock retains
+        # event order while the filesystem/stat transaction runs off the loop.
+        self._async_lock = asyncio.Lock()
 
         # Import performance module helpers for parity
         # These are the same functions used by record_request_performance()
         from ..performance import (
-            compute_request_performance,
             RouteStats,
             _append_entry,
+            _ensure_dir,
+            _safe_slug,
             _seed_route_stats,
             _update_summary,
-            _safe_slug,
-            _ensure_dir,
+            compute_request_performance,
             reset_route_stats,
             set_performance_logs_dir,
         )
+
         self._compute_request_performance = compute_request_performance
         self._RouteStats = RouteStats
         self._append_entry = _append_entry
@@ -135,6 +140,16 @@ class PerformanceConsumer:
             self._handle_request_complete(event)
         elif event.type == "execution.app.perf_logs_dir":
             self._handle_perf_logs_dir(event)
+
+    async def consume_async(self, event: RuntimeEvent) -> None:
+        """Persist one event off the request event loop, in event order.
+
+        The synchronous callable remains available for deterministic tests and
+        explicit synchronous callers. The app subscribes this method through
+        the dispatcher async path.
+        """
+        async with self._async_lock:
+            await asyncio.to_thread(self, event)
 
     def _handle_request_complete(self, event: RuntimeEvent) -> None:
         """Handle execution.performance.request_complete event.
@@ -171,7 +186,9 @@ class PerformanceConsumer:
         recovery_count = data.get("recovery_count", 0)
         retry_amplification_ratio = data.get("retry_amplification_ratio")
         try:
-            if retry_amplification_ratio is not None and not math.isfinite(float(retry_amplification_ratio)):
+            if retry_amplification_ratio is not None and not math.isfinite(
+                float(retry_amplification_ratio)
+            ):
                 retry_amplification_ratio = None
         except (TypeError, ValueError):
             retry_amplification_ratio = None
@@ -184,6 +201,7 @@ class PerformanceConsumer:
         # Determine base directory
         if self._perf_logs_dir is not None:
             from pathlib import Path
+
             base_dir = Path(self._perf_logs_dir)
             base_dir.mkdir(parents=True, exist_ok=True)
         else:
@@ -236,6 +254,7 @@ class PerformanceConsumer:
 
         # 5. Update in-memory stats (O(1))
         from ..performance import _route_stats
+
         rn = route_name or "unknown"
         if rn in _route_stats:
             _route_stats[rn].update(record)
@@ -247,9 +266,9 @@ class PerformanceConsumer:
         if self._request_counter == 1 or self._request_counter % self._summary_interval == 0:
             if self._request_counter > 1 and self._request_counter % 1000 == 0:
                 # Archive on 1000-request boundary
-                from pathlib import Path
-                from datetime import datetime
                 import shutil
+                from datetime import datetime
+                from pathlib import Path
 
                 archive_dir = base_dir / "archive"
                 archive_dir.mkdir(exist_ok=True)
@@ -392,7 +411,9 @@ class LoggerConsumer:
             self._captured.append(event)
 
         # INV-03: threshold filtering is consumer responsibility
-        if self._LEVEL_MAP.get(self._min_level, logging.DEBUG) > self._LEVEL_MAP.get(event.level, logging.DEBUG):
+        configured_level = self._LEVEL_MAP.get(self._min_level, logging.DEBUG)
+        event_level = self._LEVEL_MAP.get(event.level, logging.DEBUG)
+        if configured_level > event_level:
             return
 
         # Route based on level
@@ -455,9 +476,7 @@ class LoggerConsumer:
             "level": event.level,
             "req_id": event.req_id,
             "data": event.data,
-            "timestamp": time.strftime(
-                "%Y-%m-%dT%H:%M:%S", time.gmtime(event.timestamp_ns / 1e9)
-            ),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(event.timestamp_ns / 1e9)),
         }
 
     @property

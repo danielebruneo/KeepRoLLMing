@@ -15,11 +15,13 @@ import httpx
 from ..logger import log
 from ..routing import Route
 from ..streaming.tool_call_handler import ToolCallAccumulator
+from ..upstream import make_request_timeout
 from ..utils.token_utils import count_text_tokens_safe
 
 # Lazy import to avoid circular dependency
 try:
     from ..observability.events import EventSource, RuntimeEvent
+
     _OBSERVABILITY_AVAILABLE = True
 except ImportError:
     _OBSERVABILITY_AVAILABLE = False
@@ -36,16 +38,18 @@ from ..observability.events_streaming import (
     emit_pipeline_run_start,
     emit_stream_closed,
     emit_stream_progress,
-    emit_upstream_connected,
-    emit_upstream_connect,
-    emit_upstream_closed,
     emit_trace_chunk,
+    emit_trace_lifecycle,
     emit_trace_request_started,
+    emit_upstream_closed,
+    emit_upstream_connect,
+    emit_upstream_connected,
 )
 
 # The V2 pipeline is the only streaming execution path.
 try:
     from ..orchestrator.pipeline import Pipeline
+
     PIPELINE_AVAILABLE = True
 except ImportError:
     PIPELINE_AVAILABLE = False
@@ -98,7 +102,10 @@ class _StreamTranscript:
                 self.finish_reason = choice["finish_reason"]
 
     def final_tool_calls(self) -> list[dict]:
-        return [self.tool_calls.build_final_calls(index) for index in sorted(self.tool_calls.accumulators)]
+        return [
+            self.tool_calls.build_final_calls(index)
+            for index in sorted(self.tool_calls.accumulators)
+        ]
 
     def client_visible_completion_tokens(self) -> int | None:
         """Estimate tokens in the semantic result delivered to the client.
@@ -141,8 +148,7 @@ class _StreamProgress:
         while "\n\n" in self._upstream_buffer:
             block, self._upstream_buffer = self._upstream_buffer.split("\n\n", 1)
             payload = "\n".join(
-                line[5:].lstrip() for line in block.splitlines()
-                if line.startswith("data:")
+                line[5:].lstrip() for line in block.splitlines() if line.startswith("data:")
             ).strip()
             if not payload or payload == "[DONE]":
                 continue
@@ -181,8 +187,11 @@ class _StreamProgress:
         if not force and now - self._last_emitted_at < self._interval_s:
             return
         elapsed_ms = (now - self._started_at) * 1000.0
-        ttft_ms = ((self._first_output_at - self._started_at) * 1000.0
-                   if self._first_output_at is not None else None)
+        ttft_ms = (
+            (self._first_output_at - self._started_at) * 1000.0
+            if self._first_output_at is not None
+            else None
+        )
         decode_started_at = self._first_output_at if self._first_output_at is not None else now
         decode_seconds = max(now - decode_started_at, 0.001)
         # OpenAI-compatible SSE does not carry incremental token counts.  This
@@ -242,9 +251,8 @@ async def _interleave_keepalive(
 
     # Reusable task that reads the next chunk from the generator.  Timer
     # expiry must not cancel it: that would terminate a healthy but slow
-    # upstream stream.  The wrapper *does* own this task, however, and must
-    # cancel it when its downstream consumer disconnects or closes the
-    # wrapper.
+    # upstream stream.  The wrapper owns this task and cancels it if the ASGI
+    # server closes the body generator after a downstream disconnect.
     next_task = asyncio.ensure_future(it.__anext__())
     sleep_task: asyncio.Task | None = None
     try:
@@ -261,10 +269,12 @@ async def _interleave_keepalive(
                         chunk = next_task.result()
                     except StopAsyncIteration:
                         return
-                    # Prime the next read before yielding (so the upstream
-                    # keeps flowing while we hand the chunk to the client)
-                    next_task = asyncio.ensure_future(it.__anext__())
                     yield chunk
+                    # Do not read ahead while the downstream ASGI send is
+                    # suspended.  This preserves backpressure and makes each
+                    # received-upstream chunk causally follow its prior
+                    # downstream handoff.
+                    next_task = asyncio.ensure_future(it.__anext__())
                 else:
                     # Timeout — no chunk yet; keep the reader alive.
                     log("DEBUG", "sse_keepalive")
@@ -282,6 +292,15 @@ async def _interleave_keepalive(
             next_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
                 await next_task
+        # When the downstream disconnect happens while this generator is
+        # paused at ``yield chunk``, ``next_task`` has already completed and
+        # cancellation alone cannot close the nested pipeline iterator.  Close
+        # it explicitly so its ``async with client.stream(...)`` unwinds and
+        # the upstream server observes the client disconnect.
+        close = getattr(it, "aclose", None)
+        if close is not None:
+            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                await close()
 
 
 def _build_pipeline(route, req_id=None, dispatcher=None):
@@ -298,12 +317,12 @@ def _build_pipeline(route, req_id=None, dispatcher=None):
     """
     if not PIPELINE_AVAILABLE:
         raise RuntimeError("V2 streaming pipeline is unavailable")
-    api_key = getattr(route, 'api_key', None)
-    filters = getattr(route, 'filters', None)
+    api_key = getattr(route, "api_key", None)
+    filters = getattr(route, "filters", None)
     p = Pipeline.from_route_config(filters, api_key=api_key) or Pipeline()
     emit_pipeline_build(
         req_id=req_id,
-        route_name=getattr(route, 'name', '?'),
+        route_name=getattr(route, "name", "?"),
         built=p is not None,
         filter_keys=list(filters.keys()) if filters else [],
         dispatcher=dispatcher,
@@ -375,10 +394,10 @@ async def process_streaming_request(
     """
     emit_handler_entry(
         req_id=req_id,
-        route_name=getattr(route, 'name', '?'),
+        route_name=getattr(route, "name", "?"),
         filters=list(enabled_filters)
         if enabled_filters is not None
-        else Pipeline.enabled_filter_names(getattr(route, 'filters', None)),
+        else Pipeline.enabled_filter_names(getattr(route, "filters", None)),
         dispatcher=dispatcher,
     )
 
@@ -390,7 +409,7 @@ async def process_streaming_request(
                 timestamp_ns=time.time_ns(),
                 source=EventSource(domain="streaming", component="handler"),
                 data={
-                    "route": route.name if hasattr(route, 'name') else "?",
+                    "route": route.name if hasattr(route, "name") else "?",
                     "stream": True,
                 },
                 req_id=req_id,
@@ -401,7 +420,9 @@ async def process_streaming_request(
     t0 = time.perf_counter()
     trace_started_ns = time.perf_counter_ns()
     emit_trace_request_started(
-        req_id, route=getattr(route, "name", ""), dispatcher=dispatcher,
+        req_id,
+        route=getattr(route, "name", ""),
+        dispatcher=dispatcher,
     )
     progress = _StreamProgress(t0)
     if pipeline is None:
@@ -416,30 +437,81 @@ async def process_streaming_request(
             dispatcher=dispatcher,
         )
     emit_handler_pipeline(
-        req_id=req_id, pipeline_built=pipeline is not None,
+        req_id=req_id,
+        pipeline_built=pipeline is not None,
         dispatcher=dispatcher,
     )
 
     # Build upstream async generator
     async def upstream_stream(upstream_payload):
         emit_upstream_connect(
-            req_id=req_id, url=url[:80],
+            req_id=req_id,
+            url=url[:80],
             dispatcher=dispatcher,
         )
         chunk_count = 0
         close_reason = "unknown"
+        connected_at: float | None = None
+        first_chunk_seen = False
         try:
-            async with client.stream("POST", url, json=upstream_payload, headers=route_headers) as resp:
+            emit_trace_lifecycle(
+                req_id,
+                boundary="upstream.connect_started",
+                dispatcher=dispatcher,
+                url=url[:200],
+                method="POST",
+            )
+            async with client.stream(
+                "POST",
+                url,
+                json=upstream_payload,
+                headers=route_headers,
+                timeout=make_request_timeout(request_timeout),
+            ) as resp:
+                connected_at = time.perf_counter()
+                # Exact socket metadata is optional diagnostics. Lightweight
+                # response doubles and non-httpx transports need not expose
+                # the httpx extensions mapping.
+                response_extensions = getattr(resp, "extensions", {}) or {}
+                network_stream = response_extensions.get("network_stream")
+                get_extra_info = getattr(network_stream, "get_extra_info", None)
+                peer = get_extra_info("peername") if callable(get_extra_info) else None
+                sockname = get_extra_info("sockname") if callable(get_extra_info) else None
+                emit_trace_lifecycle(
+                    req_id,
+                    boundary="upstream.response_headers",
+                    dispatcher=dispatcher,
+                    status=resp.status_code,
+                    peer=str(peer) if peer is not None else None,
+                    local_socket=str(sockname) if sockname is not None else None,
+                    content_type=resp.headers.get("content-type"),
+                )
                 emit_upstream_connected(
-                    req_id=req_id, status=resp.status_code,
+                    req_id=req_id,
+                    status=resp.status_code,
                     dispatcher=dispatcher,
                 )
                 async for chunk in resp.aiter_bytes():
                     chunk_count += 1
+                    if not first_chunk_seen:
+                        first_chunk_seen = True
+                        emit_trace_lifecycle(
+                            req_id,
+                            boundary="upstream.first_chunk",
+                            dispatcher=dispatcher,
+                            chunk_bytes=len(chunk),
+                            after_headers_ms=round((time.perf_counter() - connected_at) * 1000.0, 3)
+                            if connected_at is not None
+                            else None,
+                        )
                     emit_trace_chunk(
-                        req_id, direction="upstream", boundary="upstream.received",
-                        chunk_index=chunk_count, raw_bytes=chunk,
-                        started_monotonic_ns=trace_started_ns, dispatcher=dispatcher,
+                        req_id,
+                        direction="upstream",
+                        boundary="upstream.received",
+                        chunk_index=chunk_count,
+                        raw_bytes=chunk,
+                        started_monotonic_ns=trace_started_ns,
+                        dispatcher=dispatcher,
                     )
                     progress.observe_upstream(chunk)
                     progress.emit_if_due(req_id, dispatcher=dispatcher)
@@ -453,10 +525,27 @@ async def process_streaming_request(
             raise
         except Exception as e:
             close_reason = f"error:{type(e).__name__}"
+            emit_trace_lifecycle(
+                req_id,
+                boundary="upstream.stream_error",
+                dispatcher=dispatcher,
+                error_type=type(e).__name__,
+                error=str(e),
+                chunk_count=chunk_count,
+            )
             raise
         finally:
+            emit_trace_lifecycle(
+                req_id,
+                boundary="upstream.stream_closed",
+                dispatcher=dispatcher,
+                reason=close_reason,
+                chunk_count=chunk_count,
+            )
             emit_upstream_closed(
-                req_id=req_id, reason=close_reason, total_chunks=chunk_count,
+                req_id=req_id,
+                reason=close_reason,
+                total_chunks=chunk_count,
                 dispatcher=dispatcher,
             )
 
@@ -466,27 +555,34 @@ async def process_streaming_request(
     _execution_usage = None
 
     emit_pipeline_run_start(
-            req_id=req_id, route=getattr(route, 'name', ''),
-            dispatcher=dispatcher,
+        req_id=req_id,
+        route=getattr(route, "name", ""),
+        dispatcher=dispatcher,
     )
     chunk_count = 0
     transcript = _StreamTranscript()
 
     try:
         _pipeline_stream = pipeline.run_stream(
-                payload, req_id, upstream_model,
-                route_name=getattr(route, 'name', ''),
-                upstream_url=str(getattr(route, 'upstream_url', '')),
-                upstream_stream=upstream_stream,
-                dispatcher=dispatcher,
+            payload,
+            req_id,
+            upstream_model,
+            route_name=getattr(route, "name", ""),
+            upstream_url=str(getattr(route, "upstream_url", "")),
+            upstream_stream=upstream_stream,
+            dispatcher=dispatcher,
         )
 
         async for chunk in _interleave_keepalive(_pipeline_stream):
             chunk_count += 1
             emit_trace_chunk(
-                req_id, direction="downstream", boundary="pipeline.output",
-                chunk_index=chunk_count, raw_bytes=chunk,
-                started_monotonic_ns=trace_started_ns, dispatcher=dispatcher,
+                req_id,
+                direction="downstream",
+                boundary="pipeline.output",
+                chunk_index=chunk_count,
+                raw_bytes=chunk,
+                started_monotonic_ns=trace_started_ns,
+                dispatcher=dispatcher,
             )
             transcript.consume(chunk)
             yield chunk
@@ -494,14 +590,14 @@ async def process_streaming_request(
         progress.emit_if_due(req_id, dispatcher=dispatcher, force=True)
 
         # Capture ExecutionUsage after iteration for metrics.
-        if hasattr(pipeline, '_execution_usage'):
+        if hasattr(pipeline, "_execution_usage"):
             _execution_usage = pipeline._execution_usage
 
-
         emit_pipeline_run_done(
-                req_id=req_id, total_yielded=chunk_count,
-                execution_usage=_execution_usage is not None,
-                dispatcher=dispatcher,
+            req_id=req_id,
+            total_yielded=chunk_count,
+            execution_usage=_execution_usage is not None,
+            dispatcher=dispatcher,
         )
     except asyncio.CancelledError:
         # ASGI cancels this generator when the downstream connection closes.
@@ -509,82 +605,91 @@ async def process_streaming_request(
         # but it is an essential diagnostic boundary: the upstream stream is
         # about to be closed without a terminal OpenAI frame.
         emit_downstream_closed(
-                req_id=req_id, reason="cancelled",
-                chunks_yielded=chunk_count, dispatcher=dispatcher,
+            req_id=req_id,
+            reason="cancelled",
+            chunks_yielded=chunk_count,
+            dispatcher=dispatcher,
         )
         raise
     except GeneratorExit:
         emit_downstream_closed(
-                req_id=req_id, reason="client_disconnect",
-                chunks_yielded=chunk_count, dispatcher=dispatcher,
+            req_id=req_id,
+            reason="client_disconnect",
+            chunks_yielded=chunk_count,
+            dispatcher=dispatcher,
         )
         return
     except Exception as e:
-            # O11: include route/upstream context for BodyCaptureConsumer metadata capture
+        # O11: include route/upstream context for BodyCaptureConsumer metadata capture
         emit_handler_error(
-                req_id=req_id, error=str(e) or type(e).__name__,
-                route_name=getattr(route, 'name', '?'),
-                upstream_url=url[:200] if url else None,
-                upstream_model=upstream_model,
-                dispatcher=dispatcher,
+            req_id=req_id,
+            error=str(e) or type(e).__name__,
+            route_name=getattr(route, "name", "?"),
+            upstream_url=url[:200] if url else None,
+            upstream_model=upstream_model,
+            dispatcher=dispatcher,
         )
         yield f"data: {json.dumps({'error': {'message': str(e)}})}\n\n".encode("utf-8")
-            # Yield finish_reason before [DONE] even on error
-        stop_chunk = json.dumps({
-                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-        })
+        # Yield finish_reason before [DONE] even on error
+        stop_chunk = json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
         yield f"data: {stop_chunk}\n\n".encode("utf-8")
         yield b"data: [DONE]\n\n"
-            # O10-NF02: emit performance metrics on error path for parity with non-streaming
+        # O10-NF02: emit performance metrics on error path for parity with non-streaming
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         from ..observability import events_execution as _exec_perf
+
         _exec_perf.emit_performance_request_complete(
-                req_id=req_id,
-                model=upstream_model,
-                route_name=getattr(route, 'name', '?'),
-                route_hierarchy=getattr(route, '_route_hierarchy', [getattr(route, 'name', '?')]),
-                stream=True,
-                elapsed_ms=elapsed_ms,
-                ttft_ms=progress.ttft_ms,
-                completion_tokens=None,
-                prompt_tokens=None,
-                total_tokens=None,
-                finish_reason="error",
-                did_summarize=False,
-                passthrough=is_passthrough,
-                completion_tokens_source="missing",
-                dispatcher=dispatcher,
+            req_id=req_id,
+            model=upstream_model,
+            route_name=getattr(route, "name", "?"),
+            route_hierarchy=getattr(route, "_route_hierarchy", [getattr(route, "name", "?")]),
+            stream=True,
+            elapsed_ms=elapsed_ms,
+            ttft_ms=progress.ttft_ms,
+            completion_tokens=None,
+            prompt_tokens=None,
+            total_tokens=None,
+            finish_reason="error",
+            did_summarize=False,
+            passthrough=is_passthrough,
+            completion_tokens_source="missing",
+            dispatcher=dispatcher,
         )
         _exec_perf.emit_derived_performance_metrics(
-                req_id,
-                elapsed_ms=elapsed_ms,
-                completion_tokens=None,
-                ttft_ms=progress.ttft_ms,
-                prompt_tokens=None,
-                total_tokens=None,
-                model=upstream_model,
-                route_name=getattr(route, 'name', '?'),
-                completion_tokens_source="missing",
-                dispatcher=dispatcher,
+            req_id,
+            elapsed_ms=elapsed_ms,
+            completion_tokens=None,
+            ttft_ms=progress.ttft_ms,
+            prompt_tokens=None,
+            total_tokens=None,
+            model=upstream_model,
+            route_name=getattr(route, "name", "?"),
+            completion_tokens_source="missing",
+            dispatcher=dispatcher,
         )
         return
     emit_downstream_complete(
-            req_id=req_id, total_yielded=chunk_count,
-            dispatcher=dispatcher,
+        req_id=req_id,
+        total_yielded=chunk_count,
+        dispatcher=dispatcher,
     )
     emit_stream_closed(
-            req_id=req_id, chunks_yielded=chunk_count,
-            dispatcher=dispatcher,
+        req_id=req_id,
+        chunks_yielded=chunk_count,
+        dispatcher=dispatcher,
     )
 
     # The pipeline and direct-upstream paths both expose one semantic result.
     # Emit it once, after all client-visible SSE frames have been observed.
     if transcript is not None:
         from ..observability import events_execution as _exec
+
         assistant_text = "".join(transcript.content)
         reasoning_text = "".join(transcript.reasoning)
         _exec.emit_assistant(
-            req_id, assistant_text, len(assistant_text),
+            req_id,
+            assistant_text,
+            len(assistant_text),
             tool_calls=transcript.final_tool_calls() or None,
             reasoning_content=reasoning_text,
             reasoning_length=len(reasoning_text),
@@ -598,6 +703,7 @@ async def process_streaming_request(
     # Prefer an explicit dispatcher; the app normally supplies the global
     # singleton, while component callers need isolated event capture.
     from ..app import get_event_dispatcher
+
     event_dispatcher = dispatcher if dispatcher is not None else get_event_dispatcher()
 
     performance_completion_tokens = None
@@ -609,9 +715,11 @@ async def process_streaming_request(
     # Use ExecutionUsage if available (Phase 1 internal accounting)
     if _execution_usage is not None:
         from ..observability import events_execution as _exec_perf
+
         logical_prompt_tokens = (
             _execution_usage.final_prompt_tokens
-            if _execution_usage.usage_reported_attempts > 0 else None
+            if _execution_usage.usage_reported_attempts > 0
+            else None
         )
         logical_completion_tokens = transcript.client_visible_completion_tokens()
         _execution_usage.set_final_usage(
@@ -633,8 +741,8 @@ async def process_streaming_request(
         _exec_perf.emit_performance_request_complete(
             req_id=req_id,
             model=upstream_model,
-            route_name=getattr(route, 'name', '?'),
-            route_hierarchy=getattr(route, '_route_hierarchy', [getattr(route, 'name', '?')]),
+            route_name=getattr(route, "name", "?"),
+            route_hierarchy=getattr(route, "_route_hierarchy", [getattr(route, "name", "?")]),
             stream=True,
             elapsed_ms=elapsed_ms,
             ttft_ms=progress.ttft_ms,
@@ -650,7 +758,8 @@ async def process_streaming_request(
             recovery_count=_execution_usage.recovery_count,
             retry_amplification_ratio=(
                 _execution_usage.retry_amplification_ratio
-                if _execution_usage.usage_reported_attempts > 0 else None
+                if _execution_usage.usage_reported_attempts > 0
+                else None
             ),
             usage_complete=_execution_usage.usage_complete,
             upstream_prompt_tokens=_execution_usage.upstream_prompt_tokens,
@@ -661,36 +770,39 @@ async def process_streaming_request(
         )
         # I-O10-BC-01: fallback when dispatcher unavailable AND legacy callback provided
         if event_dispatcher is None and record_metrics_func is not None:
-            record_metrics_func({
-                "model": upstream_model,
-                "req_id": req_id,
-                "stream": True,
-                "elapsed_ms": elapsed_ms,
-                "ttft_ms": None,
-                "tps": None,
-                "total_tps": None,
-                "completion_tokens": logical_completion_tokens,
-                "prompt_tokens": logical_prompt_tokens,
-                "total_tokens": logical_total_tokens,
-                "finish_reason": None,
-                "passthrough": is_passthrough,
-                "did_summarize": False,
-                "completion_tokens_source": "client_visible_estimate",
-                "upstream_attempts": _execution_usage.upstream_attempts,
-                "usage_reported_attempts": _execution_usage.usage_reported_attempts,
-                "usage_complete": _execution_usage.usage_complete,
-                "upstream_prompt_tokens": _execution_usage.upstream_prompt_tokens,
-                "upstream_completion_tokens": _execution_usage.upstream_completion_tokens,
-                "upstream_total_tokens": _execution_usage.upstream_total_tokens,
-                "cached_prompt_tokens": performance_cached_prompt_tokens,
-            })
+            record_metrics_func(
+                {
+                    "model": upstream_model,
+                    "req_id": req_id,
+                    "stream": True,
+                    "elapsed_ms": elapsed_ms,
+                    "ttft_ms": None,
+                    "tps": None,
+                    "total_tps": None,
+                    "completion_tokens": logical_completion_tokens,
+                    "prompt_tokens": logical_prompt_tokens,
+                    "total_tokens": logical_total_tokens,
+                    "finish_reason": None,
+                    "passthrough": is_passthrough,
+                    "did_summarize": False,
+                    "completion_tokens_source": "client_visible_estimate",
+                    "upstream_attempts": _execution_usage.upstream_attempts,
+                    "usage_reported_attempts": _execution_usage.usage_reported_attempts,
+                    "usage_complete": _execution_usage.usage_complete,
+                    "upstream_prompt_tokens": _execution_usage.upstream_prompt_tokens,
+                    "upstream_completion_tokens": _execution_usage.upstream_completion_tokens,
+                    "upstream_total_tokens": _execution_usage.upstream_total_tokens,
+                    "cached_prompt_tokens": performance_cached_prompt_tokens,
+                }
+            )
     else:
         from ..observability import events_execution as _exec_perf
+
         _exec_perf.emit_performance_request_complete(
             req_id=req_id,
             model=upstream_model,
-            route_name=getattr(route, 'name', '?'),
-            route_hierarchy=getattr(route, '_route_hierarchy', [getattr(route, 'name', '?')]),
+            route_name=getattr(route, "name", "?"),
+            route_hierarchy=getattr(route, "_route_hierarchy", [getattr(route, "name", "?")]),
             stream=True,
             elapsed_ms=elapsed_ms,
             ttft_ms=progress.ttft_ms,
@@ -705,22 +817,24 @@ async def process_streaming_request(
         )
         # I-O10-BC-01: fallback when dispatcher unavailable AND legacy callback provided
         if event_dispatcher is None and record_metrics_func is not None:
-            record_metrics_func({
-                "model": upstream_model,
-                "req_id": req_id,
-                "stream": True,
-                "elapsed_ms": elapsed_ms,
-                "ttft_ms": None,
-                "tps": None,
-                "total_tps": None,
-                "completion_tokens": None,
-                "prompt_tokens": None,
-                "total_tokens": None,
-                "finish_reason": None,
-                "passthrough": is_passthrough,
-                "did_summarize": False,
-                "completion_tokens_source": "missing",
-            })
+            record_metrics_func(
+                {
+                    "model": upstream_model,
+                    "req_id": req_id,
+                    "stream": True,
+                    "elapsed_ms": elapsed_ms,
+                    "ttft_ms": None,
+                    "tps": None,
+                    "total_tps": None,
+                    "completion_tokens": None,
+                    "prompt_tokens": None,
+                    "total_tokens": None,
+                    "finish_reason": None,
+                    "passthrough": is_passthrough,
+                    "did_summarize": False,
+                    "completion_tokens_source": "missing",
+                }
+            )
 
     _exec_perf.emit_derived_performance_metrics(
         req_id,
@@ -731,7 +845,7 @@ async def process_streaming_request(
         total_tokens=performance_total_tokens,
         cached_prompt_tokens=performance_cached_prompt_tokens,
         model=upstream_model,
-        route_name=getattr(route, 'name', '?'),
+        route_name=getattr(route, "name", "?"),
         completion_tokens_source=performance_completion_tokens_source,
         dispatcher=event_dispatcher,
     )

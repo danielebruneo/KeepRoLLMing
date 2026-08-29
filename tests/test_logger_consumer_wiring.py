@@ -24,7 +24,8 @@ async def test_projectors_not_legacy_logger_consumer_drive_production_output():
         assert dispatcher is not None, "EventDispatcher not initialized in lifespan"
 
         consumers_by_domain = dispatcher._consumers
-        assert "execution.performance" in consumers_by_domain
+        async_consumers_by_domain = dispatcher._async_consumers
+        assert "execution.performance" in async_consumers_by_domain
         assert any(key.startswith("execution") for key in consumers_by_domain)
         assert not any(
             consumer.__class__.__name__ == "LoggerConsumer"

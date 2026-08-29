@@ -4,17 +4,18 @@ Verifies that ``events_request`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-import pytest
 
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_request import (
-    emit_request_event,
-    emit_received,
-    emit_preprocessing_started,
-    emit_preprocessing_completed,
-    emit_completed,
-    emit_failed as emit_request_failed,
     emit_cancelled,
+    emit_completed,
+    emit_preprocessing_completed,
+    emit_preprocessing_started,
+    emit_received,
+    emit_request_event,
+)
+from keeprollming.observability.events_request import (
+    emit_failed as emit_request_failed,
 )
 
 
@@ -80,8 +81,9 @@ class TestConvenienceWrappers:
         assert event.data["error"] == "upstream timeout"
 
     def test_emit_cancelled(self):
-        event = emit_cancelled("r1", reason="client disconnect")
+        event = emit_cancelled("r1", reason="client disconnect", level="BASIC")
         assert event.type == "request.lifecycle.cancelled"
+        assert event.level == "BASIC"
         assert event.data["reason"] == "client disconnect"
 
 

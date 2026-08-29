@@ -6,13 +6,31 @@ from pathlib import Path
 from typing import List
 
 from .formatters import CompactFormatter, JsonFormatter, PlainTextFormatter
-from .projectors import Projector, RotatingFileSink, StdoutSink
-
+from .projectors import Projector, QueuedProjector, RotatingFileSink, StdoutSink
 
 DEFAULT_OBSERVABILITY_CONFIG = {
-    "json": {"enabled": True, "level": "INFO", "path": "keeprollming.log.json", "max_bytes": 100 * 1024 * 1024, "backup_count": 5},
-    "plain": {"enabled": True, "level": "BASIC", "path": "keeprollming.log", "stdout": True, "max_bytes": 50 * 1024 * 1024, "backup_count": 5},
-    "server": {"enabled": True, "level": "INFO", "path": "server.log", "max_bytes": 50 * 1024 * 1024, "backup_count": 5},
+    "json": {
+        "enabled": True,
+        "level": "INFO",
+        "path": "keeprollming.log.json",
+        "max_bytes": 100 * 1024 * 1024,
+        "backup_count": 5,
+    },
+    "plain": {
+        "enabled": True,
+        "level": "BASIC",
+        "path": "keeprollming.log",
+        "stdout": True,
+        "max_bytes": 50 * 1024 * 1024,
+        "backup_count": 5,
+    },
+    "server": {
+        "enabled": True,
+        "level": "INFO",
+        "path": "server.log",
+        "max_bytes": 50 * 1024 * 1024,
+        "backup_count": 5,
+    },
 }
 
 
@@ -68,3 +86,25 @@ def activate_default_projectors(projectors: List[Projector], dispatcher) -> None
 def deactivate_default_projectors(projectors: List[Projector]) -> None:
     for projector in projectors:
         projector.deactivate()
+
+
+async def start_queued_default_projectors(
+    projectors: List[Projector],
+    dispatcher,
+    *,
+    max_queue_size: int = 2048,
+) -> List[QueuedProjector]:
+    """Start default PLAIN/JSON projections outside the request event loop."""
+    queued = [
+        QueuedProjector(projector, max_queue_size=max_queue_size)
+        for projector in projectors
+    ]
+    for projector in queued:
+        await projector.start(dispatcher)
+    return queued
+
+
+async def stop_queued_default_projectors(projectors: List[QueuedProjector]) -> None:
+    """Stop queued projections while preserving bounded shutdown behavior."""
+    for projector in projectors:
+        await projector.stop()

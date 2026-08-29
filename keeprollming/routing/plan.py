@@ -54,6 +54,7 @@ class RoutePlan:
     upstream_headers: Mapping[str, str]
     filters: Mapping[str, Any]
     enabled_filters: tuple[str, ...]
+    capabilities: tuple[str, ...]
     fallback_attempts: tuple[tuple[Any, str], ...]
     overrides: Mapping[str, Any]
 
@@ -91,6 +92,7 @@ class RoutePlan:
             upstream_headers=MappingProxyType(dict(settings.upstream_headers)),
             filters=frozen_filters,
             enabled_filters=tuple(Pipeline.enabled_filter_names(mutable_filters)),
+            capabilities=tuple(settings.capabilities),
             fallback_attempts=tuple(resolve_fallback_chain(route, settings.upstream_model)),
             overrides=_freeze(getattr(route, "overrides", {}) or {}),
         )

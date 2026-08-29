@@ -4,7 +4,6 @@ Verifies that ``events_streaming`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-import pytest
 
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_streaming import (
@@ -13,14 +12,15 @@ from keeprollming.observability.events_streaming import (
     emit_handler_entry,
     emit_handler_error,
     emit_handler_pipeline,
+    emit_peer_disconnected,
     emit_pipeline_build,
     emit_pipeline_run_done,
     emit_pipeline_run_start,
     emit_stream_closed,
     emit_streaming_event,
-    emit_upstream_connected,
-    emit_upstream_connect,
     emit_upstream_closed,
+    emit_upstream_connect,
+    emit_upstream_connected,
 )
 
 
@@ -102,8 +102,13 @@ class TestConvenienceWrappers:
     def test_emit_upstream_closed(self):
         event = emit_upstream_closed("r1", reason="normal", total_chunks=42)
         assert event.type == "execution.streaming.upstream_closed"
+        assert event.level == "DEBUG"
         assert event.data["reason"] == "normal"
         assert event.data["total_chunks"] == 42
+
+    def test_cancelled_upstream_closed_is_basic(self):
+        event = emit_upstream_closed("r1", reason="cancelled", total_chunks=42)
+        assert event.level == "BASIC"
 
     def test_emit_pipeline_run_start(self):
         event = emit_pipeline_run_start("r1", route="default")
@@ -119,8 +124,47 @@ class TestConvenienceWrappers:
     def test_emit_downstream_closed(self):
         event = emit_downstream_closed("r1", reason="client_disconnect", chunks_yielded=5)
         assert event.type == "execution.streaming.downstream_closed"
+        assert event.level == "BASIC"
         assert event.data["reason"] == "client_disconnect"
         assert event.data["chunks_yielded"] == 5
+
+    def test_emit_peer_disconnected_is_debug(self):
+        event = emit_peer_disconnected("r1", asgi_spec="2.4")
+        assert event.type == "execution.streaming.peer_disconnected"
+        assert event.level == "DEBUG"
+        assert event.data == {
+            "reason": "http.disconnect",
+            "asgi_spec": "2.4",
+            "action": "cancel_body_stream",
+        }
+
+    def test_emit_peer_disconnected_can_describe_send_failure(self):
+        event = emit_peer_disconnected(
+            "r1",
+            reason="downstream_send_error",
+            action="body_stream_send_failed",
+        )
+        assert event.level == "DEBUG"
+        assert event.data["reason"] == "downstream_send_error"
+        assert event.data["action"] == "body_stream_send_failed"
+
+    def test_cancellation_boundaries_have_plain_basic_records(self):
+        from keeprollming.observability.formatters import PlainTextFormatter
+
+        formatter = PlainTextFormatter()
+        downstream = formatter.format(
+            emit_downstream_closed("r1", reason="cancelled", chunks_yielded=5)
+        )
+        upstream = formatter.format(
+            emit_upstream_closed("r1", reason="cancelled", total_chunks=7)
+        )
+
+        assert "execution.streaming.downstream_closed" in downstream
+        assert 'reason="cancelled"' in downstream
+        assert "chunks_yielded=5" in downstream
+        assert "execution.streaming.upstream_closed" in upstream
+        assert 'reason="cancelled"' in upstream
+        assert "total_chunks=7" in upstream
 
     def test_emit_handler_error(self):
         event = emit_handler_error("r1", error="ConnectionTimeout")

@@ -1,8 +1,7 @@
 """Unit tests for consumer stubs (Phase O2)."""
 
+import asyncio
 import time
-
-import pytest
 
 from keeprollming.observability.consumers import (
     LoggerConsumer,
@@ -118,6 +117,63 @@ class TestPerformanceConsumer:
         consumer = PerformanceConsumer(capture=False)
         consumer(_make_event())
         assert len(consumer.captured) == 0
+
+    def test_async_call_captures_event(self):
+        """Production async adapter preserves the normal consumer contract."""
+        consumer = PerformanceConsumer(capture=True)
+        event = _make_event(type_str="execution.usage")
+        asyncio.run(consumer.consume_async(event))
+        assert consumer.captured == [event]
+
+    def test_async_call_does_not_block_event_loop_during_slow_persistence(self, monkeypatch):
+        """A slow summary write runs on a worker thread, not the event loop."""
+        consumer = PerformanceConsumer(capture=False)
+        event = _make_event(type_str="execution.performance.request_complete")
+
+        def slow_persistence(_event):
+            time.sleep(0.15)
+
+        monkeypatch.setattr(consumer, "_handle_request_complete", slow_persistence)
+
+        async def exercise():
+            ticks = 0
+
+            async def ticker():
+                nonlocal ticks
+                while ticks < 4:
+                    await asyncio.sleep(0.02)
+                    ticks += 1
+
+            await asyncio.gather(consumer.consume_async(event), ticker())
+            return ticks
+
+        assert asyncio.run(exercise()) == 4
+
+    def test_async_calls_are_serialized_in_submission_order(self, monkeypatch):
+        """Concurrent request completion events cannot race summary state."""
+        consumer = PerformanceConsumer(capture=False)
+        observed: list[str] = []
+
+        def record(event):
+            observed.append(event.data["request"])
+            time.sleep(0.01)
+
+        monkeypatch.setattr(consumer, "_handle_request_complete", record)
+        events = [
+            RuntimeEvent(
+                type="execution.performance.request_complete",
+                timestamp_ns=time.time_ns(),
+                source=EventSource(domain="execution", component="performance"),
+                data={"request": str(index)},
+            )
+            for index in range(4)
+        ]
+
+        async def exercise():
+            await asyncio.gather(*(consumer.consume_async(event) for event in events))
+
+        asyncio.run(exercise())
+        assert observed == ["0", "1", "2", "3"]
 
     def test_clear(self):
         """PerformanceConsumer.clear() resets captured events."""

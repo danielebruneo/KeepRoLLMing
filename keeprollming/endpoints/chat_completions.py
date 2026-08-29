@@ -23,7 +23,8 @@ from ..routing import (
 )
 
 from ..token_counter import TokenCounter
-from ..upstream import http_client
+from ..types import DEFAULT_REQUEST_TIMEOUT
+from ..upstream import http_client, make_request_timeout
 from ..processing import _count_tokens_safe
 from ..observability import events_execution as _exec
 
@@ -51,6 +52,19 @@ summarize_incremental = _rs_summarize_incremental
 TOK = TokenCounter()
 
 
+async def _post_upstream(client, url, *, json, headers, request_timeout: float):
+    """Post with the route deadline; tolerate minimal legacy test doubles."""
+    try:
+        return await client.post(
+            url, json=json, headers=headers,
+            timeout=make_request_timeout(request_timeout),
+        )
+    except TypeError as exc:
+        if "timeout" not in str(exc):
+            raise
+        return await client.post(url, json=json, headers=headers)
+
+
 async def _retry_strip_last_image_non_streaming(
     effective_payload: Dict[str, Any],
     err_text: str,
@@ -59,6 +73,7 @@ async def _retry_strip_last_image_non_streaming(
     client: httpx.AsyncClient,
     url: str,
     route_headers: Dict[str, str],
+    request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
 ) -> Optional[JSONResponse]:
     """Non-streaming version: strip last image on tokenizer error, retry.
 
@@ -98,7 +113,8 @@ async def _retry_strip_last_image_non_streaming(
         _exec.emit_strip_image_retry(req_id, attempt + 1, remaining)
 
         try:
-            r = await client.post(url, json=effective_payload, headers=route_headers)
+            r = await _post_upstream(client, url, json=effective_payload,
+                                     headers=route_headers, request_timeout=request_timeout)
         except Exception as e:
             _exec.emit_strip_image_error(req_id, attempt + 1, str(e))
             return None
@@ -141,7 +157,10 @@ def _parse_request(payload, headers, req_id):
     # Emit debug event unconditionally; projector configuration decides visibility.
     # Projector level filtering controls visibility (structured@TRACE captures it).
     from ..logger import snip_json
-    _exec.emit_request_received(req_id, header=headers, body_json=snip_json(payload))
+    from ..auth import redact_sensitive_headers
+    _exec.emit_request_received(
+        req_id, header=redact_sensitive_headers(headers), body_json=snip_json(payload)
+    )
     # Emit conversation events unconditionally; projector configuration decides visibility.
     # Projector level filtering controls visibility (main@BASIC shows essential ones).
     _log_messages_basic_plain(messages, req_id)
@@ -191,9 +210,12 @@ def _log_messages_basic(messages, req_id):
         _exec.emit_conversation(req_id, role="user", text=last_user)
 
 
-def _resolve_route_context(client_model, messages, payload, max_tokens_req, req_id):
+def _resolve_route_context(
+    client_model, messages, payload, max_tokens_req, req_id, *, route=None, model=None,
+):
     """Resolve route and return a typed context dict (transitioning to RouteSettings)."""
-    route, model = resolve_route(client_model, req_id=req_id)
+    if route is None:
+        route, model = resolve_route(client_model, req_id=req_id)
     if route is None:
         _exec.emit_route_not_found(req_id, client_model)
         raise ValueError(f"No route found for model: {client_model}")
@@ -392,17 +414,41 @@ def _MockResponse_for_pipeline(r=None, *, content=None, model=None, usage=None, 
     )
 
 
-async def process_chat_request(
-    payload, headers, req_id
-) -> Response | AsyncIterator[bytes]:
+async def process_chat_request(payload, headers, req_id) -> Response | AsyncIterator[bytes]:
     """Process a chat completion request with full orchestration."""
+    client_model = payload.get("model")
+    if not isinstance(client_model, str) or not client_model:
+        return JSONResponse(
+            {"error": {"message": "Missing or invalid model"}}, status_code=400
+        )
+
+    # Resolve and authorize before request transcript logging, filtering, raw
+    # capture, or any upstream work. ``api_key`` remains upstream-only;
+    # ``api_keys`` are client credentials.
+    route, model = resolve_route(client_model, req_id=req_id)
+    from ..auth import bearer_token, authentication_error_response, is_authorized
+    if route is None or not is_authorized(headers, route.api_keys or []):
+        from ..app import get_event_dispatcher
+        from ..observability import events_request as _request_events
+        _request_events.emit_auth_rejected(
+            req_id,
+            route=route.name if route is not None else "unresolved",
+            endpoint="/v1/chat/completions",
+            credential_present=bearer_token(headers) is not None,
+            dispatcher=get_event_dispatcher(),
+        )
+        return authentication_error_response()
+
     _exec.emit_request_start(req_id, stream=payload.get("stream", False))
     t_start = time.perf_counter()
     try:
         user_id, conv_id, client_model, messages, stream, max_tokens_req = _parse_request(payload, headers, req_id)
     except ValueError as e:
         return JSONResponse({"error": {"message": str(e)}}, status_code=400)
-    ctx = _resolve_route_context(client_model, messages, payload, max_tokens_req, req_id)
+    ctx = _resolve_route_context(
+        client_model, messages, payload, max_tokens_req, req_id,
+        route=route, model=model,
+    )
 
     # ── Summarization: V2 Pipeline (non-streaming handled in process_non_streaming_request) ──
     # For streaming: request processing happens in streaming handler
@@ -456,7 +502,8 @@ async def process_chat_request(
             upstream_model=ctx["upstream_model"], fallback_attempts=fallback_attempts,
             visited_models=visited_models, t_start=t_start,
             did_summarize=did_summarize, route_name=ctx["route"].name, route=ctx["route"],
-            pipeline=pipeline, enabled_filters=ctx["route_plan"].enabled_filters)
+            pipeline=pipeline, enabled_filters=ctx["route_plan"].enabled_filters,
+            request_timeout=ctx["request_timeout"])
 
 
 async def process_non_streaming_request(
@@ -474,6 +521,7 @@ async def process_non_streaming_request(
     route=None,  # Route object for filters integration
     pipeline=None,
     enabled_filters: Sequence[str] | None = None,
+    request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
 ) -> Response:
     """Process a non-streaming chat completion request.
     
@@ -524,7 +572,8 @@ async def process_non_streaming_request(
     t_start = time.perf_counter()
 
     try:
-        r = await client.post(url, json=effective_payload, headers=route_headers)
+        r = await _post_upstream(client, url, json=effective_payload,
+                                 headers=route_headers, request_timeout=request_timeout)
         
         if r.status_code >= 400:
             err_bytes = await r.aread()
@@ -549,7 +598,7 @@ async def process_non_streaming_request(
             # ── Retry by stripping last image on tokenizer error ──
             retry_response = await _retry_strip_last_image_non_streaming(
                 effective_payload, err_text,
-                route, req_id, client, url, route_headers,
+                route, req_id, client, url, route_headers, request_timeout,
             )
             if retry_response is not None:
                 return retry_response
@@ -562,7 +611,8 @@ async def process_non_streaming_request(
                     visited_models.add(fallback_model)
                     
                     try:
-                        r = await client.post(url, json=payload, headers=route_headers)
+                        r = await _post_upstream(client, url, json=payload,
+                                                 headers=route_headers, request_timeout=request_timeout)
                         if r.status_code < 400:
                             break
                     except Exception:
@@ -586,7 +636,8 @@ async def process_non_streaming_request(
         if pipeline:
             async def _retry_upstream(p):
                 p["model"] = upstream_model
-                r = await client.post(url, json=p, headers=route_headers)
+                r = await _post_upstream(client, url, json=p,
+                                         headers=route_headers, request_timeout=request_timeout)
                 try:
                     return r.json()
                 except Exception:

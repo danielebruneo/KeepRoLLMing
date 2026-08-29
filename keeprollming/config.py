@@ -8,7 +8,7 @@ from .types import DEFAULT_REQUEST_TIMEOUT
 import sys
 
 logger = logging.getLogger(__name__)
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Any, List
 
@@ -30,6 +30,51 @@ from keeprollming.routing import (
 # ----------------------------
 # Configuration
 # ----------------------------
+
+
+# This is deliberately a process-level guard rather than a route setting: the
+# request body must be bounded before KRM can parse it and resolve a route.
+# 64 MiB leaves ample room for normal long conversations and multimodal JSON,
+# while preventing a malformed or hostile request from exhausting memory.
+DEFAULT_MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
+
+
+def _normalize_request_limits(config: Dict[str, Any]) -> None:
+    """Install safe request-body limits without making reloads brittle.
+
+    Configuration reloads are intentionally tolerant of isolated mistakes.  A
+    malformed limit therefore falls back to the broad process default and is
+    reported, instead of preventing the rest of the configuration from loading.
+    """
+    raw_limits = config.get("request_limits")
+    if raw_limits is None:
+        limits: Dict[str, Any] = {}
+    elif isinstance(raw_limits, dict):
+        limits = dict(raw_limits)
+    else:
+        logger.warning(
+            "request_limits must be a mapping; using default max_body_bytes=%d",
+            DEFAULT_MAX_REQUEST_BODY_BYTES,
+        )
+        limits = {}
+
+    raw_max_body_bytes = limits.get("max_body_bytes", DEFAULT_MAX_REQUEST_BODY_BYTES)
+    try:
+        if isinstance(raw_max_body_bytes, bool):
+            raise ValueError("boolean values are not sizes")
+        max_body_bytes = int(raw_max_body_bytes)
+        if max_body_bytes <= 0:
+            raise ValueError("must be positive")
+    except (TypeError, ValueError):
+        logger.warning(
+            "request_limits.max_body_bytes=%r is invalid; using default %d",
+            raw_max_body_bytes,
+            DEFAULT_MAX_REQUEST_BODY_BYTES,
+        )
+        max_body_bytes = DEFAULT_MAX_REQUEST_BODY_BYTES
+
+    limits["max_body_bytes"] = max_body_bytes
+    config["request_limits"] = limits
 
 
 def load_user_routes(config: Dict[str, Any]) -> List[Route]:
@@ -82,6 +127,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     upstream_url=get_or_unset("upstream_url", None),  # Use None to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     api_key=get_or_unset("api_key", None),  # type: ignore
+                    api_keys=get_or_unset("api_keys", None),  # type: ignore
                     fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
                     circuit_breaker_enabled=get_or_unset("circuit_breaker_enabled", False),  # type: ignore
                     failure_threshold=get_or_unset("failure_threshold", 3),  # type: ignore
@@ -89,6 +135,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     request_timeout=get_or_unset("request_timeout", None),  # type: ignore
                     cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
                     performance_logs_dir=get_or_unset("performance_logs_dir", None),  # type: ignore
+                    capabilities=get_or_unset("capabilities", None),  # type: ignore
                     extends=route_data.get("extends"),
                     overrides=route_data.get("overrides", {}),
                     filters=get_or_unset("filters", None),
@@ -152,6 +199,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     upstream_url=get_or_unset("upstream_url", None),  # Use None to enable inheritance from parent routes
                     upstream_headers=get_or_unset("upstream_headers", {}),  # type: ignore
                     api_key=get_or_unset("api_key", None),  # type: ignore
+                    api_keys=get_or_unset("api_keys", None),  # type: ignore
                     fallback_chain=get_or_unset("fallback_chain", []),  # type: ignore
                     circuit_breaker_enabled=get_or_unset("circuit_breaker_enabled", False),  # type: ignore
                     failure_threshold=get_or_unset("failure_threshold", 3),  # type: ignore
@@ -159,6 +207,7 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     request_timeout=get_or_unset("request_timeout", None),  # type: ignore
                     cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
                     performance_logs_dir=get_or_unset("performance_logs_dir", None),  # type: ignore
+                    capabilities=get_or_unset("capabilities", None),  # type: ignore
                     extends=extends,
                     overrides=route_data.get("overrides", {}),
                     filters=get_or_unset("filters", None),
@@ -270,7 +319,9 @@ def load_config() -> Dict[str, Any]:
     if not isinstance(config, dict):
         raise ValueError("configuration root must be a mapping")
 
+    _validate_client_api_key_configuration(config)
     _materialize_system_prompt_files(config, config_directory)
+    _normalize_request_limits(config)
 
     # Set defaults for missing values (flat structure now)
     config.setdefault("upstream_base_url", "http://127.0.0.1:1234/v1")
@@ -314,6 +365,34 @@ def load_config() -> Dict[str, Any]:
     config["log_payload_max_chars"] = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", str(config.get("log_payload_max_chars", "20000000"))))
 
     return config
+
+
+def _validate_api_keys(value: Any, *, location: str) -> None:
+    """Validate client API keys without ever exposing their values."""
+    if value is None:
+        return
+    if not isinstance(value, list) or any(
+        not isinstance(key, str) or not key.strip() for key in value
+    ):
+        raise ValueError(f"{location} must be an array of non-empty strings")
+
+
+def _validate_client_api_key_configuration(config: Dict[str, Any]) -> None:
+    """Validate root and route-level client API-key declarations."""
+    _validate_api_keys(config.get("api_keys"), location="api_keys")
+    routes = config.get("routes")
+    if isinstance(routes, dict):
+        entries = routes.items()
+    elif isinstance(routes, list):
+        entries = (
+            (str(route.get("name", "unnamed")), route)
+            for route in routes if isinstance(route, dict)
+        )
+    else:
+        return
+    for name, route in entries:
+        if isinstance(route, dict):
+            _validate_api_keys(route.get("api_keys"), location=f"routes.{name}.api_keys")
 
 
 def _find_config_file() -> Path | None:
@@ -428,6 +507,7 @@ def check_config_reload() -> bool:
                 max_tokens=max_tokens,
                 summary_enabled=summary_enabled,
                 request_timeout=request_timeout,
+                api_keys=tuple(CONFIG.get("api_keys") or ()),
             )
             
             # Update cached mtime
@@ -453,6 +533,7 @@ DEFAULTS = DefaultSettings(
     max_tokens=CONFIG["defaults"]["max_tokens"],
     summary_enabled=CONFIG["defaults"]["summary_enabled"],
     request_timeout=float(CONFIG["defaults"].get("request_timeout", DEFAULT_REQUEST_TIMEOUT)),
+    api_keys=tuple(CONFIG.get("api_keys") or ()),
 )
 
 # Models config removed - now defined inline in routes
@@ -476,7 +557,10 @@ def resolve_route(
         - route can be None if no match found (shouldn't happen with fallback)
         - model is the actual model to use for routing
     """
-    return _resolve_route(client_model, USER_ROUTES, req_id=req_id)
+    route, model = _resolve_route(client_model, USER_ROUTES, req_id=req_id)
+    if route is not None and route.api_keys is None:
+        route = replace(route, api_keys=list(DEFAULTS.api_keys))
+    return route, model
 
 
 def resolve_fallback_chain(

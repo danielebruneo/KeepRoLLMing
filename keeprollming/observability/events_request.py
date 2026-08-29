@@ -119,7 +119,29 @@ def emit_failed(
 
 def emit_cancelled(
     req_id: str, reason: str = "",
+    level: str = "INFO",
     dispatcher: Optional[Any] = None,
 ) -> None:
     return emit_request_event(req_id, "request.lifecycle.cancelled",
-                         reason=reason or None, dispatcher=dispatcher)
+                         level=level, reason=reason or None,
+                         dispatcher=dispatcher)
+
+
+def emit_auth_rejected(
+    req_id: str,
+    *,
+    route: str,
+    endpoint: str,
+    credential_present: bool,
+    dispatcher: Optional[Any] = None,
+) -> None:
+    """Record an authentication rejection without ever retaining a secret."""
+    return emit_request_event(
+        req_id,
+        "request.lifecycle.auth_rejected",
+        level="WARN",
+        route=route,
+        endpoint=endpoint,
+        credential_present=credential_present,
+        dispatcher=dispatcher,
+    )

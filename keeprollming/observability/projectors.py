@@ -17,15 +17,17 @@ Invariants:
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import logging
 import os
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
-from .events import RuntimeEvent, level_at_or_above
+from .events import EventSource, RuntimeEvent, level_at_or_above
 from .formatters import Formatter, JsonFormatter
 
 if TYPE_CHECKING:
@@ -182,9 +184,17 @@ def _colorize_stdout_plain(text: str) -> str:
     """
     try:
         from ..logging.constants import (
-            ANSI_BLUE, ANSI_BOLD, ANSI_BRIGHT_RED, ANSI_BRIGHT_YELLOW,
-            ANSI_CYAN, ANSI_DIM, ANSI_GREEN, ANSI_MAGENTA, ANSI_RESET,
-            ANSI_YELLOW, LOG_PLAIN_COLORS,
+            ANSI_BLUE,
+            ANSI_BOLD,
+            ANSI_BRIGHT_RED,
+            ANSI_BRIGHT_YELLOW,
+            ANSI_CYAN,
+            ANSI_DIM,
+            ANSI_GREEN,
+            ANSI_MAGENTA,
+            ANSI_RESET,
+            ANSI_YELLOW,
+            LOG_PLAIN_COLORS,
         )
         if not LOG_PLAIN_COLORS or text.lstrip().startswith("{"):
             return text
@@ -326,6 +336,15 @@ class Projector:
     _handler_ref: Callable[[RuntimeEvent], None] = field(
         default=None, repr=False, compare=False
     )
+    _ROOT_NAMESPACES = (
+        "execution",
+        "request",
+        "streaming",
+        "routing",
+        "transport",
+        "downstream",
+        "filter",
+    )
 
     def __post_init__(self) -> None:
         """Validate projector configuration."""
@@ -429,6 +448,10 @@ class Projector:
                     exc_info=True,
                 )
 
+    def _subscription_namespaces(self) -> tuple[str, ...]:
+        """Return the dispatcher namespaces needed by this projection."""
+        return (self.name, *self._ROOT_NAMESPACES)
+
     def activate(self, dispatcher: EventDispatcher) -> None:
         """Subscribe this projector to an EventDispatcher.
 
@@ -459,13 +482,8 @@ class Projector:
         # This keeps the subscription model simple: one projector = one
         # consumer function, regardless of selector pattern.
         handler = self._handler_ref
-        dispatcher.subscribe(self.name, handler)
-
-        # Also subscribe to common root namespaces to capture events
-        # across domains (execution, request, streaming, routing, transport,
-        # downstream, filter). The projector's selector/level filtering
-        # will drop non-matching events.
-        for ns in ("execution", "request", "streaming", "routing", "transport", "downstream", "filter"):
+        # Subscribe broadly and filter locally via _should_emit().
+        for ns in self._subscription_namespaces():
             dispatcher.subscribe(ns, handler)
 
         self._dispatcher = dispatcher
@@ -484,8 +502,7 @@ class Projector:
         # Use _handler_ref for identity comparison (bound methods on
         # dataclasses create new objects each access).
         handler = self._handler_ref
-        for ns in (self.name, "execution", "request", "streaming",
-                    "routing", "transport", "downstream", "filter"):
+        for ns in self._subscription_namespaces():
             if ns in self._dispatcher._consumers:
                 self._dispatcher._consumers[ns] = [
                     fn for fn in self._dispatcher._consumers[ns]
@@ -497,3 +514,160 @@ class Projector:
 
         self._dispatcher = None
         self.active = False
+
+
+class QueuedProjector:
+    """Run one optional projection through a bounded FIFO worker.
+
+    Formatting and sink writes are presentation work, not request-path work.
+    This adapter keeps the synchronous dispatcher callback constant-time while
+    preserving event order for an individual projector.  An overloaded queue
+    drops only that optional projection and publishes a single structured
+    overflow event until the queue makes progress again.
+    """
+
+    def __init__(self, projector: Projector, *, max_queue_size: int = 2048) -> None:
+        self.projector = projector
+        self.max_queue_size = max(1, int(max_queue_size))
+        self._queue: asyncio.Queue[RuntimeEvent] | None = None
+        self._worker: asyncio.Task[None] | None = None
+        self._dispatcher: EventDispatcher | None = None
+        self._active = False
+        self._dropped_events = 0
+        self._overflow_notice_pending = False
+        self._handler_ref = self._enqueue
+
+    @property
+    def active(self) -> bool:
+        """Whether the bounded worker is subscribed and accepting events."""
+        return self._active
+
+    @property
+    def dropped_events(self) -> int:
+        """Number of optional projection events rejected due to queue pressure."""
+        return self._dropped_events
+
+    @property
+    def queued_events(self) -> int:
+        """Current pending work, useful for operational inspection and tests."""
+        return self._queue.qsize() if self._queue is not None else 0
+
+    async def start(self, dispatcher: EventDispatcher) -> None:
+        """Subscribe the projector and start its single ordered worker."""
+        if self._active:
+            if self._dispatcher is not dispatcher:
+                raise RuntimeError(
+                    f"Queued projector {self.projector.name!r} is already active "
+                    "on a different dispatcher"
+                )
+            return
+
+        self._dispatcher = dispatcher
+        self._queue = asyncio.Queue(maxsize=self.max_queue_size)
+        for namespace in self.projector._subscription_namespaces():
+            dispatcher.subscribe(namespace, self._handler_ref)
+        self._worker = asyncio.create_task(
+            self._run(),
+            name=f"krm-projector-{self.projector.name}",
+        )
+        self._active = True
+
+    def _enqueue(self, event: RuntimeEvent) -> None:
+        """Accept a matching event without formatting or performing I/O."""
+        if (
+            event.type == "execution.observability.projection_overflow"
+            and event.data.get("projector") == self.projector.name
+        ):
+            # The queue that overflowed cannot reliably retain its own notice;
+            # do not count that diagnostic event as another lost payload.
+            return
+        if not self.projector._should_emit(event):
+            return
+        queue = self._queue
+        if queue is None:
+            return
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            self._dropped_events += 1
+            if not self._overflow_notice_pending:
+                self._overflow_notice_pending = True
+                self._emit_overflow_event()
+
+    def _emit_overflow_event(self) -> None:
+        """Make optional-observability loss visible to other projections."""
+        if self._dispatcher is None:
+            return
+        self._dispatcher.emit(
+            RuntimeEvent(
+                type="execution.observability.projection_overflow",
+                timestamp_ns=time.time_ns(),
+                source=EventSource(domain="execution", component="observability"),
+                data={
+                    "projector": self.projector.name,
+                    "queue_max_events": self.max_queue_size,
+                    "dropped_events": self._dropped_events,
+                },
+                level="WARN",
+            )
+        )
+
+    async def _run(self) -> None:
+        """Serialize blocking formatting and sink delivery off the event loop."""
+        assert self._queue is not None
+        while True:
+            event = await self._queue.get()
+            try:
+                await asyncio.to_thread(self.projector._handle_event, event)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.debug(
+                    "Queued projector worker error: name=%s event_type=%s",
+                    self.projector.name,
+                    event.type,
+                    exc_info=True,
+                )
+            finally:
+                self._queue.task_done()
+                if self._queue.qsize() < self.max_queue_size:
+                    self._overflow_notice_pending = False
+
+    async def wait_idle(self) -> None:
+        """Wait until all events accepted so far have reached the sink."""
+        if self._queue is not None:
+            await self._queue.join()
+
+    async def stop(self, *, drain_timeout: float = 2.0) -> None:
+        """Unsubscribe and drain pending optional output within a bounded time."""
+        if not self._active:
+            return
+        dispatcher = self._dispatcher
+        if dispatcher is not None:
+            for namespace in self.projector._subscription_namespaces():
+                consumers = dispatcher._consumers.get(namespace)
+                if consumers is None:
+                    continue
+                dispatcher._consumers[namespace] = [
+                    fn for fn in consumers if fn is not self._handler_ref
+                ]
+                if not dispatcher._consumers[namespace]:
+                    del dispatcher._consumers[namespace]
+        self._active = False
+        try:
+            await asyncio.wait_for(self.wait_idle(), timeout=drain_timeout)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Queued projector shutdown timeout: name=%s queued_events=%s",
+                self.projector.name,
+                self.queued_events,
+            )
+        if self._worker is not None:
+            self._worker.cancel()
+            try:
+                await self._worker
+            except asyncio.CancelledError:
+                pass
+        self._worker = None
+        self._queue = None
+        self._dispatcher = None

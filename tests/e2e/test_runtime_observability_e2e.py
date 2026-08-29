@@ -8,13 +8,16 @@ import time
 import httpx
 
 
-def _wait_for(path, timeout: float = 3.0) -> str:
+def _wait_for(path, *needles: str, timeout: float = 3.0) -> str:
+    """Wait for queued projection output to contain its terminal evidence."""
     deadline = time.time() + timeout
+    text = ""
     while time.time() < deadline:
-        if path.exists() and path.read_text(encoding="utf-8", errors="replace"):
-            return path.read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        if text and all(needle in text for needle in needles):
+            return text
         time.sleep(0.05)
-    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    return text
 
 
 def test_streaming_transcript_and_projector_contract(
@@ -47,10 +50,13 @@ def test_streaming_transcript_and_projector_contract(
     log_dir = orchestrator_server.workdir.parent / "logs"
     # The subprocess fixture supplies LOG_PATH below its per-test tmp directory.
     log_dir = orchestrator_server.perf_dir.parent / "logs"
-    plain = _wait_for(log_dir / "keeprollming.log")
-    jsonl = _wait_for(log_dir / "keeprollming.log.json")
-    server = _wait_for(log_dir / "server.log")
-    stdout = _wait_for(orchestrator_server.stdout_path)
+    plain = _wait_for(log_dir / "keeprollming.log", "USAGE")
+    jsonl = _wait_for(
+        log_dir / "keeprollming.log.json",
+        "execution.performance.request_complete",
+    )
+    server = _wait_for(log_dir / "server.log", "upstream_attempts=1")
+    stdout = _wait_for(orchestrator_server.stdout_path, "USAGE")
 
     for transcript in (plain, stdout):
         assert "SYSTEM:" in transcript
@@ -97,8 +103,15 @@ def test_streaming_transcript_and_projector_contract(
     trace_rows = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
     assert trace_rows
     assert [row["sequence"] for row in trace_rows] == list(range(1, len(trace_rows) + 1))
-    assert {row["direction"] for row in trace_rows} == {"upstream", "downstream"}
-    assert all("bytes_b64" in row and "relative_ns" in row for row in trace_rows)
+    chunk_rows = [row for row in trace_rows if row.get("kind") != "lifecycle"]
+    lifecycle_rows = [row for row in trace_rows if row.get("kind") == "lifecycle"]
+    assert {row["direction"] for row in chunk_rows} == {"upstream", "downstream"}
+    assert all("bytes_b64" in row and "relative_ns" in row for row in chunk_rows)
+    assert lifecycle_rows
+    assert all("boundary" in row and "timestamp_ns" in row for row in lifecycle_rows)
+    assert "downstream.response_stream_started" in {
+        row["boundary"] for row in lifecycle_rows
+    }
 
 
 def test_streaming_sends_reasoning_before_tool_call_and_terminal_finish(
@@ -185,9 +198,9 @@ def test_direct_upstream_streaming_also_emits_assistant_and_usage(
         assert "Direct assistant response." in "".join(response.iter_text())
 
     log_dir = orchestrator_server.perf_dir.parent / "logs"
-    plain = _wait_for(log_dir / "keeprollming.log")
-    stdout = _wait_for(orchestrator_server.stdout_path)
-    server = _wait_for(log_dir / "server.log")
+    plain = _wait_for(log_dir / "keeprollming.log", "USAGE")
+    stdout = _wait_for(orchestrator_server.stdout_path, "USAGE")
+    server = _wait_for(log_dir / "server.log", "upstream_attempts=1")
 
     for transcript in (plain, stdout):
         assert "USER:" in transcript

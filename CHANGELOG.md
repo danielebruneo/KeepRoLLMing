@@ -2,9 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## v0.9.3 — 2026-08-29
 
 ### Added
+- Route-aware client API-key access control. Global and inherited route
+  `api_keys` accept standard `Authorization: Bearer <key>` credentials without
+  forwarding the client secret upstream.
+- Private `GET /routes` status API for trusted operator networks. It exposes
+  public route configuration, rolling activity/errors/performance, and current
+  pending/active requests without rescanning complete metric history per call.
+- A bounded, shared upstream HTTP transport with explicit pool policy and
+  observable startup configuration.
+- Independent bounded projection workers for PLAIN, JSON, compact, and
+  performance sinks, so slow filesystem work cannot block streaming responses.
+- Process-wide `request_limits.max_body_bytes` protection (64 MiB by default)
+  for both declared and chunked JSON request bodies.
+- Graceful application shutdown now cancels the config watcher and closes the
+  shared upstream client before stopping observability workers.
 - Route-level `reasoning_effort` overrides forward LibreChat-compatible
   reasoning controls to Qwen and other OpenAI-compatible upstreams.
 - Each completed request emits an `execution.chat.performance_metrics` PLAIN
@@ -17,6 +31,8 @@ All notable changes to this project will be documented in this file.
   reference; historical streaming design documents are dev-only.
 - Performance records now retain logical prompt tokens separately from
   `cached_prompt_tokens` and `uncached_prompt_tokens`.
+- Streaming cancellation, downstream send failures, and upstream lifecycle
+  transitions have structured diagnostic events and E2E regression coverage.
 
 ### Fixes
 - **V2 NudgeContinuationFinalizer recovery** now sends `request_payload_patch`
@@ -26,6 +42,14 @@ All notable changes to this project will be documented in this file.
   the lazy assistant prefix and continuation prompt to the upstream request.
 - `prompt_tps` and `total_tps` no longer count KV-cached prompt tokens as
   prefill work, avoiding inflated throughput values for long cached contexts.
+- Stream processing now promptly closes and cancels the upstream request when a
+  downstream client disconnects, preventing orphaned backend generations.
+- Streaming progress accounts for reasoning and tool-call content, and avoids
+  misleading TPS estimates for a too-small initial decode segment.
+
+## Unreleased
+
+No unreleased changes yet.
 
 ## v0.9.1 — 2026-06-27
 

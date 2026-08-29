@@ -334,6 +334,7 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
             "upstream_url": route.upstream_url,
             "upstream_headers": route.upstream_headers,
             "api_key": route.api_key,
+            "api_keys": route.api_keys,
             "fallback_chain": route.fallback_chain,
             "circuit_breaker_enabled": route.circuit_breaker_enabled,
             "failure_threshold": route.failure_threshold,
@@ -341,6 +342,7 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
             "request_timeout": route.request_timeout,
             "cost_priority": route.cost_priority,
             "performance_logs_dir": route.performance_logs_dir,
+            "capabilities": route.capabilities,
             "overrides": route.overrides,
             "filters": route.filters,
         }
@@ -365,6 +367,10 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
             merged_settings["upstream_url"] = apply_default(merged_settings["upstream_url"], None)
             merged_settings["upstream_headers"] = apply_default(merged_settings["upstream_headers"], {})
             merged_settings["api_key"] = apply_default(merged_settings["api_key"], None)
+            merged_settings["api_keys"] = apply_default(
+                merged_settings["api_keys"],
+                list(defaults.api_keys) if defaults else None,
+            )
             merged_settings["fallback_chain"] = apply_default(merged_settings["fallback_chain"], [])
             merged_settings["circuit_breaker_enabled"] = apply_default(merged_settings["circuit_breaker_enabled"], False)
             merged_settings["failure_threshold"] = apply_default(merged_settings["failure_threshold"], 3)
@@ -396,6 +402,8 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         "model_pattern": route.model_pattern,
         "upstream_url": route.upstream_url,
         "upstream_headers": route.upstream_headers,
+        "api_key": route.api_key,
+        "api_keys": route.api_keys,
         "fallback_chain": route.fallback_chain,
         "circuit_breaker_enabled": route.circuit_breaker_enabled,
         "failure_threshold": route.failure_threshold,
@@ -403,6 +411,7 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         "request_timeout": route.request_timeout,
         "cost_priority": route.cost_priority,
         "performance_logs_dir": route.performance_logs_dir,
+        "capabilities": route.capabilities,
         "overrides": route.overrides,
         "filters": route.filters,
     }
@@ -431,10 +440,10 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         for key in ["summary_enabled", "passthrough_enabled", "model", "summary_model",
                     "ctx_len", "max_tokens", "transform_reasoning_content",
                     "add_empty_content_when_reasoning_only", "reasoning_placeholder_content",
-                    "model_pattern", "upstream_url", "upstream_headers",
+                    "model_pattern", "upstream_url", "upstream_headers", "api_key", "api_keys",
                     "fallback_chain", "circuit_breaker_enabled", "failure_threshold",
                     "recovery_timeout", "request_timeout", "cost_priority",
-                    "performance_logs_dir", "filters"]:
+                    "performance_logs_dir", "capabilities", "filters"]:
             own_val = child_own_values[key]          # Child's explicit value (captured before loop)
             parent_val = getattr(resolved_parent, key, None)
             if own_val is not None:
@@ -468,6 +477,11 @@ def resolve_inherited_route(route: Route, routes_by_name: Dict[str, Route], visi
         merged_settings["reasoning_placeholder_content"] = apply_default(merged_settings["reasoning_placeholder_content"], "")
         merged_settings["upstream_url"] = apply_default(merged_settings["upstream_url"], None)  # No default upstream
         merged_settings["upstream_headers"] = apply_default(merged_settings["upstream_headers"], {})
+        merged_settings["api_key"] = apply_default(merged_settings["api_key"], None)
+        merged_settings["api_keys"] = apply_default(
+            merged_settings["api_keys"],
+            list(defaults.api_keys) if defaults else None,
+        )
         merged_settings["fallback_chain"] = apply_default(merged_settings["fallback_chain"], [])
         merged_settings["circuit_breaker_enabled"] = apply_default(merged_settings["circuit_breaker_enabled"], False)
         merged_settings["failure_threshold"] = apply_default(merged_settings["failure_threshold"], 3)

@@ -42,6 +42,9 @@ class DefaultSettings:
     reasoning_placeholder_content: str = ""
     request_timeout: float = 120.0  # overridden by DEFAULT_REQUEST_TIMEOUT
     performance_logs_dir: str = "__performance_logs"
+    # Accepted client credentials for routes that do not override this value.
+    # This differs from Route.api_key, which authenticates KRM to upstream.
+    api_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -85,6 +88,7 @@ class Route:
         recovery_timeout: Seconds to wait before retrying
         request_timeout: Request timeout in seconds (uses _UNSET if inheriting)
         cost_priority: Cost priority for fallback selection
+        capabilities: Static capabilities exposed by this route
         extends: Name of route to extend from
         _is_private: Whether this is a private/internal route
         _route_hierarchy: Full route path for logging/debugging
@@ -120,6 +124,8 @@ class Route:
     upstream_url: Optional[str] = None
     upstream_headers: Dict[str, str] = field(default_factory=dict)  # Custom headers for this route
     api_key: Optional[str] = None  # Bearer token for upstream auth (fluisce nei filtri)
+    # Accepted client credentials. None inherits; [] explicitly makes public.
+    api_keys: Optional[List[str]] = None
 
     # Fallback chain for automatic rerouting - use sentinel
     fallback_chain: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
@@ -138,6 +144,10 @@ class Route:
 
     # Cost priority for fallbacks (lower = higher priority) - use sentinel
     cost_priority: int = 999
+
+    # Static route capabilities for clients and operational status. None means
+    # inherit; an explicit empty list intentionally clears a parent's value.
+    capabilities: Optional[List[str]] = None
 
     # Route composition - extend another route and override settings
     extends: Optional[str] = None

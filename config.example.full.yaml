@@ -6,12 +6,26 @@
 
 # Root defaults and summary behaviour
 upstream_base_url: "http://127.0.0.1:8080"
+# Credentials accepted from API clients. This is distinct from route-level
+# `api_key`, which is sent by KRM to an upstream provider.
+api_keys: ["replace-with-a-client-secret"]
 ctx_len: 32768
 max_tokens: 4096
 default_max_completion_tokens: 4096
 summary_enabled: true
 passthrough_enabled: false
 default_request_timeout: 120
+# Process-wide, pre-parse request guard. It applies before route resolution so
+# it also bounds chunked bodies. This intentionally broad default is 64 MiB.
+request_limits:
+  max_body_bytes: 67108864
+# Shared HTTP pool; individual routes still set `request_timeout`.
+upstream_transport:
+  max_connections: 100
+  max_keepalive_connections: 20
+  keepalive_expiry: 30
+  pool_timeout: 10
+  connect_timeout: 60
 performance_logs_dir: "__performance_logs"
 # Write the dashboard snapshot after the first request and then every N
 # completed requests. Lower values refresh the dashboard sooner at more I/O.
@@ -30,6 +44,9 @@ log_payload_max_chars: 20000000
 
 # Logging projections and opt-in raw transport capture.
 observability:
+  # Bounded FIFO for optional PLAIN/JSON/server projections. It keeps file
+  # writes off streaming requests; overflow is reported as a WARN event.
+  projector_queue_size: 2048
   projectors:
     json:
       enabled: true
@@ -68,6 +85,9 @@ routes:
     summary_enabled: true
     passthrough_enabled: false
     request_timeout: 120
+    # Static, operator-defined route features. These are inherited by child
+    # routes and are exposed by the private GET /routes status endpoint.
+    capabilities: ["chat", "streaming", "tools", "reasoning"]
 
   base/remote:
     is_private: true
@@ -76,6 +96,7 @@ routes:
     api_key: "replace-me"
     upstream_headers:
       X-Example-Header: "replace-me"
+    capabilities: ["chat", "streaming"]
 
   # Standard route fields
   chat/local:
@@ -96,6 +117,12 @@ routes:
   chat/remote:
     extends: base/remote
     pattern: "chat/remote"
+
+  # Explicitly public despite the global client key above.
+  public/demo:
+    extends: base/local
+    pattern: "public/demo"
+    api_keys: []
 
   # A fallback chain is evaluated after an upstream failure. `cost_priority`
   # controls route selection where multiple fallback candidates apply.

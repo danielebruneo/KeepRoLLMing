@@ -63,7 +63,9 @@ class RouteSettings:
     upstream_url: str | None = None
     upstream_headers: dict[str, str] = field(default_factory=dict)
     api_key: str | None = None
+    client_api_keys: list[str] = field(default_factory=list)
     fallback_chain: list[dict[str, str]] = field(default_factory=list)
+    capabilities: list[str] = field(default_factory=list)
 
     # ── Filters ────────────────────────────────────────────────────
 
@@ -133,7 +135,12 @@ class RouteSettings:
             upstream_url=resolved_upstream_url,
             upstream_headers=dict(route.upstream_headers or {}),
             api_key=route.api_key,
+            client_api_keys=list(
+                route.api_keys if route.api_keys is not None
+                else getattr(defaults, "api_keys", ())
+            ),
             fallback_chain=list(route.fallback_chain or []),
+            capabilities=list(route.capabilities or []),
             filters=route.filters,
         )
 
@@ -157,7 +164,9 @@ class RouteSettings:
             upstream_url=route.upstream_url if route.upstream_url is not None else None,
             upstream_headers=dict(route.upstream_headers or {}),
             api_key=route.api_key,
+            client_api_keys=list(route.api_keys or []),
             fallback_chain=list(route.fallback_chain or []),
+            capabilities=list(route.capabilities or []),
             request_timeout=(
                 route.request_timeout
                 if route.request_timeout is not None

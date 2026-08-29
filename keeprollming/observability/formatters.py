@@ -12,10 +12,10 @@ All formatters are **stateless** and **never raise**.
 
 from __future__ import annotations
 
-import json
 import hashlib
-import time
+import json
 import textwrap
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -146,6 +146,8 @@ class PlainTextFormatter(Formatter):
                 return self._render_execution_performance(ts, req_id_tag, event)
             if event.type.startswith("execution.streaming."):
                 return self._render_execution_streaming(ts, req_id_tag, event)
+            if event.type.startswith("execution.upstream."):
+                return self._render_upstream(ts, req_id_tag, event)
             if event.type.startswith("streaming."):
                 return self._render_streaming(ts, req_id_tag, event)
             if event.type.startswith("filter."):
@@ -298,7 +300,8 @@ class PlainTextFormatter(Formatter):
             filters = d.get("filters", [])
             filter_text = (
                 "[" + ", ".join(str(name) for name in filters) + "]"
-                if isinstance(filters, list) else "[]"
+                if isinstance(filters, list)
+                else "[]"
             )
             parts = [f"{ts} {req_id_tag} execution.chat.request_route"]
             if stream is not None:
@@ -362,8 +365,12 @@ class PlainTextFormatter(Formatter):
         text = str(data.get("text", ""))
         length = len(text)
         return self._render_transcript(
-            ts, req_id_tag, "execution.chat.conversation",
-            role.upper(), text, f"role={role} length={length}",
+            ts,
+            req_id_tag,
+            "execution.chat.conversation",
+            role.upper(),
+            text,
+            f"role={role} length={length}",
         )
 
     def _render_tool_call(self, ts: str, req_id_tag: str, data: dict) -> str:
@@ -380,10 +387,7 @@ class PlainTextFormatter(Formatter):
                 args = tc.get("arguments", tc.get("function", {}).get("arguments", ""))
                 args_text = str(args)
                 lines.append("    TOOL_CALL:")
-                lines.append(
-                    f"        id={tc_id} name={name} "
-                    f"arguments_length={len(args_text)}"
-                )
+                lines.append(f"        id={tc_id} name={name} arguments_length={len(args_text)}")
                 if args_text:
                     lines.extend(self._render_text_lines(args_text, indent="        "))
             else:
@@ -438,13 +442,12 @@ class PlainTextFormatter(Formatter):
                 continue
             name = tool_call.get("name", tool_call.get("function", {}).get("name", "unknown"))
             call_id = tool_call.get("id", "")
-            arguments = tool_call.get("arguments", tool_call.get("function", {}).get("arguments", ""))
+            arguments = tool_call.get(
+                "arguments", tool_call.get("function", {}).get("arguments", "")
+            )
             arguments_text = str(arguments)
             lines.append("    TOOL_CALL:")
-            lines.append(
-                f"        id={call_id} name={name} "
-                f"arguments_length={len(arguments_text)}"
-            )
+            lines.append(f"        id={call_id} name={name} arguments_length={len(arguments_text)}")
             lines.extend(self._render_text_lines(arguments_text, indent="        "))
         # A turn ending in tool_calls has no final natural-language response.
         # Omitting an empty ASSISTANT block keeps the transcript truthful.
@@ -455,7 +458,11 @@ class PlainTextFormatter(Formatter):
 
     @staticmethod
     def _render_transcript(
-        ts: str, req_id_tag: str, event_name: str, label: str, text: str,
+        ts: str,
+        req_id_tag: str,
+        event_name: str,
+        label: str,
+        text: str,
         metadata: str,
     ) -> str:
         """Render an event line and an indented, full-text transcript block."""
@@ -476,8 +483,11 @@ class PlainTextFormatter(Formatter):
                 lines.append(f"{indent}{raw_line}")
                 continue
             wrapped = textwrap.wrap(
-                raw_line, width=width, replace_whitespace=False,
-                drop_whitespace=False, break_long_words=False,
+                raw_line,
+                width=width,
+                replace_whitespace=False,
+                drop_whitespace=False,
+                break_long_words=False,
                 break_on_hyphens=False,
             )
             lines.extend(f"{indent}{line}" for line in (wrapped or [raw_line]))
@@ -521,7 +531,14 @@ class PlainTextFormatter(Formatter):
         d = event.data or {}
         if event.type == "execution.streaming.progress":
             parts = [f"{ts} {req_id_tag} execution.streaming.progress"]
-            for key in ("elapsed_ms", "ttft_ms", "chunks", "output_chars", "output_tokens_est", "decode_tps_est"):
+            for key in (
+                "elapsed_ms",
+                "ttft_ms",
+                "chunks",
+                "output_chars",
+                "output_tokens_est",
+                "decode_tps_est",
+            ):
                 value = d.get(key)
                 if key == "decode_tps_est" and value is None:
                     parts.append("decode_tps_est=unavailable")
@@ -572,7 +589,12 @@ class PlainTextFormatter(Formatter):
             return " ".join(parts)
 
         # Errors
-        if subtype in ("process_request_error", "process_response_error", "stream_filter_error", "phase4_error"):
+        if subtype in (
+            "process_request_error",
+            "process_response_error",
+            "stream_filter_error",
+            "phase4_error",
+        ):
             filter_name = d.get("filter", "")
             error = d.get("error", "")
             parts = [f"{ts} {req_id_tag} pipeline.{subtype}"]
@@ -635,20 +657,25 @@ class PlainTextFormatter(Formatter):
         d = event.data or {}
         parts = [f"{ts} {req_id_tag} USAGE"]
         usage_missing = (
-            d.get("upstream_attempts", 0) > 0
-            and d.get("usage_reported_attempts", 0) == 0
+            d.get("upstream_attempts", 0) > 0 and d.get("usage_reported_attempts", 0) == 0
         )
         if usage_missing:
             parts.extend(("prompt=?", "completion=?", "total=?", "usage=unavailable"))
         else:
-            for label, key in (("prompt", "prompt_tokens"), ("completion", "completion_tokens"),
-                               ("total", "total_tokens")):
+            for label, key in (
+                ("prompt", "prompt_tokens"),
+                ("completion", "completion_tokens"),
+                ("total", "total_tokens"),
+            ):
                 value = d.get(key)
                 if value is not None:
                     parts.append(f"{label}={value}")
-        for label, key in (("finish_reason", "finish_reason"), ("elapsed_ms", "elapsed_ms"),
-                           ("upstream_attempts", "upstream_attempts"),
-                           ("usage_reported_attempts", "usage_reported_attempts")):
+        for label, key in (
+            ("finish_reason", "finish_reason"),
+            ("elapsed_ms", "elapsed_ms"),
+            ("upstream_attempts", "upstream_attempts"),
+            ("usage_reported_attempts", "usage_reported_attempts"),
+        ):
             value = d.get(key)
             if value is not None:
                 parts.append(f"{label}={value}")
@@ -807,8 +834,16 @@ class CompactFormatter(Formatter):
             parts = [f"ts_ms={ts_ms:.3f}", "method=POST", "path=/v1/chat/completions"]
             if event.req_id:
                 parts.append(f"req_id={event.req_id}")
-            for key in ("route_name", "model", "elapsed_ms", "finish_reason", "upstream_attempts",
-                        "prompt_tokens", "completion_tokens", "total_tokens"):
+            for key in (
+                "route_name",
+                "model",
+                "elapsed_ms",
+                "finish_reason",
+                "upstream_attempts",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+            ):
                 value = d.get(key)
                 if value is not None:
                     parts.append(f"{key}={value}")
@@ -853,7 +888,7 @@ def _truncate(s: str, max_len: int) -> str:
     """Truncate a string to max_len characters."""
     if len(s) <= max_len:
         return s
-    return s[:max_len - 3] + "..."
+    return s[: max_len - 3] + "..."
 
 
 def _format_inline_value(value: Any) -> str:

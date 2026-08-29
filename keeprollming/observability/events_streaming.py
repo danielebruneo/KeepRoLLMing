@@ -157,8 +157,11 @@ def emit_upstream_closed(
     req_id: str, reason: str, total_chunks: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
+    # Normal upstream completion is useful only in a detailed projection.  A
+    # cancellation, however, is an essential terminal fact in BASIC PLAIN.
+    level = "BASIC" if reason in {"cancelled", "generator_exit"} else "DEBUG"
     return emit_streaming_event(req_id, "execution.streaming.upstream_closed",
-                         reason=reason, total_chunks=total_chunks,
+                         level=level, reason=reason, total_chunks=total_chunks,
                          dispatcher=dispatcher)
 
 
@@ -186,8 +189,34 @@ def emit_downstream_closed(
     dispatcher: Optional[Any] = None,
 ) -> None:
     return emit_streaming_event(req_id, "execution.streaming.downstream_closed",
-                         reason=reason, chunks_yielded=chunks_yielded,
+                         # A downstream closure is the concise, operator-facing
+                         # explanation for a stream without normal completion.
+                         level="BASIC", reason=reason, chunks_yielded=chunks_yielded,
                          dispatcher=dispatcher)
+
+
+def emit_peer_disconnected(
+    req_id: str, *, reason: str = "http.disconnect",
+    action: str = "cancel_body_stream", asgi_spec: str = "",
+    peer: str = "", path: str = "", http_version: str = "",
+    dispatcher: Optional[Any] = None,
+) -> None:
+    """Record the detailed boundary where downstream delivery was aborted."""
+    data: dict[str, Any] = {
+        "reason": reason,
+        "asgi_spec": asgi_spec or None,
+        "action": action,
+    }
+    if peer:
+        data["peer"] = peer
+    if path:
+        data["path"] = path
+    if http_version:
+        data["http_version"] = http_version
+    return emit_streaming_event(
+        req_id, "execution.streaming.peer_disconnected", level="DEBUG",
+        dispatcher=dispatcher, **data,
+    )
 
 
 def emit_handler_error(
@@ -268,4 +297,28 @@ def emit_trace_chunk(
             "raw_bytes": raw_bytes,
         },
         req_id=req_id, level="TRACE",
+    ))
+
+
+def emit_trace_lifecycle(
+    req_id: str, *, boundary: str, dispatcher: Optional[Any] = None,
+    **data: Any,
+) -> None:
+    """Persist an opt-in transport lifecycle fact beside exact SSE chunks.
+
+    Lifecycle records deliberately contain metadata only: raw request and SSE
+    bytes continue to be captured solely by :func:`emit_trace_chunk`.  This
+    lets a trace explain *why* a stream stopped without duplicating sensitive
+    payloads or adding per-chunk allocations to the ordinary log path.
+    """
+    if dispatcher is None:
+        return
+    now = time.perf_counter_ns()
+    dispatcher.emit(RuntimeEvent(
+        type="transport.trace.lifecycle",
+        timestamp_ns=time.time_ns(),
+        source=EventSource(domain="transport", component="trace"),
+        data={"boundary": boundary, "monotonic_ns": now, **data},
+        req_id=req_id,
+        level="TRACE",
     ))

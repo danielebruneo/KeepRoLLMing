@@ -12,6 +12,8 @@ from fastapi.responses import JSONResponse
 from ..logger import log
 from ..observability import events_embeddings as _emb
 from ..config import UPSTREAM_BASE_URL, resolve_route, get_route_settings
+from ..auth import bearer_token, authentication_error_response, is_authorized
+from ..observability import events_request as _request_events
 
 
 async def embeddings_handler(
@@ -42,6 +44,17 @@ async def embeddings_handler(
         base_url = UPSTREAM_BASE_URL.rstrip("/")
         request_timeout = 120.0
 
+    if route is None or not is_authorized(headers, route.api_keys or []):
+        from ..app import get_event_dispatcher
+        _request_events.emit_auth_rejected(
+            req_id,
+            route=route.name if route is not None else "unresolved",
+            endpoint="/v1/embeddings",
+            credential_present=bearer_token(headers) is not None,
+            dispatcher=get_event_dispatcher(),
+        )
+        return authentication_error_response()
+
     _emb.emit_request(
         req_id=req_id,
         model=payload.get("model"),
@@ -59,7 +72,10 @@ async def embeddings_handler(
     try:
         url = f"{base_url}/v1/embeddings"
         async with httpx.AsyncClient(timeout=httpx.Timeout(request_timeout)) as client:
-            r = await client.post(url, json=payload, headers=headers)
+            upstream_headers = dict(rs.upstream_headers)
+            if rs.api_key and "Authorization" not in upstream_headers:
+                upstream_headers["Authorization"] = f"Bearer {rs.api_key}"
+            r = await client.post(url, json=payload, headers=upstream_headers)
             r.raise_for_status()
             return JSONResponse(r.json(), status_code=r.status_code)
 

@@ -65,6 +65,12 @@ class State:
         self.degradation_level: int = 0
         self.seed: int = 0
         self._prng_state: int = 0
+        # Real HTTP lifecycle instrumentation.  These counters deliberately
+        # live at the generator boundary, so an E2E client can prove that KRM
+        # closed the upstream response after a downstream disconnect.
+        self.active_streams: int = 0
+        self.streams_started: int = 0
+        self.streams_closed: int = 0
 
     def reset(self) -> None:
         self.scenario = deepcopy(DEFAULT_SCENARIO)
@@ -78,6 +84,9 @@ class State:
         self.degradation_level = 0
         self.seed = 0
         self._prng_state = 0
+        self.active_streams = 0
+        self.streams_started = 0
+        self.streams_closed = 0
 
     def apply_scenario(self, data: Dict[str, Any]) -> None:
         self.scenario = _deep_merge(deepcopy(DEFAULT_SCENARIO), data)
@@ -288,91 +297,96 @@ async def _stream_sse(
     reasoning_pieces: List[str] | None = None,
     final_finish_reason: str | None = None,
 ) -> AsyncIterator[bytes]:
-    if ttft_ms > 0:
-        await asyncio.sleep(ttft_ms / 1000.0)
-    
-    # Get degradation settings from STATE
-    level = STATE.degradation_level
-    
-    # Collect all chunks first, then apply degradation
-    chunks: List[bytes] = []
-    
-    # Emit reasoning_content pieces first if present (for RLS streaming tests)
-    if reasoning_pieces:
-        for rp in reasoning_pieces:
+    STATE.active_streams += 1
+    STATE.streams_started += 1
+    try:
+        if ttft_ms > 0:
+            await asyncio.sleep(ttft_ms / 1000.0)
+
+        level = STATE.degradation_level
+        chunks: List[bytes] = []
+
+        # Emit reasoning_content pieces first if present (for RLS streaming tests)
+        if reasoning_pieces:
+            for rp in reasoning_pieces:
+                event = {
+                    "id": f"fake-{int(time.time() * 1000)}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"reasoning_content": rp},
+                        "finish_reason": None,
+                    }],
+                }
+                chunks.append(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
+
+        # Emit tool_calls delta if present (for streaming TLS tests)
+        # tool_calls_delta must be a full SSE chunk dict or a list of tool_calls
+        if tool_calls_delta:
+            if "choices" in tool_calls_delta and "delta" in tool_calls_delta.get("choices", [{}])[0]:
+                tc_event = tool_calls_delta
+            else:
+                tc_event = {
+                    "id": f"fake-{int(time.time() * 1000)}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"tool_calls": tool_calls_delta if isinstance(tool_calls_delta, list) else [tool_calls_delta]},
+                        "finish_reason": None,
+                    }],
+                }
+            chunks.append(f"data: {json.dumps(tc_event, ensure_ascii=False)}\n\n".encode("utf-8"))
+
+        for idx, piece in enumerate(pieces, start=1):
             event = {
                 "id": f"fake-{int(time.time() * 1000)}",
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": model,
-                "choices": [{
-                    "index": 0,
-                    "delta": {"reasoning_content": rp},
-                    "finish_reason": None,
-                }],
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": piece},
+                        "finish_reason": None,
+                    }
+                ],
             }
             chunks.append(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
-    
-    # Emit tool_calls delta if present (for streaming TLS tests)
-    # tool_calls_delta must be a full SSE chunk dict or a list of tool_calls
-    if tool_calls_delta:
-        if "choices" in tool_calls_delta and "delta" in tool_calls_delta.get("choices", [{}])[0]:
-            # Already a full SSE chunk
-            tc_event = tool_calls_delta
-        else:
-            # Just a list of tool_calls — wrap in SSE chunk format
-            tc_event = {
-                "id": f"fake-{int(time.time() * 1000)}",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [{
-                    "index": 0,
-                    "delta": {"tool_calls": tool_calls_delta if isinstance(tool_calls_delta, list) else [tool_calls_delta]},
-                    "finish_reason": None,
-                }],
-            }
-        chunks.append(f"data: {json.dumps(tc_event, ensure_ascii=False)}\n\n".encode("utf-8"))
-    
-    for idx, piece in enumerate(pieces, start=1):
-        event = {
+            if abort_after_chunks is not None and idx >= abort_after_chunks:
+                raise RuntimeError("simulated upstream stream abort")
+
+        final_evt: Dict[str, Any] = {
             "id": f"fake-{int(time.time() * 1000)}",
             "object": "chat.completion.chunk",
             "created": int(time.time()),
             "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": piece},
-                    "finish_reason": None,
-                }
-            ],
+            "choices": [{"index": 0, "delta": {}, "finish_reason": final_finish_reason or ("tool_calls" if tool_calls_delta else "stop")}],
         }
-        chunks.append(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
-        if abort_after_chunks is not None and idx >= abort_after_chunks:
-            raise RuntimeError("simulated upstream stream abort")
-        if chunk_delay_ms > 0:
-            await asyncio.sleep(chunk_delay_ms / 1000.0)
+        content = "".join(pieces)
+        if include_usage:
+            final_evt["usage"] = _usage_for(content)
+        chunks.append(f"data: {json.dumps(final_evt, ensure_ascii=False)}\n\n".encode("utf-8"))
+        chunks.append(b"data: [DONE]\n\n")
 
-    final_evt: Dict[str, Any] = {
-        "id": f"fake-{int(time.time() * 1000)}",
-        "object": "chat.completion.chunk",
-        "created": int(time.time()),
-        "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": final_finish_reason or ("tool_calls" if tool_calls_delta else "stop")}],
-    }
-    content = "".join(pieces)
-    if include_usage:
-        final_evt["usage"] = _usage_for(content)
-    chunks.append(f"data: {json.dumps(final_evt, ensure_ascii=False)}\n\n".encode("utf-8"))
-    chunks.append(b"data: [DONE]\n\n")
-    
-    # Apply degradation layer
-    degraded_chunks = _degrade_chunks(chunks, level, STATE.next_prng)
-    
-    # Yield degraded chunks
-    for chunk in degraded_chunks:
-        yield chunk
+        # Apply degradation layer
+        degraded_chunks = _degrade_chunks(chunks, level, STATE.next_prng)
+
+        # The delay belongs between bytes yielded to the peer, not while this
+        # generator is building its list.  Sleeping in the construction loop
+        # made every test response appear as a single delayed burst and hid
+        # precisely the downstream-cadence regressions this backend exists to
+        # exercise.
+        for index, chunk in enumerate(degraded_chunks):
+            yield chunk
+            if chunk_delay_ms > 0 and index < len(degraded_chunks) - 1:
+                await asyncio.sleep(chunk_delay_ms / 1000.0)
+    finally:
+        STATE.active_streams -= 1
+        STATE.streams_closed += 1
 
 
 def create_app() -> FastAPI:
@@ -456,6 +470,9 @@ def create_app() -> FastAPI:
             "calls_by_kind": dict(STATE.calls_by_kind),
             "calls_by_model": dict(STATE.calls_by_model),
             "requests": STATE.requests,
+            "active_streams": STATE.active_streams,
+            "streams_started": STATE.streams_started,
+            "streams_closed": STATE.streams_closed,
         }
 
     @app.get("/v0/models")

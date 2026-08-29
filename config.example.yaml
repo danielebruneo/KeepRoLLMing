@@ -8,6 +8,19 @@ ctx_len: 32768
 max_tokens: 4096
 default_request_timeout: 120
 
+# Broad process-wide guard before JSON parsing. It protects against accidental
+# or hostile OOM-sized requests; increase it only for genuinely huge payloads.
+request_limits:
+  max_body_bytes: 67108864  # 64 MiB
+
+# Shared upstream HTTP pool. Route request_timeout still controls each request.
+upstream_transport:
+  max_connections: 100
+  max_keepalive_connections: 20
+  keepalive_expiry: 30
+  pool_timeout: 10
+  connect_timeout: 60
+
 routes:
   # A private base route shares the upstream settings without being advertised
   # through GET /v1/models.
