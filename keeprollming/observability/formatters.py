@@ -138,6 +138,8 @@ class PlainTextFormatter(Formatter):
                 return self._render_routing_resolution(ts, req_id_tag, event)
             if event.type.startswith("execution.chat."):
                 return self._render_execution_chat(ts, req_id_tag, event)
+            if event.type.startswith("execution.routing."):
+                return self._render_execution_routing(ts, req_id_tag, event)
             if event.type.startswith("execution.pipeline."):
                 return self._render_execution_pipeline(ts, req_id_tag, event)
             if event.type.startswith("execution.accounting."):
@@ -298,11 +300,7 @@ class PlainTextFormatter(Formatter):
             route = d.get("route", "")
             stream = d.get("stream")
             filters = d.get("filters", [])
-            filter_text = (
-                "[" + ", ".join(str(name) for name in filters) + "]"
-                if isinstance(filters, list)
-                else "[]"
-            )
+            filter_text = "[" + ", ".join(str(name) for name in filters) + "]" if isinstance(filters, list) else "[]"
             parts = [f"{ts} {req_id_tag} execution.chat.request_route"]
             if stream is not None:
                 parts.append(f"stream={'true' if stream else 'false'}")
@@ -394,6 +392,43 @@ class PlainTextFormatter(Formatter):
         # Generic execution event
         return self._render_generic_kv(ts, req_id_tag, event.type, d)
 
+    def _render_execution_routing(self, ts: str, req_id_tag: str, event: RuntimeEvent) -> str:
+        """Render routing decisions at BASIC detail without exposing affinity keys."""
+        d = event.data or {}
+        subtype = event.type.split(".")[-1]
+        if subtype == "balance_decision":
+            parts = [f"{ts} {req_id_tag} execution.routing.balance_decision"]
+            for label, key in (
+                ("requested_route", "requested_route"),
+                ("selected_route", "selected_route"),
+                ("model", "selected_model"),
+                ("affinity", "affinity_state"),
+            ):
+                value = d.get(key)
+                if value:
+                    parts.append(f'{label}="{value}"')
+            upstream = d.get("selected_upstream_url")
+            if upstream:
+                parts.append(f"upstream={_short_url(str(upstream))}")
+            alternatives = d.get("alternatives")
+            if isinstance(alternatives, list):
+                parts.append("alternatives=[" + ", ".join(map(str, alternatives)) + "]")
+            chain = d.get("reroute_chain")
+            if isinstance(chain, list) and chain:
+                parts.append("reroute_chain=[" + " -> ".join(map(str, chain)) + "]")
+            reservation = d.get("reservation_state")
+            if reservation:
+                parts.append(f'reservation="{reservation}"')
+            reason = d.get("selection_reason")
+            if reason:
+                parts.append(f'reason="{reason}"')
+            candidates = d.get("candidate_states")
+            if isinstance(candidates, dict) and candidates:
+                rendered = ", ".join(f"{route}:{state}" for route, state in candidates.items())
+                parts.append(f"candidates=[{rendered}]")
+            return " ".join(parts)
+        return self._render_generic_kv(ts, req_id_tag, event.type, d)
+
     def _render_conversation(self, ts: str, req_id_tag: str, data: dict) -> str:
         """Render a message event followed by its untruncated transcript block."""
         role = str(data.get("role", "unknown"))
@@ -477,9 +512,7 @@ class PlainTextFormatter(Formatter):
                 continue
             name = tool_call.get("name", tool_call.get("function", {}).get("name", "unknown"))
             call_id = tool_call.get("id", "")
-            arguments = tool_call.get(
-                "arguments", tool_call.get("function", {}).get("arguments", "")
-            )
+            arguments = tool_call.get("arguments", tool_call.get("function", {}).get("arguments", ""))
             arguments_text = str(arguments)
             lines.append("    TOOL_CALL:")
             lines.append(f"        id={call_id} name={name} arguments_length={len(arguments_text)}")
@@ -695,9 +728,7 @@ class PlainTextFormatter(Formatter):
         """Render the single terminal BASIC operational summary."""
         d = event.data or {}
         parts = [f"{ts} {req_id_tag} USAGE"]
-        usage_missing = (
-            d.get("upstream_attempts", 0) > 0 and d.get("usage_reported_attempts", 0) == 0
-        )
+        usage_missing = d.get("upstream_attempts", 0) > 0 and d.get("usage_reported_attempts", 0) == 0
         if usage_missing:
             parts.extend(("prompt=?", "completion=?", "total=?", "usage=unavailable"))
         else:

@@ -17,14 +17,31 @@ def test_routes_status_endpoint_has_dashboard_shape() -> None:
     assert payload["routes"]
     for route in payload["routes"]:
         assert {
-            "name", "upstream_url", "upstream_model", "model_mode",
-            "capabilities", "ctx_len", "max_tokens", "activity", "errors",
-            "admission", "circuit_breaker", "queued_requests", "pending_requests", "active_requests", "performance",
+            "name",
+            "upstream_url",
+            "upstream_model",
+            "model_mode",
+            "capabilities",
+            "ctx_len",
+            "max_tokens",
+            "activity",
+            "errors",
+            "admission",
+            "circuit_breaker",
+            "queued_requests",
+            "pending_requests",
+            "active_requests",
+            "performance",
+            "balance",
+            "balance_policy",
         } <= route.keys()
         assert len(route["activity"]) == 60
         assert all("requests" in bucket and "minute" in bucket for bucket in route["activity"])
         assert {
-            "samples", "avg_prompt_tps", "avg_completion_tps", "avg_ttft_ms",
+            "samples",
+            "avg_prompt_tps",
+            "avg_completion_tps",
+            "avg_ttft_ms",
             "avg_elapsed_ms",
         } <= route["performance"].keys()
 
@@ -40,6 +57,7 @@ def test_routes_status_resolves_public_route_configuration(monkeypatch) -> None:
         ctx_len=32000,
         max_tokens=4096,
         capabilities=["chat", "tools"],
+        queue_aging={"interval_seconds": 30, "priority_step": 2, "max_boost": 20},
         _is_private=True,
     )
     public = Route(
@@ -68,3 +86,122 @@ def test_routes_status_resolves_public_route_configuration(monkeypatch) -> None:
     assert len(route["activity"]) == 60
     assert route["errors"] == []
     assert route["performance"]["samples"] == 0
+    assert route["admission"]["routing_priority"] == 0
+    assert route["admission"]["queue_aging"] == {
+        "interval_seconds": 30,
+        "priority_step": 2,
+        "max_boost": 20,
+    }
+    assert route["admission"]["deadline_policy"] is None
+    assert route["admission"]["resource"] == {
+        "capacity": 1,
+        "active": 0,
+        "queued": 0,
+    }
+
+
+def test_routes_status_marks_balancing_selector_as_dynamic(monkeypatch) -> None:
+    from keeprollming import config
+
+    runner = Route(
+        name="code/runner",
+        pattern="code/runner",
+        model="runner-model",
+        upstream_url="http://runner.example",
+        ctx_len=32000,
+        max_tokens=4096,
+        max_concurrent=2,
+        capabilities=["chat", "tools"],
+    )
+    selector = Route(
+        name="public/code",
+        pattern="public/code",
+        model="selector-model",
+        upstream_url="http://selector.example",
+        balance={
+            "targets": ["code/runner"],
+            "preserve_overrides": ["reasoning_effort"],
+        },
+    )
+    monkeypatch.setattr(config, "USER_ROUTES", [runner, selector])
+    monkeypatch.setattr(config, "DEFAULTS", DefaultSettings())
+
+    with TestClient(app) as client:
+        response = client.get("/routes")
+
+    assert response.status_code == 200
+    route = next(item for item in response.json()["routes"] if item["name"] == "public/code")
+    assert route["model_mode"] == "balanced"
+    assert route["upstream_url"] is None
+    assert route["upstream_model"] is None
+    assert route["balance_policy"] == {
+        "targets": ["code/runner"],
+        "preserve_overrides": ["reasoning_effort"],
+        "resolved_targets": [
+            {
+                "route": "code/runner",
+                "priority": 0,
+                "upstream_url": "http://runner.example",
+                "upstream_model": "runner-model",
+                "model_mode": "configured",
+                "capabilities": ["chat", "tools"],
+                "ctx_len": 32000,
+                "max_tokens": 4096,
+                "resource": "http://runner.example :: runner-model",
+                "admission": {
+                    "max_concurrent": 2,
+                    "routing_priority": 0,
+                    "queue_timeout_ms": 0,
+                    "queue_aging": None,
+                    "deadline_policy": None,
+                    "resource": {"capacity": 2, "active": 0, "queued": 0},
+                },
+                "circuit_breaker": {
+                    "enabled": False,
+                    "failure_threshold": 3,
+                    "recovery_timeout_ms": 60000,
+                    "state": "closed",
+                    "consecutive_failures": 0,
+                },
+            }
+        ],
+    }
+
+
+def test_routes_status_projects_nested_balancing_selector(monkeypatch) -> None:
+    from keeprollming import config
+
+    runner = Route(
+        name="code/runner",
+        pattern="code/runner",
+        model="runner-model",
+        upstream_url="http://runner.example",
+    )
+    dispatcher = Route(
+        name="code/dispatch",
+        pattern="code/dispatch",
+        model="unused-model",
+        balance={"targets": ["code/runner"]},
+    )
+    selector = Route(
+        name="public/code",
+        pattern="public/code",
+        model="unused-model",
+        balance={"targets": [{"route": "code/dispatch", "priority": 10}]},
+    )
+    monkeypatch.setattr(config, "USER_ROUTES", [runner, dispatcher, selector])
+    monkeypatch.setattr(config, "DEFAULTS", DefaultSettings())
+
+    with TestClient(app) as client:
+        response = client.get("/routes")
+
+    assert response.status_code == 200
+    route = next(item for item in response.json()["routes"] if item["name"] == "public/code")
+    target = route["balance_policy"]["resolved_targets"][0]
+    assert target["route"] == "code/dispatch"
+    assert target["priority"] == 10
+    assert target["model_mode"] == "balanced"
+    assert target["upstream_url"] is None
+    assert target["upstream_model"] is None
+    assert target["balance_policy"]["resolved_targets"][0]["route"] == "code/runner"
+    assert target["balance_policy"]["resolved_targets"][0]["upstream_url"] == ("http://runner.example")

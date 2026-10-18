@@ -11,20 +11,18 @@ This test verifies the complete flow:
 The architecture changed: process_response() now encapsulates ALL retry logic.
 """
 
-import json
+import asyncio
 
 import pytest
-import asyncio
-from httpx import AsyncClient, Response as HTTPXResponse
-from fastapi.testclient import TestClient
-
 
 # ============================================================================
 # Helper: MockResponse with proper __init__ (not class-level attributes)
 # ============================================================================
 
+
 class MockResponse:
     """Mock response that accepts keyword arguments like the real Response."""
+
     def __init__(self, content=None, model=None, finish_reason=None):
         self.content = content
         self.model = model
@@ -42,6 +40,7 @@ def _nudge_chain(config):
 # ============================================================================
 # Tests
 # ============================================================================
+
 
 class TestNudgeFilterFullFlow:
     """Test the complete nudge filter flow - filter handles retry INTERNALLY."""
@@ -90,18 +89,15 @@ class TestNudgeFilterFullFlow:
 
     def test_filter_chain_execution_logging(self):
         """Test that filter chain passes through complete responses unchanged."""
-        from keeprollming.orchestrator.filter import (
-            FilterChain,
-            FilterExecutionContext
-        )
+        from keeprollming.orchestrator.filter import FilterExecutionContext
 
         # Configure filter chain
         filter_chain_config = {
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [":$"],
-                    "action": "nudge",
-                }
+            "model_nudge": {
+                "enabled": True,
+                "trigger_patterns": [":$"],
+                "action": "nudge",
+            }
         }
 
         chain = _nudge_chain(filter_chain_config)
@@ -188,7 +184,7 @@ class TestNudgeFilterWithMockHTTP:
         async def mock_http_retry(self, messages, model, upstream_url, **kwargs):
             return {"choices": [{"message": {"content": "Still explaining:"}}]}
 
-        monkeypatch.setattr(ModelNudgeFilter, '_make_http_retry', mock_http_retry)
+        monkeypatch.setattr(ModelNudgeFilter, "_make_http_retry", mock_http_retry)
 
         mock_resp = MockResponse(
             content="Still explaining:",
@@ -229,22 +225,26 @@ class TestNudgeFilterWithMockHTTP:
 
         # Retry completes the answer (NOT lazy) but upstream reports "length"
         async def mock_http_retry(self, messages, model, upstream_url, **kwargs):
-            return {"choices": [{
-                "message": {"content": "Here is the full, complete answer."},
-                "finish_reason": "length",
-            }]}
+            return {
+                "choices": [
+                    {
+                        "message": {"content": "Here is the full, complete answer."},
+                        "finish_reason": "length",
+                    }
+                ]
+            }
 
-        monkeypatch.setattr(ModelNudgeFilter, '_make_http_retry', mock_http_retry)
+        monkeypatch.setattr(ModelNudgeFilter, "_make_http_retry", mock_http_retry)
 
-        mock_resp = MockResponse(content="The answer is:", model="test-model",
-                                 finish_reason="length")
+        mock_resp = MockResponse(content="The answer is:", model="test-model", finish_reason="length")
         context = FilterExecutionContext(req_id="test-fr-length")
         result = asyncio.run(filt.process_response(mock_resp, context))
 
         assert result is not None
         assert "Here is the full, complete answer." in result.content
-        assert result.finish_reason == "stop", \
+        assert result.finish_reason == "stop", (
             f"Retry 'length' leaked to client! finish_reason={result.finish_reason!r}"
+        )
 
 
 if __name__ == "__main__":

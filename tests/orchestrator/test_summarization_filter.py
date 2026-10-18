@@ -2,8 +2,8 @@
 
 import pytest
 
-from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
 from keeprollming.filters.summarization.request import SummarizationFilter
+from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
 
 
 class TestSummarizationFilterBasics:
@@ -31,6 +31,7 @@ class TestSummarizationFilterPriority:
     def test_priority_is_15(self):
         from keeprollming.filters.system_prompt.request import SystemPromptFilter
         from keeprollming.filters.tool_rewrite.request import ToolRewriteFilter
+
         sp = SystemPromptFilter()
         sf = SummarizationFilter()
         tr = ToolRewriteFilter()

@@ -18,10 +18,9 @@ unit contract only.
 
 from __future__ import annotations
 
-from typing import List
-
 import pytest
 
+from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 from keeprollming.streaming.events import (
     AssistantTextDelta,
     Finish,
@@ -31,8 +30,6 @@ from keeprollming.streaming.events import (
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer
-from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -126,21 +123,24 @@ def test_tls_no_loop_passthrough():
     Expected: no recovery decision, events pass through.
     """
     tls = _make_tls()
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{"msg": "a"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="search",
-            arguments_delta='{"q": "b"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta='{"msg": "a"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="search",
+                arguments_delta='{"q": "b"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is None, "No loop should be detected"
     assert tls.has_tool_call is True
@@ -150,10 +150,12 @@ def test_progressive_exact_tls_releases_distinct_tool_name_immediately():
     """Exact TLS need not hold a call whose name excludes a duplicate."""
     tls = TLSFinalizer(
         progressive_exact=True,
-        conversation_tool_calls=[{
-            "id": "previous-write",
-            "function": {"name": "write_file", "arguments": '{"path":"a"}'},
-        }],
+        conversation_tool_calls=[
+            {
+                "id": "previous-write",
+                "function": {"name": "write_file", "arguments": '{"path":"a"}'},
+            }
+        ],
     )
     delta = ToolCallDelta(
         index=0,
@@ -172,10 +174,12 @@ def test_progressive_exact_tls_holds_same_name_until_arguments_differ():
     """A same-name call is released only after its canonical args are safe."""
     tls = TLSFinalizer(
         progressive_exact=True,
-        conversation_tool_calls=[{
-            "id": "previous-read",
-            "function": {"name": "read_file", "arguments": '{"path":"a"}'},
-        }],
+        conversation_tool_calls=[
+            {
+                "id": "previous-read",
+                "function": {"name": "read_file", "arguments": '{"path":"a"}'},
+            }
+        ],
     )
     first = ToolCallDelta(
         index=0,
@@ -195,10 +199,12 @@ def test_progressive_exact_tls_rejects_duplicate_before_commit():
     """An exact duplicate remains invisible until TLS asks for intervention."""
     tls = TLSFinalizer(
         progressive_exact=True,
-        conversation_tool_calls=[{
-            "id": "previous-read",
-            "function": {"name": "read_file", "arguments": '{"path":"a"}'},
-        }],
+        conversation_tool_calls=[
+            {
+                "id": "previous-read",
+                "function": {"name": "read_file", "arguments": '{"path":"a"}'},
+            }
+        ],
     )
     duplicate = ToolCallDelta(
         index=0,
@@ -221,10 +227,13 @@ def test_tls_no_tool_calls_passthrough():
     Expected: no recovery decision.
     """
     tls = _make_tls()
-    _process_then_finalize(tls, [
-        AssistantTextDelta(delta="Here is the answer."),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            AssistantTextDelta(delta="Here is the answer."),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is None
     assert tls.has_tool_call is False
@@ -238,25 +247,26 @@ def test_tls_same_name_different_args_no_loop():
     Expected: no recovery decision (different signatures).
     """
     tls = _make_tls()
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{"msg": "a"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="echo",
-            arguments_delta='{"msg": "b"}',
-        ),
-        Finish(reason="stop"),
-    ])
-
-    assert tls.decision is None, (
-        "Same name with different args should not trigger loop"
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta='{"msg": "a"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="echo",
+                arguments_delta='{"msg": "b"}',
+            ),
+            Finish(reason="stop"),
+        ],
     )
+
+    assert tls.decision is None, "Same name with different args should not trigger loop"
     assert tls.has_tool_call is True
 
 
@@ -274,21 +284,24 @@ def test_tls_exact_consecutive_loop():
     merge_strategy="inject_tool_result".
     """
     tls = _make_tls()
-    events = _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is not None, "Loop should be detected"
     assert tls.decision.kind == "intervention"
@@ -301,12 +314,13 @@ def test_tls_exact_consecutive_loop():
     patch = tls.decision.request_payload_patch
     assert "messages" in patch
     messages = patch["messages"]
-    assert len(messages) == 2
-    assert messages[0]["role"] == "tool"
-    assert messages[0]["tool_call_id"] == "call_2"
-    assert "Tool result:" in messages[0]["content"]
-    assert messages[1]["role"] == "user"
-    assert "Do NOT call" in messages[1]["content"]
+    assert len(messages) == 3
+    assert messages[0]["role"] == "assistant"
+    assert messages[1]["role"] == "tool"
+    assert messages[1]["tool_call_id"] == "call_2"
+    assert "Tool result:" in messages[1]["content"]
+    assert messages[2]["role"] == "user"
+    assert "Do NOT call" in messages[2]["content"]
 
     # Check diagnostics
     diag = tls.decision.diagnostics
@@ -323,21 +337,24 @@ def test_tls_fuzzy_loop():
     Expected: RecoveryDecision with kind="intervention".
     """
     tls = _make_tls(fuzzy_threshold=0.8)
-    events = _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{"msg": "hello world"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="echo",
-            arguments_delta='{"msg": "hello wrold"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta='{"msg": "hello world"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="echo",
+                arguments_delta='{"msg": "hello wrold"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is not None, "Fuzzy loop should be detected"
     assert tls.decision.kind == "intervention"
@@ -353,33 +370,36 @@ def test_tls_ab_loop():
     Expected: RecoveryDecision with kind="intervention".
     """
     tls = _make_tls(detect_ab_loop=True)
-    events = _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="search",
-            arguments_delta='{}',
-        ),
-        ToolCallDelta(
-            index=2,
-            id="call_3",
-            name="echo",
-            arguments_delta='{}',
-        ),
-        ToolCallDelta(
-            index=3,
-            id="call_4",
-            name="search",
-            arguments_delta='{}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta="{}",
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="search",
+                arguments_delta="{}",
+            ),
+            ToolCallDelta(
+                index=2,
+                id="call_3",
+                name="echo",
+                arguments_delta="{}",
+            ),
+            ToolCallDelta(
+                index=3,
+                id="call_4",
+                name="search",
+                arguments_delta="{}",
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is not None, "AB-loop should be detected"
     assert tls.decision.kind == "intervention"
@@ -399,21 +419,24 @@ def test_tls_intervention_payload():
     - messages[1]: user-role nudge message
     """
     tls = _make_tls()
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_loop_1",
-            name="get_weather",
-            arguments_delta='{"city": "London"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_loop_2",
-            name="get_weather",
-            arguments_delta='{"city": "London"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_loop_1",
+                name="get_weather",
+                arguments_delta='{"city": "London"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_loop_2",
+                name="get_weather",
+                arguments_delta='{"city": "London"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is not None
     patch = tls.decision.request_payload_patch
@@ -421,19 +444,19 @@ def test_tls_intervention_payload():
     assert "messages" in patch
 
     messages = patch["messages"]
-    assert len(messages) == 2
+    assert len(messages) == 3
 
     # Tool result message
-    tool_msg = messages[0]
+    tool_msg = messages[1]
     assert tool_msg["role"] == "tool"
     assert tool_msg["tool_call_id"] == "call_loop_2"
     assert "get_weather" in tool_msg["content"]
 
     # User nudge message
-    nudge_msg = messages[1]
+    nudge_msg = messages[2]
     assert nudge_msg["role"] == "user"
     assert "Do NOT call" in nudge_msg["content"]
-    assert "get_weather" in nudge_msg["content"]
+    assert nudge_msg["content"] == tls.nudge_message
 
     # Decision metadata
     assert tls.decision.kind == "intervention"
@@ -455,21 +478,24 @@ def test_tls_max_attempts_exceeded_no_decision():
     tls = _make_tls(max_attempts=2)
 
     # First attempt: process events, finalize (attempt_index=0)
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     # First attempt should produce a decision
     assert tls.decision is not None
@@ -477,21 +503,24 @@ def test_tls_max_attempts_exceeded_no_decision():
 
     # Reset for second attempt (attempt_index becomes 1)
     tls.reset()
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_3",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_4",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_3",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_4",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     # Second attempt should produce a decision (attempt_index=1 < max_attempts=2)
     assert tls.decision is not None
@@ -499,21 +528,24 @@ def test_tls_max_attempts_exceeded_no_decision():
 
     # Reset for third attempt (attempt_index becomes 2)
     tls.reset()
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_5",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_6",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_5",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_6",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     # Third attempt: attempt_index=2 >= max_attempts=2, no decision
     assert tls.decision is None
@@ -534,21 +566,24 @@ def test_tls_reset_clears_buffer():
     tls = _make_tls()
 
     # First processing: create a loop
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is not None
     assert len(tls.tool_signatures) == 2
@@ -561,15 +596,18 @@ def test_tls_reset_clears_buffer():
     assert tls.has_tool_call is False
 
     # New processing with single tool call should not trigger loop
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_3",
-            name="echo",
-            arguments_delta='{"msg": "hello"}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_3",
+                name="echo",
+                arguments_delta='{"msg": "hello"}',
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is None
 
@@ -588,12 +626,14 @@ def test_tls_finalizer_implements_stream_finalizer():
 def test_tls_finalizer_finalize_idempotent():
     """Second finalize() raises RuntimeError."""
     tls = _make_tls()
-    tls.process_event(ToolCallDelta(
-        index=0,
-        id="call_1",
-        name="echo",
-        arguments_delta='{}',
-    ))
+    tls.process_event(
+        ToolCallDelta(
+            index=0,
+            id="call_1",
+            name="echo",
+            arguments_delta="{}",
+        )
+    )
     tls.process_event(Finish(reason="stop"))
     tls.finalize()
 
@@ -620,15 +660,18 @@ def test_tls_single_tool_call_no_loop():
     Expected: no recovery decision.
     """
     tls = _make_tls()
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta="{}",
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is None
     assert tls.has_tool_call is True
@@ -640,9 +683,12 @@ def test_tls_finish_only_no_crash():
     Expected: no recovery decision.
     """
     tls = _make_tls()
-    _process_then_finalize(tls, [
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is None
     assert tls.has_tool_call is False
@@ -654,20 +700,23 @@ def test_tls_empty_tool_call_no_crash():
     Expected: no recovery decision.
     """
     tls = _make_tls()
-    _process_then_finalize(tls, [
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="",
-            arguments_delta='{}',
-        ),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="",
-            arguments_delta='{}',
-        ),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        tls,
+        [
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="",
+                arguments_delta="{}",
+            ),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="",
+                arguments_delta="{}",
+            ),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert tls.decision is None

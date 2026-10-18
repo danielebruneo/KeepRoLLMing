@@ -34,6 +34,73 @@ retains the newest images. `strip_latest` is available when retaining the
 earliest images is preferable. In either case an omitted image becomes the
 configured replacement text rather than altering the message shape.
 
+`multimodal_validator.strip_all_files: true` removes structured file attachments
+from **all messages**, including old user/assistant/tool messages, before either
+streaming or non-streaming upstream execution. Default: `false`. Each `file`,
+`input_file`, `document`, `file_url` or `document_url` content part becomes a
+text placeholder; customize `files_replacement_text` (default
+`[File omitted: attachments are disabled]`). PDFs mislabeled as images with a
+PDF data URL or `source.media_type: application/pdf` are stripped too. Actual
+images, extracted document text, tool arguments, message roles and tool IDs
+are preserved. The filter does not fetch URLs or guess file types from names,
+and does not remove images produced by rendering PDF pages: use the separate
+`strip_all_images` switch for that case. A BASIC
+`filter.multimodal_validator.files_stripped` event reports only the removed
+count, not filenames or contents.
+
+## Loop recovery contract (RLS and TLS)
+
+Both serving modes use the same detection settings and recovery budgets:
+
+| Setting | Meaning | Default |
+|---|---|---|
+| `max_repeats` | Matching preceding occurrences needed to block the current reasoning/call; `1` blocks the first repeat, `0` disables exact detection | `1` |
+| `max_retries` | Maximum upstream recovery calls by this filter in one request; `0` uses the terminal fallback immediately | `2` |
+| `max_attempts` | Alias for `max_retries`; an explicit `max_retries` takes precedence | omitted |
+| `retry_timeout` | Optional recovery timeout override in seconds; otherwise inherit the resolved route's timeout | omitted |
+| `send_user_message` | Append the configured user instruction during intervention | `true` |
+
+RLS compares the preceding reasoning-bearing assistant turns in the current
+request. Different tool signatures disambiguate an otherwise identical
+reasoning block. There is no process-global cross-client reasoning cache.
+If a client omits reasoning from its conversation, cross-turn RLS detection
+cannot infer it; TLS can still inspect historical tool calls.
+
+An RLS intervention appends an internal assistant correction
+(`intervention_message`) and, when enabled, a user instruction (`rls_message`).
+A TLS intervention appends the withheld assistant tool call and its matching
+synthetic tool result (`tls_message`), then the optional user instruction
+(`nudge_message`). These are internal recovery messages, not actual tool
+executions. Every synthetic result has a matching call ID in that retry.
+
+Recovery retains the original tool definitions, inference parameters, resolved
+backend, headers/authentication and transport policy. Non-streaming regenerated
+responses re-enter response validation (including tool rewrite and both loop
+stoppers); request transformations do not run again. Per-filter counters remain
+request-scoped across re-entry, with a global ceiling of ten recovery calls.
+Streaming preserves the terminal Finish/Done barrier and per-filter budgets.
+
+TLS checks newly produced calls against relevant history, not whether any old
+loop exists anywhere in the conversation. `fuzzy_max_repeats` counts identical
+signatures in a bounded `fuzzy_look_back` window; `fuzzy_threshold` independently
+enables approximate argument matching within the same function. AB detection
+considers the current call as the last element of the pattern. Exact streaming
+can release provably different calls early; these heuristic modes buffer until
+the terminal decision.
+
+If recovery repeats or fails, the filter returns its non-empty fallback with
+`finish_reason: stop`. The fallback is terminal, not another automatic user
+turn. A configured Nudge may still continue a matching fallback under the
+remaining budgets. Actual upstream `length`/`content_filter` outcomes remain
+authoritative, including incomplete tool calls, rather than being relabeled
+as successful tool execution. Cancellation propagates to the recovery call.
+
+`filter.loop.recovery` events at BASIC report non-streaming retry, received,
+failed, cancelled and exhausted outcomes without message contents. Accounting
+includes all upstream attempts and keeps rejected work separate from the final
+logical response. Streaming recovery decisions and transport events use the
+existing stream observability path.
+
 ## Streaming contract
 
 Streaming finalizers see the same canonical stream events in priority order.

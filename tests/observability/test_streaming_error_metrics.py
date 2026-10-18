@@ -18,15 +18,14 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from typing import List, Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import List
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 import httpx
 
-from keeprollming.observability.events import EventSource, RuntimeEvent
-from keeprollming.observability.dispatcher import EventDispatcher
 from keeprollming.observability.consumers import PerformanceConsumer
+from keeprollming.observability.dispatcher import EventDispatcher
+from keeprollming.observability.events import EventSource, RuntimeEvent
 
 
 class TestStreamingErrorPathMetricsEmission:
@@ -35,7 +34,6 @@ class TestStreamingErrorPathMetricsEmission:
     def test_pipeline_error_path_emits_metrics_event(self):
         """Pipeline path exception handler emits execution.performance.request_complete."""
         from keeprollming.endpoints.streaming_handlers import process_streaming_request
-        from keeprollming.orchestrator.pipeline import Pipeline
 
         async def run_test():
             dispatcher = EventDispatcher()
@@ -107,22 +105,15 @@ class TestStreamingErrorPathMetricsEmission:
                 chunks.append(chunk)
 
             # Find the performance event among captured events
-            perf_events = [
-                e for e in captured_events
-                if e.type == "execution.performance.request_complete"
-            ]
+            perf_events = [e for e in captured_events if e.type == "execution.performance.request_complete"]
 
-            assert len(perf_events) == 1, (
-                f"Expected exactly 1 performance event on error path, got {len(perf_events)}"
-            )
+            assert len(perf_events) == 1, f"Expected exactly 1 performance event on error path, got {len(perf_events)}"
 
             event = perf_events[0]
             data = event.data
 
             # Verify error-path specific fields
-            assert data["finish_reason"] == "error", (
-                f"finish_reason should be 'error', got {data.get('finish_reason')}"
-            )
+            assert data["finish_reason"] == "error", f"finish_reason should be 'error', got {data.get('finish_reason')}"
             assert data["completion_tokens_source"] == "missing", (
                 f"completion_tokens_source should be 'missing', got {data.get('completion_tokens_source')}"
             )
@@ -137,7 +128,7 @@ class TestStreamingErrorPathMetricsEmission:
             assert data["total_tokens"] is None
             assert data["ttft_ms"] is None
 
-            print(f"✓ Pipeline error path emitted metrics event:")
+            print("✓ Pipeline error path emitted metrics event:")
             print(f"  - finish_reason: {data['finish_reason']}")
             print(f"  - completion_tokens_source: {data['completion_tokens_source']}")
             print(f"  - stream: {data['stream']}")
@@ -188,20 +179,39 @@ class TestStreamingErrorPathMetricsEmission:
             primary = Route(name="primary", pattern="primary", model="primary-model")
             secondary = Route(name="secondary", pattern="secondary", model="secondary-model")
             fallback = UpstreamAttempt(
-                route=secondary, route_name="secondary", model="secondary-model",
+                route=secondary,
+                route_name="secondary",
+                model="secondary-model",
                 upstream_url="http://secondary:9000",
                 endpoint_url="http://secondary:9000/v1/chat/completions",
-                upstream_headers={}, request_timeout=10.0,
+                upstream_headers={},
+                request_timeout=10.0,
             )
+            admitted_routes = []
+
+            async def admit(route):
+                admitted_routes.append(route.name)
+                return True
+
             chunks = []
             async for chunk in process_streaming_request(
                 url="http://primary:8000/v1/chat/completions",
-                client=Client(), payload={"model": "primary-model", "messages": [], "stream": True},
-                route_headers={}, route=primary, req_id="fallback-stream", request_timeout=10.0,
-                fallback_attempts=[object(), fallback], visited_models=None,
-                upstream_model="primary-model", is_passthrough=False,
-                transform_reasoning_content=False, add_empty_content_when_reasoning_only=False,
-                reasoning_placeholder="", t_start=0.0, dispatcher=dispatcher,
+                client=Client(),
+                payload={"model": "primary-model", "messages": [], "stream": True},
+                route_headers={},
+                route=primary,
+                req_id="fallback-stream",
+                request_timeout=10.0,
+                fallback_attempts=[object(), fallback],
+                visited_models=None,
+                upstream_model="primary-model",
+                is_passthrough=False,
+                transform_reasoning_content=False,
+                add_empty_content_when_reasoning_only=False,
+                reasoning_placeholder="",
+                t_start=0.0,
+                dispatcher=dispatcher,
+                on_fallback_attempt=admit,
             ):
                 chunks.append(chunk)
 
@@ -210,6 +220,7 @@ class TestStreamingErrorPathMetricsEmission:
                 "http://secondary:9000/v1/chat/completions",
             ]
             assert b"fallback ok" in b"".join(chunks)
+            assert admitted_routes == ["secondary"]
             fallbacks = [event for event in captured_events if event.type == "execution.chat.fallback"]
             assert len(fallbacks) == 1
             decision = fallbacks[0].data
@@ -273,41 +284,54 @@ class TestStreamingErrorPathMetricsEmission:
             primary = Route(name="primary", pattern="primary", model="primary-model")
             secondary = Route(name="secondary", pattern="secondary", model="secondary-model")
             fallback = UpstreamAttempt(
-                route=secondary, route_name="secondary", model="secondary-model",
+                route=secondary,
+                route_name="secondary",
+                model="secondary-model",
                 upstream_url="http://secondary:9000",
                 endpoint_url="http://secondary:9000/v1/chat/completions",
-                upstream_headers={}, request_timeout=10.0,
+                upstream_headers={},
+                request_timeout=10.0,
             )
             chunks = []
             async for chunk in process_streaming_request(
-                url="http://primary:8000/v1/chat/completions", client=Client(),
+                url="http://primary:8000/v1/chat/completions",
+                client=Client(),
                 payload={"model": "primary-model", "messages": [], "stream": True},
-                route_headers={}, route=primary, req_id="fallback-http", request_timeout=10.0,
-                fallback_attempts=[object(), fallback], visited_models=None,
-                upstream_model="primary-model", is_passthrough=False,
-                transform_reasoning_content=False, add_empty_content_when_reasoning_only=False,
-                reasoning_placeholder="", t_start=0.0, dispatcher=dispatcher,
+                route_headers={},
+                route=primary,
+                req_id="fallback-http",
+                request_timeout=10.0,
+                fallback_attempts=[object(), fallback],
+                visited_models=None,
+                upstream_model="primary-model",
+                is_passthrough=False,
+                transform_reasoning_content=False,
+                add_empty_content_when_reasoning_only=False,
+                reasoning_placeholder="",
+                t_start=0.0,
+                dispatcher=dispatcher,
             ):
                 chunks.append(chunk)
 
             assert b"fallback ok" in b"".join(chunks)
-            fallback_event = next(
-                event for event in captured_events if event.type == "execution.chat.fallback"
-            )
+            fallback_event = next(event for event in captured_events if event.type == "execution.chat.fallback")
             assert fallback_event.data == {
-                "from_route": "primary", "from_model": "primary-model",
+                "from_route": "primary",
+                "from_model": "primary-model",
                 "from_upstream_url": "http://primary:8000/v1/chat/completions",
                 "from_timeout_s": 10.0,
-                "to_route": "secondary", "to_model": "secondary-model",
+                "to_route": "secondary",
+                "to_model": "secondary-model",
                 "to_upstream_url": "http://secondary:9000/v1/chat/completions",
                 "to_timeout_s": 10.0,
-                "attempt": 1, "total_attempts": 2, "reason": "http_status",
-                "status": 404, "error_type": None,
+                "attempt": 1,
+                "total_attempts": 2,
+                "reason": "http_status",
+                "status": 404,
+                "error_type": None,
                 "error": '{"error":{"code":"model_not_found","message":"unknown model"}}',
             }
-            recovered_error = next(
-                event for event in captured_events if event.type == "execution.chat.upstream_error"
-            )
+            recovered_error = next(event for event in captured_events if event.type == "execution.chat.upstream_error")
             assert recovered_error.level == "BASIC"
             assert recovered_error.data["recovered"] is True
             assert recovered_error.data["attempt"] == 1
@@ -353,20 +377,32 @@ class TestStreamingErrorPathMetricsEmission:
             primary = Route(name="primary", pattern="primary", model="primary-model")
             secondary = Route(name="secondary", pattern="secondary", model="secondary-model")
             fallback = UpstreamAttempt(
-                route=secondary, route_name="secondary", model="secondary-model",
+                route=secondary,
+                route_name="secondary",
+                model="secondary-model",
                 upstream_url="http://secondary:9000",
                 endpoint_url="http://secondary:9000/v1/chat/completions",
-                upstream_headers={}, request_timeout=10.0,
+                upstream_headers={},
+                request_timeout=10.0,
             )
             chunks = []
             async for chunk in process_streaming_request(
-                url="http://primary:8000/v1/chat/completions", client=Client(),
+                url="http://primary:8000/v1/chat/completions",
+                client=Client(),
                 payload={"model": "primary-model", "messages": [], "stream": True},
-                route_headers={}, route=primary, req_id="client-error-stream", request_timeout=10.0,
-                fallback_attempts=[object(), fallback], visited_models=None,
-                upstream_model="primary-model", is_passthrough=False,
-                transform_reasoning_content=False, add_empty_content_when_reasoning_only=False,
-                reasoning_placeholder="", t_start=0.0, dispatcher=dispatcher,
+                route_headers={},
+                route=primary,
+                req_id="client-error-stream",
+                request_timeout=10.0,
+                fallback_attempts=[object(), fallback],
+                visited_models=None,
+                upstream_model="primary-model",
+                is_passthrough=False,
+                transform_reasoning_content=False,
+                add_empty_content_when_reasoning_only=False,
+                reasoning_placeholder="",
+                t_start=0.0,
+                dispatcher=dispatcher,
             ):
                 chunks.append(chunk)
 
@@ -374,13 +410,10 @@ class TestStreamingErrorPathMetricsEmission:
             response = b"".join(chunks)
             # OpenAI SSE-compatible error payload followed by the terminal marker.
             assert response.startswith(b"data: {")
-            sse_payload = response.split(b"\n\n", 1)[0][len(b"data: "):]
+            sse_payload = response.split(b"\n\n", 1)[0][len(b"data: ") :]
             assert json.loads(sse_payload) == json.loads(error_body)
             assert not [event for event in captured_events if event.type == "execution.chat.fallback"]
-            upstream_error = next(
-                event for event in captured_events
-                if event.type == "execution.chat.upstream_error"
-            )
+            upstream_error = next(event for event in captured_events if event.type == "execution.chat.upstream_error")
             assert upstream_error.data.get("recovered", False) is False
             assert upstream_error.data["body"] == error_body.decode()
 
@@ -457,22 +490,15 @@ class TestStreamingErrorPathMetricsEmission:
                 chunks.append(chunk)
 
             # Find the performance event among captured events
-            perf_events = [
-                e for e in captured_events
-                if e.type == "execution.performance.request_complete"
-            ]
+            perf_events = [e for e in captured_events if e.type == "execution.performance.request_complete"]
 
-            assert len(perf_events) == 1, (
-                f"Expected exactly 1 performance event on error path, got {len(perf_events)}"
-            )
+            assert len(perf_events) == 1, f"Expected exactly 1 performance event on error path, got {len(perf_events)}"
 
             event = perf_events[0]
             data = event.data
 
             # Verify error-path specific fields
-            assert data["finish_reason"] == "error", (
-                f"finish_reason should be 'error', got {data.get('finish_reason')}"
-            )
+            assert data["finish_reason"] == "error", f"finish_reason should be 'error', got {data.get('finish_reason')}"
             assert data["completion_tokens_source"] == "missing", (
                 f"completion_tokens_source should be 'missing', got {data.get('completion_tokens_source')}"
             )
@@ -480,7 +506,7 @@ class TestStreamingErrorPathMetricsEmission:
             assert data["req_id"] == "test-req-error-002"
             assert data["model"] == "test-model"
 
-            print(f"✓ Direct upstream error path emitted metrics event:")
+            print("✓ Direct upstream error path emitted metrics event:")
             print(f"  - finish_reason: {data['finish_reason']}")
             print(f"  - completion_tokens_source: {data['completion_tokens_source']}")
             print(f"  - stream: {data['stream']}")
@@ -533,12 +559,10 @@ class TestStreamingErrorPathPerformanceConsumer:
 
             # Find the JSONL file for this route
             jsonl_files = list(perf_dir.glob("*.requests.jsonl"))
-            assert len(jsonl_files) == 1, (
-                f"Expected exactly 1 JSONL file, found {len(jsonl_files)}"
-            )
+            assert len(jsonl_files) == 1, f"Expected exactly 1 JSONL file, found {len(jsonl_files)}"
 
             # Read and verify the record
-            with open(jsonl_files[0], 'r') as f:
+            with open(jsonl_files[0], "r") as f:
                 lines = [line for line in f if line.strip()]
                 records = [json.loads(line) for line in lines]
 
@@ -552,7 +576,7 @@ class TestStreamingErrorPathPerformanceConsumer:
             assert record["req_id"] == "test-req-error-consumer-001"
             assert record["elapsed_ms"] == 150.0
 
-            print(f"✓ PerformanceConsumer captured error metrics:")
+            print("✓ PerformanceConsumer captured error metrics:")
             print(f"  - finish_reason: {record['finish_reason']}")
             print(f"  - completion_tokens_source: {record['completion_tokens_source']}")
             print(f"  - JSONL file: {jsonl_files[0].name}")
@@ -563,7 +587,6 @@ class TestStreamingErrorPathParityWithNonStreaming:
 
     def test_error_path_fields_match_non_streaming_pattern(self):
         """Streaming error path uses same field values as non-streaming error path."""
-        from keeprollming.endpoints.chat_completions import _record_final_metrics
 
         # Non-streaming error path pattern (from chat_completions.py)
         non_streaming_error_metrics = {
@@ -599,23 +622,21 @@ class TestStreamingErrorPathParityWithNonStreaming:
         # Key parity fields that must match between streaming and non-streaming error paths
         parity_fields = [
             "completion_tokens_source",  # both "missing"
-            "completion_tokens",         # both None
-            "prompt_tokens",             # both None
-            "total_tokens",              # both None
-            "ttft_ms",                   # both None
+            "completion_tokens",  # both None
+            "prompt_tokens",  # both None
+            "total_tokens",  # both None
+            "ttft_ms",  # both None
         ]
 
         for field in parity_fields:
             ns_val = non_streaming_error_metrics[field]
             st_val = streaming_error_data[field]
-            assert ns_val == st_val, (
-                f"Parity violation on '{field}': non-streaming={ns_val}, streaming={st_val}"
-            )
+            assert ns_val == st_val, f"Parity violation on '{field}': non-streaming={ns_val}, streaming={st_val}"
 
         # finish_reason differs in format but both indicate error
         assert non_streaming_error_metrics["finish_reason"] is not None
         assert streaming_error_data["finish_reason"] == "error"
 
-        print(f"✓ Streaming/non-streaming error path parity verified:")
+        print("✓ Streaming/non-streaming error path parity verified:")
         for field in parity_fields:
             print(f"  - {field}: {streaming_error_data[field]}")

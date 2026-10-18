@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .config import (
     CONFIG,
-    DEFAULTS,  # compatibility seam patched by summary integration tests
+    DEFAULTS,  # noqa: F401 — compatibility seam patched by summary integration tests
 )
 from .observability import events_app as _app
 from .observability import events_request as _req_events
@@ -177,6 +177,7 @@ async def lifespan(app: FastAPI):
     _route_status_registry = RouteStatusRegistry()
     await asyncio.to_thread(_route_status_registry.seed_from_performance_logs, perf_logs_dir)
     _event_dispatcher.subscribe("execution.chat", _route_status_registry)
+    _event_dispatcher.subscribe("execution.routing", _route_status_registry)
     _event_dispatcher.subscribe("execution.streaming", _route_status_registry)
     _event_dispatcher.subscribe("execution.performance", _route_status_registry)
     _event_dispatcher.subscribe("request.lifecycle", _route_status_registry)
@@ -219,7 +220,8 @@ async def lifespan(app: FastAPI):
     persistence_redactor = ZeroContentRedactor() if privacy_mode else NoOpRedactor()
     body_capture_policy = CONFIG.get("body_capture", {}).get("policy", "errors_only")
     body_capture_consumer = BodyCaptureConsumer(
-        policy=body_capture_policy, redactor=persistence_redactor,
+        policy=body_capture_policy,
+        redactor=persistence_redactor,
     )
 
     # Subscribe to execution.* and request.* namespaces for error events
@@ -251,7 +253,9 @@ async def lifespan(app: FastAPI):
     )
 
     default_projectors = create_default_projectors(
-        log_dir, observability_config.get("projectors"), privacy_mode=privacy_mode,
+        log_dir,
+        observability_config.get("projectors"),
+        privacy_mode=privacy_mode,
     )
     projector_queue_size = observability_config.get("projector_queue_size", 2048)
     queued_projectors = await start_queued_default_projectors(
@@ -293,9 +297,7 @@ async def lifespan(app: FastAPI):
 
     # Keep ownership of the watcher so SIGTERM can await a clean cancellation
     # instead of leaving it for the event loop to tear down implicitly.
-    config_watcher_task = asyncio.create_task(
-        _config_watcher(), name="keeprollming-config-watcher"
-    )
+    config_watcher_task = asyncio.create_task(_config_watcher(), name="keeprollming-config-watcher")
 
     _app.emit_starting(message="Starting...", dispatcher=_event_dispatcher)
     try:
@@ -524,10 +526,7 @@ class RequestLifecycleMiddleware:
             await self.app(scope, receive, send)
             return
 
-        headers = {
-            key.decode("latin-1").lower(): value.decode("latin-1")
-            for key, value in scope.get("headers", [])
-        }
+        headers = {key.decode("latin-1").lower(): value.decode("latin-1") for key, value in scope.get("headers", [])}
         state = scope.setdefault("state", {})
         req_id = state.get("req_id") or headers.get("x-request-id") or uuid.uuid4().hex[:8]
         state["req_id"] = req_id
@@ -546,11 +545,7 @@ class RequestLifecycleMiddleware:
             nonlocal status_code, completed
             if message.get("type") == "http.response.start":
                 status_code = int(message["status"])
-            elif (
-                message.get("type") == "http.response.body"
-                and not message.get("more_body", False)
-                and not completed
-            ):
+            elif message.get("type") == "http.response.body" and not message.get("more_body", False) and not completed:
                 completed = True
                 _req_events.emit_completed(req_id=req_id, status=status_code or 200)
             await send(message)
@@ -576,9 +571,7 @@ async def _read_json_request(req: Request) -> Any:
     if declared_size:
         try:
             if int(declared_size) > max_body_bytes:
-                raise RequestBodyTooLargeError(
-                    f"Request body exceeds the {max_body_bytes}-byte limit"
-                )
+                raise RequestBodyTooLargeError(f"Request body exceeds the {max_body_bytes}-byte limit")
         except ValueError as exc:
             if isinstance(exc, RequestBodyTooLargeError):
                 raise
@@ -592,9 +585,7 @@ async def _read_json_request(req: Request) -> Any:
     async for chunk in req.stream():
         received_bytes += len(chunk)
         if received_bytes > max_body_bytes:
-            raise RequestBodyTooLargeError(
-                f"Request body exceeds the {max_body_bytes}-byte limit"
-            )
+            raise RequestBodyTooLargeError(f"Request body exceeds the {max_body_bytes}-byte limit")
         chunks.append(chunk)
     return json.loads(b"".join(chunks))
 
@@ -636,73 +627,176 @@ async def health_check():
 
 
 @app.get("/metrics")
-async def get_metrics():
+async def get_metrics(req: Request):
     """Metrics endpoint - delegates to metrics module."""
+    from .auth import client_access_error_response, is_request_client_allowed
+
+    headers = dict(req.headers.items())
+    if not is_request_client_allowed(req.client.host if req.client else None, headers):
+        return client_access_error_response()
     from .metrics import METRICS_COLLECTOR
 
     return METRICS_COLLECTOR.get_system_metrics()
 
 
 @app.get("/routes", include_in_schema=False)
-async def get_routes_status():
+async def get_routes_status(req: Request):
     """Return private, dashboard-oriented state for all public configured routes."""
+    from .auth import client_access_error_response, is_request_client_allowed
+
+    headers = dict(req.headers.items())
+    if not is_request_client_allowed(req.client.host if req.client else None, headers):
+        return client_access_error_response()
     from . import config as runtime_config
-    from .config import resolve_route_settings
+    from .admission import get_route_admission_controller
     from .circuit_breaker import get_circuit_breaker_registry
+    from .config import resolve_route_settings
+    from .routing.balancing import parse_balance_targets
+    from .routing.resources import backend_resource_key
     from .routing.router import resolve_inherited_route
 
     registry = get_route_status_registry()
     circuit_registry = get_circuit_breaker_registry()
+    admission_controller = get_route_admission_controller()
     routes_by_name = {route.name: route for route in runtime_config.USER_ROUTES}
+
+    def balance_policy_projection(route: Any) -> dict[str, Any] | None:
+        """Project a policy, including nested selectors, without runtime state."""
+        if not isinstance(route.balance, dict) or "targets" not in route.balance:
+            return None
+        policy: dict[str, Any] = {"targets": route.balance.get("targets")}
+        preserved_overrides = route.balance.get("preserve_overrides")
+        if preserved_overrides is not None:
+            policy["preserve_overrides"] = preserved_overrides
+        preserved_filters = route.balance.get("preserve_filters")
+        if preserved_filters is not None:
+            policy["preserve_filters"] = preserved_filters
+        targets = parse_balance_targets(route.balance, route_name=route.name)
+        if targets:
+            policy["resolved_targets"] = [target_projection(target.route_name, target.priority) for target in targets]
+        return policy
+
+    def target_projection(target_name: str, priority: int) -> dict[str, Any]:
+        """Describe one concrete balance target without exposing request data."""
+        target = routes_by_name[target_name]
+        target_resolved = resolve_inherited_route(target, routes_by_name, defaults=runtime_config.DEFAULTS)
+        target_ctx_len, target_max_tokens = resolve_route_settings(target_resolved, {}, runtime_config.DEFAULTS)
+        target_dynamic_model = bool(target_resolved.passthrough_enabled and target_resolved.model_pattern)
+        target_resource = backend_resource_key(target_resolved)
+        target_resource_name = str(target_resource) if target_resource is not None else None
+        target_balance_policy = balance_policy_projection(target_resolved)
+        target_is_balanced = bool(target_balance_policy and target_balance_policy["targets"])
+        projection = {
+            "route": target_name,
+            "priority": priority,
+            "upstream_url": (
+                None if target_is_balanced else target_resolved.upstream_url or runtime_config.UPSTREAM_BASE_URL
+            ),
+            "upstream_model": (None if (target_dynamic_model or target_is_balanced) else target_resolved.model),
+            "model_mode": (
+                "balanced" if target_is_balanced else "client_supplied" if target_dynamic_model else "configured"
+            ),
+            "capabilities": list(target_resolved.capabilities or []),
+            "ctx_len": target_ctx_len,
+            "max_tokens": target_max_tokens,
+            "resource": target_resource_name,
+            "admission": {
+                "max_concurrent": target_resolved.max_concurrent,
+                "routing_priority": target_resolved.routing_priority,
+                "queue_timeout_ms": (
+                    round(float(target_resolved.queue_timeout) * 1000.0)
+                    if target_resolved.queue_timeout is not None
+                    else 0
+                ),
+                "queue_aging": target_resolved.queue_aging,
+                "deadline_policy": target_resolved.deadline_policy,
+                "resource": admission_controller.snapshot(
+                    route_name=target_name,
+                    max_concurrent=target_resolved.max_concurrent,
+                    resource_key=target_resource_name,
+                ),
+            },
+            "circuit_breaker": {
+                "enabled": bool(target_resolved.circuit_breaker_enabled),
+                "failure_threshold": target_resolved.failure_threshold,
+                "recovery_timeout_ms": round(float(target_resolved.recovery_timeout) * 1000.0),
+                **circuit_registry.snapshot(
+                    target_name,
+                    resource_key=target_resource_name,
+                ),
+            },
+        }
+        if target_balance_policy is not None:
+            projection["balance_policy"] = target_balance_policy
+        return projection
+
     routes: list[dict[str, Any]] = []
     for route in sorted(runtime_config.USER_ROUTES, key=lambda item: item.name):
         if route._is_private:
             continue
-        resolved = resolve_inherited_route(
-            route, routes_by_name, defaults=runtime_config.DEFAULTS
-        )
-        ctx_len, max_tokens = resolve_route_settings(
-            resolved, {}, runtime_config.DEFAULTS
-        )
+        resolved = resolve_inherited_route(route, routes_by_name, defaults=runtime_config.DEFAULTS)
+        ctx_len, max_tokens = resolve_route_settings(resolved, {}, runtime_config.DEFAULTS)
         dynamic_model = bool(resolved.passthrough_enabled and resolved.model_pattern)
-        status = registry.snapshot(route.name) if registry is not None else {
-            "activity": [],
-            "errors": [],
-            "queued_requests": [],
-            "pending_requests": [],
-            "active_requests": [],
-            "performance": {
-                "samples": 0,
-                "avg_prompt_tps": None,
-                "avg_completion_tps": None,
-                "avg_ttft_ms": None,
-                "avg_elapsed_ms": None,
-            },
-        }
-        routes.append({
-            "name": route.name,
-            "upstream_url": resolved.upstream_url or runtime_config.UPSTREAM_BASE_URL,
-            "upstream_model": None if dynamic_model else resolved.model,
-            "model_mode": "client_supplied" if dynamic_model else "configured",
-            "capabilities": list(resolved.capabilities or []),
-            "ctx_len": ctx_len,
-            "max_tokens": max_tokens,
-            "admission": {
-                "max_concurrent": resolved.max_concurrent,
-                "queue_timeout_ms": (
-                    round(float(resolved.queue_timeout) * 1000.0)
-                    if resolved.queue_timeout is not None
-                    else 0
-                ),
-            },
-            "circuit_breaker": {
-                "enabled": bool(resolved.circuit_breaker_enabled),
-                "failure_threshold": resolved.failure_threshold,
-                "recovery_timeout_ms": round(float(resolved.recovery_timeout) * 1000.0),
-                **circuit_registry.snapshot(route.name),
-            },
-            **status,
-        })
+        resource = backend_resource_key(resolved)
+        is_balanced = isinstance(resolved.balance, dict) and bool(resolved.balance.get("targets"))
+        status = (
+            registry.snapshot(route.name)
+            if registry is not None
+            else {
+                "activity": [],
+                "errors": [],
+                "queued_requests": [],
+                "pending_requests": [],
+                "active_requests": [],
+                "performance": {
+                    "samples": 0,
+                    "avg_prompt_tps": None,
+                    "avg_completion_tps": None,
+                    "avg_ttft_ms": None,
+                    "avg_elapsed_ms": None,
+                },
+                "balance": None,
+            }
+        )
+        balance_policy = balance_policy_projection(resolved)
+        routes.append(
+            {
+                "name": route.name,
+                # A selector has no one truthful static backend. Its aggregate
+                # target choices are exposed separately in ``balance`` below.
+                "upstream_url": None if is_balanced else (resolved.upstream_url or runtime_config.UPSTREAM_BASE_URL),
+                "upstream_model": None if (dynamic_model or is_balanced) else resolved.model,
+                "model_mode": ("balanced" if is_balanced else "client_supplied" if dynamic_model else "configured"),
+                "capabilities": list(resolved.capabilities or []),
+                "ctx_len": ctx_len,
+                "max_tokens": max_tokens,
+                "admission": {
+                    "max_concurrent": resolved.max_concurrent,
+                    "routing_priority": resolved.routing_priority,
+                    "queue_timeout_ms": (
+                        round(float(resolved.queue_timeout) * 1000.0) if resolved.queue_timeout is not None else 0
+                    ),
+                    "queue_aging": resolved.queue_aging,
+                    "deadline_policy": resolved.deadline_policy,
+                    "resource": admission_controller.snapshot(
+                        route_name=route.name,
+                        max_concurrent=resolved.max_concurrent,
+                        resource_key=str(resource) if resource is not None else None,
+                    ),
+                },
+                "circuit_breaker": {
+                    "enabled": bool(resolved.circuit_breaker_enabled),
+                    "failure_threshold": resolved.failure_threshold,
+                    "recovery_timeout_ms": round(float(resolved.recovery_timeout) * 1000.0),
+                    **circuit_registry.snapshot(
+                        route.name,
+                        resource_key=str(resource) if resource is not None else None,
+                    ),
+                },
+                "balance_policy": balance_policy,
+                **status,
+            }
+        )
 
     return {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -714,22 +808,28 @@ async def get_routes_status():
 @app.get("/v1/models")
 async def list_models(req: Request):
     """List available models (routes)."""
-    from .auth import is_authorized
-    from .config import DEFAULTS, USER_ROUTES
+    from . import config as runtime_config
+    from .auth import is_authorized, is_request_client_allowed
     from .routing import resolve_inherited_route
 
     models = []
 
     # Add configured routes (public only) as "models"
-    routes_by_name = {route.name: route for route in USER_ROUTES}
+    routes_by_name = {route.name: route for route in runtime_config.USER_ROUTES}
     request_headers = {key: value for key, value in req.headers.items()}
-    for route in sorted(USER_ROUTES, key=lambda r: r.name):
+    for route in sorted(runtime_config.USER_ROUTES, key=lambda r: r.name):
         # Skip private routes and template/base routes
         if route._is_private or route.name.startswith("base/"):
             continue
 
-        resolved = resolve_inherited_route(route, routes_by_name, defaults=DEFAULTS)
+        resolved = resolve_inherited_route(route, routes_by_name, defaults=runtime_config.DEFAULTS)
         if not is_authorized(request_headers, resolved.api_keys or []):
+            continue
+        if not is_request_client_allowed(
+            req.client.host if req.client else None,
+            request_headers,
+            mode=resolved.client_access,
+        ):
             continue
 
         # Build config dict with resolved route details
@@ -739,9 +839,7 @@ async def list_models(req: Request):
         route_config = {
             "upstream_model": route.model if route.model is not None else None,
             "max_tokens": route.max_tokens if route.max_tokens is not None else None,
-            "summary_enabled": (
-                route.summary_enabled if route.summary_enabled is not None else False
-            ),
+            "summary_enabled": (route.summary_enabled if route.summary_enabled is not None else False),
             "passthrough_enabled": getattr(route, "passthrough_enabled", False),
             "pattern": route.pattern,
         }
@@ -750,7 +848,7 @@ async def list_models(req: Request):
 
         ctx_len = route.ctx_len
         if ctx_len is None:
-            ctx_len = DEFAULTS.ctx_len if hasattr(DEFAULTS, "ctx_len") else 4096
+            ctx_len = runtime_config.DEFAULTS.ctx_len if hasattr(runtime_config.DEFAULTS, "ctx_len") else 4096
 
         models.append(
             {
@@ -798,7 +896,7 @@ async def chat_completions(req: Request):
     # lifetime and observes ``http.disconnect`` itself.  A second
     # ``Request.receive()`` consumer here races that listener, so a disconnect
     # may be consumed by the wrong task and leave the body stream alive.
-    result = await process_chat_request(payload, headers, req_id)
+    result = await process_chat_request(payload, headers, req_id, req.client.host if req.client else None)
 
     # Handle StreamingResponse (async iterators)
     if hasattr(result, "__aiter__"):
@@ -837,5 +935,5 @@ async def embeddings(req: Request):
     headers = {k: v for k, v in req.headers.items()}
     req_id = getattr(req.state, "req_id", "-")
 
-    result = await embeddings_handler(payload, headers, req_id)
+    result = await embeddings_handler(payload, headers, req_id, req.client.host if req.client else None)
     return result

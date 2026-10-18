@@ -1,12 +1,12 @@
 """Unit tests for the declarative V2 finalizer factory."""
 
-from keeprollming.streaming.finalizers import ToolCallFinalizer
 from keeprollming.filters.nudge.stream import NudgeContinuationFinalizer
 from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
-from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 from keeprollming.filters.timestamp.stream import TimestampFinalizer
+from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 from keeprollming.filters.tool_rewrite.stream import ToolRewriteFinalizer
 from keeprollming.streaming.finalizer_factory import build_finalizers
+from keeprollming.streaming.finalizers import ToolCallFinalizer
 
 
 def _by_type(finalizers, type_):
@@ -20,9 +20,11 @@ def test_factory_always_includes_protocol_finalizer():
 
 
 def test_factory_enables_progressive_exact_tls_without_disabling_tool_deltas():
-    finalizers = build_finalizers({
-        "model_tool_loop_stopper": {"enabled": True},
-    })
+    finalizers = build_finalizers(
+        {
+            "model_tool_loop_stopper": {"enabled": True},
+        }
+    )
     tool_calls = _by_type(finalizers, ToolCallFinalizer)[0]
     tls = _by_type(finalizers, TLSFinalizer)[0]
 
@@ -32,12 +34,14 @@ def test_factory_enables_progressive_exact_tls_without_disabling_tool_deltas():
 
 
 def test_factory_keeps_fuzzy_or_ab_tls_terminally_buffered():
-    finalizers = build_finalizers({
-        "model_tool_loop_stopper": {
-            "enabled": True,
-            "fuzzy_threshold": 0.9,
-        },
-    })
+    finalizers = build_finalizers(
+        {
+            "model_tool_loop_stopper": {
+                "enabled": True,
+                "fuzzy_threshold": 0.9,
+            },
+        }
+    )
     tool_calls = _by_type(finalizers, ToolCallFinalizer)[0]
     tls = _by_type(finalizers, TLSFinalizer)[0]
 
@@ -46,12 +50,14 @@ def test_factory_keeps_fuzzy_or_ab_tls_terminally_buffered():
 
 
 def test_factory_uses_enabled_route_configuration_only():
-    finalizers = build_finalizers({
-        "tool_rewrite": {"enabled": True, "supported_patterns": ["nested"]},
-        "timestamp": {"enabled": True, "timezone": "Europe/Rome"},
-        "model_nudge": {"enabled": True, "nudge_message": "Continue now."},
-        "model_tool_loop_stopper": {"enabled": False},
-    })
+    finalizers = build_finalizers(
+        {
+            "tool_rewrite": {"enabled": True, "supported_patterns": ["nested"]},
+            "timestamp": {"enabled": True, "timezone": "Europe/Rome"},
+            "model_nudge": {"enabled": True, "nudge_message": "Continue now."},
+            "model_tool_loop_stopper": {"enabled": False},
+        }
+    )
 
     assert len(_by_type(finalizers, ToolRewriteFinalizer)) == 1
     assert _by_type(finalizers, ToolRewriteFinalizer)[0].supported_patterns == ["nested"]
@@ -61,22 +67,26 @@ def test_factory_uses_enabled_route_configuration_only():
 
 
 def test_factory_orders_finalizers_by_protocol_priority():
-    finalizers = build_finalizers({
-        "tool_rewrite": {"enabled": True},
-        "timestamp": {"enabled": True},
-        "model_nudge": {"enabled": True},
-        "model_tool_loop_stopper": {"enabled": True},
-        "reasoning_loop_stopper": {"enabled": True},
-    })
+    finalizers = build_finalizers(
+        {
+            "tool_rewrite": {"enabled": True},
+            "timestamp": {"enabled": True},
+            "model_nudge": {"enabled": True},
+            "model_tool_loop_stopper": {"enabled": True},
+            "reasoning_loop_stopper": {"enabled": True},
+        }
+    )
     assert [finalizer.priority for finalizer in finalizers] == [15, 20, 40, 50, 55, 60]
 
 
 def test_factory_honors_explicit_route_priority_override():
     """An explicit route priority overrides only the named module default."""
-    finalizers = build_finalizers({
-        "timestamp": {"enabled": True, "priority": 12},
-        "tool_rewrite": {"enabled": True},
-    })
+    finalizers = build_finalizers(
+        {
+            "timestamp": {"enabled": True, "priority": 12},
+            "tool_rewrite": {"enabled": True},
+        }
+    )
 
     assert [type(finalizer) for finalizer in finalizers] == [
         TimestampFinalizer,
@@ -87,16 +97,18 @@ def test_factory_honors_explicit_route_priority_override():
 
 
 def test_factory_maps_tls_route_configuration():
-    finalizers = build_finalizers({
-        "model_tool_loop_stopper": {
-            "enabled": True,
-            "max_attempts": 5,
-            "fuzzy_threshold": 0.9,
-            "ab_loop_detection": True,
-            "tls_message": "Direct answer.",
-            "nudge_message": "No more tools.",
-        },
-    })
+    finalizers = build_finalizers(
+        {
+            "model_tool_loop_stopper": {
+                "enabled": True,
+                "max_attempts": 5,
+                "fuzzy_threshold": 0.9,
+                "ab_loop_detection": True,
+                "tls_message": "Direct answer.",
+                "nudge_message": "No more tools.",
+            },
+        }
+    )
     tls = _by_type(finalizers, TLSFinalizer)[0]
     assert (tls.max_attempts, tls.fuzzy_threshold, tls.detect_ab_loop) == (5, 0.9, True)
     assert tls.tls_message == "Direct answer."
@@ -104,16 +116,20 @@ def test_factory_maps_tls_route_configuration():
 
 
 def test_factory_maps_rls_route_configuration():
-    finalizers = build_finalizers({
-        "reasoning_loop_stopper": {
-            "enabled": True,
-            "max_attempts": 4,
-            "cache_size": 3,
-            "rls_message": "Answer now.",
-            "detect_within_stream_loop": True,
-        },
-    })
+    finalizers = build_finalizers(
+        {
+            "reasoning_loop_stopper": {
+                "enabled": True,
+                "max_attempts": 4,
+                "cache_size": 3,
+                "rls_message": "Answer now.",
+                "detect_within_stream_loop": True,
+            },
+        }
+    )
     rls = _by_type(finalizers, RLSFinalizer)[0]
     assert (rls.max_attempts, rls.nudge_message, rls.detect_within_stream_loop) == (
-        4, "Answer now.", True,
+        4,
+        "Answer now.",
+        True,
     )

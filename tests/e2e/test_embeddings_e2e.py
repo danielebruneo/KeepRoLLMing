@@ -3,7 +3,6 @@
 Verifies basic functionality, error handling, and route resolution.
 """
 
-import httpx
 import pytest
 
 
@@ -53,7 +52,9 @@ class TestEmbeddingsE2E:
         # Accept either 200 (with empty data) or 422 (validation error)
         assert resp.status_code in (200, 422), resp.text
 
-    def test_embeddings_route_resolution(self, orchestrator_server, backend_target, backend_client, configure_fake_backend):
+    def test_embeddings_route_resolution(
+        self, orchestrator_server, backend_target, backend_client, configure_fake_backend
+    ):
         """Embeddings uses route-specific upstream URL when configured."""
         # Just verify that a valid request goes through the orchestrator
         # to the fake backend and returns correctly

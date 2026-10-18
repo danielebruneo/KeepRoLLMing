@@ -1,14 +1,13 @@
 """Unit tests for configuration validation logic."""
 
 import pytest
-from typing import Any
 
 from keeprollming.routing import Route
-
 
 # ============================================================================
 # Test Data
 # ============================================================================
+
 
 def create_routes(**routes):
     """Helper to create a routes dict for testing."""
@@ -19,17 +18,18 @@ def create_routes(**routes):
 # Tests for resolve_inherited_route
 # ============================================================================
 
+
 def test_resolve_single_parent():
     """Test resolving a route with a single parent."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     routes = create_routes(
         parent=Route(name="parent", pattern="parent", upstream_url="http://parent.com", model="model-p"),
         child=Route(name="child", pattern="child", extends="parent", upstream_url=None, model=None),
     )
-    
+
     resolved = resolve_inherited_route(routes["child"], routes)
-    
+
     assert resolved.upstream_url == "http://parent.com"
     assert resolved.model == "model-p"
 
@@ -37,14 +37,20 @@ def test_resolve_single_parent():
 def test_resolve_child_overrides_parent():
     """Test that child settings override parent settings."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     routes = create_routes(
         parent=Route(name="parent", pattern="parent", upstream_url="http://parent.com", model="model-p"),
-        child=Route(name="child", pattern="child", extends="parent", upstream_url="http://child.com", model=None),
+        child=Route(
+            name="child",
+            pattern="child",
+            extends="parent",
+            upstream_url="http://child.com",
+            model=None,
+        ),
     )
-    
+
     resolved = resolve_inherited_route(routes["child"], routes)
-    
+
     assert resolved.upstream_url == "http://child.com"  # Child value wins
     assert resolved.model == "model-p"  # Inherited from parent
 
@@ -52,13 +58,13 @@ def test_resolve_child_overrides_parent():
 def test_resolve_multiple_extends():
     """Test resolving a route that extends multiple parents (comma-separated)."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     routes = create_routes(
         base=Route(name="base", pattern="base", upstream_url="http://base.com", model="model-base"),
         extra=Route(name="extra", pattern="extra", upstream_url=None, model="model-extra"),
         child=Route(name="child", pattern="child", extends="base,extra", upstream_url=None, model=None),
     )
-    
+
     resolved = resolve_inherited_route(routes["child"], routes)
 
     # Should inherit from base first (left-to-right merging)
@@ -67,47 +73,117 @@ def test_resolve_multiple_extends():
     assert resolved.model == "model-extra"
 
 
+def test_resolve_multiple_extends_merges_filter_modules_in_parent_order():
+    """A later partial filter map must not discard earlier parent modules."""
+    from keeprollming.routing import resolve_inherited_route
+
+    routes = create_routes(
+        bot=Route(
+            name="bot",
+            pattern="bot",
+            filters={
+                "model_tool_loop_stopper": {"enabled": True, "max_repeats": 2},
+                "reasoning_loop_stopper": {"enabled": True},
+                "tool_rewrite": {"enabled": False, "supported_patterns": ["base"]},
+            },
+        ),
+        balanced=Route(
+            name="balanced",
+            pattern="balanced",
+            filters={"tool_rewrite": {"enabled": True, "supported_patterns": ["balanced"]}},
+        ),
+        child=Route(
+            name="child",
+            pattern="child",
+            extends=["bot", "balanced"],
+            filters={"model_nudge": {"enabled": False}},
+        ),
+    )
+
+    resolved = resolve_inherited_route(routes["child"], routes)
+
+    assert resolved.filters == {
+        "model_tool_loop_stopper": {"enabled": True, "max_repeats": 2},
+        "reasoning_loop_stopper": {"enabled": True},
+        "tool_rewrite": {"enabled": True, "supported_patterns": ["balanced"]},
+        "model_nudge": {"enabled": False},
+    }
+
+
+def test_resolve_inherited_route_child_filter_overrides_same_parent_module():
+    from keeprollming.routing import resolve_inherited_route
+
+    routes = create_routes(
+        parent=Route(
+            name="parent",
+            pattern="parent",
+            filters={"model_tool_loop_stopper": {"enabled": True, "max_repeats": 2}},
+        ),
+        child=Route(
+            name="child",
+            pattern="child",
+            extends="parent",
+            filters={"model_tool_loop_stopper": {"enabled": False}},
+        ),
+    )
+
+    resolved = resolve_inherited_route(routes["child"], routes)
+
+    assert resolved.filters == {"model_tool_loop_stopper": {"enabled": False}}
+
+
 def test_resolve_circular_reference():
     """Test that circular references are detected and handled."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     routes = create_routes(
         a=Route(name="a", pattern="a", extends="b"),
         b=Route(name="b", pattern="b", extends="a"),
     )
-    
+
     # Should not raise an error, just return the route as-is
     resolved = resolve_inherited_route(routes["a"], routes)
-    
+
     assert resolved.name == "a"
 
 
 def test_resolve_missing_parent():
     """Test handling of missing parent routes."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     routes = create_routes(
         child=Route(name="child", pattern="child", extends="nonexistent"),
     )
-    
+
     # Should return child as-is with a warning
     resolved = resolve_inherited_route(routes["child"], routes)
-    
+
     assert resolved.name == "child"
 
 
 def test_resolve_chain_of_three():
     """Test resolving a chain: grandparent -> parent -> child."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     routes = create_routes(
-        grandparent=Route(name="grandparent", pattern="grandparent", upstream_url="http://gp.com", model="gp-model"),
-        parent=Route(name="parent", pattern="parent", extends="grandparent", upstream_url=None, model="p-model"),
+        grandparent=Route(
+            name="grandparent",
+            pattern="grandparent",
+            upstream_url="http://gp.com",
+            model="gp-model",
+        ),
+        parent=Route(
+            name="parent",
+            pattern="parent",
+            extends="grandparent",
+            upstream_url=None,
+            model="p-model",
+        ),
         child=Route(name="child", pattern="child", extends="parent", upstream_url=None, model=None),
     )
-    
+
     resolved = resolve_inherited_route(routes["child"], routes)
-    
+
     # Child inherits from parent, which inherits from grandparent
     assert resolved.upstream_url == "http://gp.com"  # From grandparent
     assert resolved.model == "p-model"  # Overridden by parent
@@ -116,14 +192,14 @@ def test_resolve_chain_of_three():
 def test_resolve_list_extends():
     """Test resolving a route with extends as a list (converted to comma string)."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     routes = create_routes(
         base=Route(name="base", pattern="base", upstream_url="http://base.com"),
         child=Route(name="child", pattern="child", extends=["base"], upstream_url=None),  # List format
     )
-    
+
     resolved = resolve_inherited_route(routes["child"], routes)
-    
+
     assert resolved.upstream_url == "http://base.com"
 
 
@@ -131,37 +207,38 @@ def test_resolve_list_extends():
 # Tests for validator functions
 # ============================================================================
 
+
 def test_validate_circular_reference_detection():
     """Test that circular references are detected in validation."""
-    from keeprollming.validator import check_circular_references, ValidationResult
-    
+    from keeprollming.validator import ValidationResult, check_circular_references
+
     routes_by_name = {
         "a": Route(name="a", pattern="a", extends="b"),
         "b": Route(name="b", pattern="b", extends="c"),
         "c": Route(name="c", pattern="c", extends="a"),  # Circular!
     }
-    
+
     result = ValidationResult()
     check_circular_references(routes_by_name, result)
-    
+
     assert len(result.errors) > 0
     assert any("circular" in error.lower() for error in result.errors)
 
 
 def test_validate_missing_upstream_url():
     """Test detection of missing upstream_url on non-private routes."""
-    from keeprollming.validator import validate_required_fields, ValidationResult
-    
+    from keeprollming.validator import ValidationResult, validate_required_fields
+
     routes_by_name = {
         "route1": Route(name="route1", pattern="route1", upstream_url="http://valid.com"),
         "route2": Route(name="route2", pattern="route2", upstream_url=None),  # Missing!
         "private_route": Route(name="private_route", pattern="private_route", upstream_url=None, _is_private=True),
     }
-    
+
     config = {"routes": {}}
     result = ValidationResult()
     validate_required_fields(config, routes_by_name, result)
-    
+
     # Should report route2 as missing upstream_url
     assert any("route2" in error and "upstream_url" in error for error in result.errors)
     # Should NOT report private_route
@@ -170,21 +247,98 @@ def test_validate_missing_upstream_url():
 
 def test_validate_inheritance_chain_resolution():
     """Test that inheritance chain resolution works correctly."""
-    from keeprollming.validator import validate_required_fields, ValidationResult
-    
+    from keeprollming.validator import ValidationResult, validate_required_fields
+
     routes_by_name = {
         "base": Route(name="base", pattern="base", upstream_url="http://base.com", model="model"),
         "child": Route(name="child", pattern="child", extends="base", upstream_url=None, model=None),
         "orphan": Route(name="orphan", pattern="orphan", upstream_url=None, model=None),
     }
-    
+
     config = {"routes": {}}
     result = ValidationResult()
     validate_required_fields(config, routes_by_name, result)
-    
+
     # child should pass because it inherits from base
     assert not any("child" in error for error in result.errors)
     # orphan should fail because it has no parent with upstream_url
+    assert any("orphan" in error and "upstream_url" in error for error in result.errors)
+
+
+def test_validate_balance_selector_does_not_require_static_upstream():
+    """Balanced routes resolve an upstream from their concrete targets."""
+    from keeprollming.validator import ValidationResult, validate_required_fields
+
+    routes = {
+        "backend": Route(
+            name="backend",
+            pattern="backend",
+            model="backend-model",
+            upstream_url="http://backend.test",
+        ),
+        "balanced": Route(
+            name="balanced",
+            pattern="balanced",
+            balance={"targets": ["backend"]},
+        ),
+    }
+    result = ValidationResult()
+
+    validate_required_fields({"routes": {}}, routes, result)
+
+    assert not any("balanced" in error for error in result.errors)
+
+
+def test_validate_passthrough_route_does_not_require_static_upstream():
+    """Passthrough routes dispatch dynamically without a configured URL."""
+    from keeprollming.validator import ValidationResult, validate_required_fields
+
+    routes = {
+        "passthrough": Route(
+            name="passthrough",
+            pattern="passthrough",
+            passthrough_enabled=True,
+        ),
+    }
+    result = ValidationResult()
+
+    validate_required_fields({"routes": {}}, routes, result)
+
+    assert not result.errors
+
+
+def test_validate_referenced_inheritance_template_does_not_require_upstream():
+    """An empty route used as an inheritance base is a valid template."""
+    from keeprollming.validator import ValidationResult, validate_required_fields
+
+    routes = {
+        "template": Route(name="template", pattern="template"),
+        "concrete": Route(
+            name="concrete",
+            pattern="concrete",
+            extends="template",
+            model="model",
+            upstream_url="http://backend.test",
+        ),
+    }
+    result = ValidationResult()
+
+    validate_required_fields({"routes": {}}, routes, result)
+
+    assert not any("template" in error for error in result.errors)
+
+
+def test_validate_unreferenced_empty_route_requires_upstream():
+    """An empty public route is invalid unless it is used as an extends base."""
+    from keeprollming.validator import ValidationResult, validate_required_fields
+
+    routes = {
+        "orphan": Route(name="orphan", pattern="orphan"),
+    }
+    result = ValidationResult()
+
+    validate_required_fields({"routes": {}}, routes, result)
+
     assert any("orphan" in error and "upstream_url" in error for error in result.errors)
 
 
@@ -192,16 +346,17 @@ def test_validate_inheritance_chain_resolution():
 # Integration tests
 # ============================================================================
 
+
 def test_full_validation_with_real_config():
     """Test validation against actual config.yaml."""
-    from keeprollming.config import load_user_routes, CONFIG
-    from keeprollming.validator import validate_config, ValidationResult
+    from keeprollming.config import CONFIG, load_user_routes
+    from keeprollming.validator import ValidationResult, validate_config
 
     user_routes = load_user_routes(CONFIG)
     routes_by_name = {route.name: route for route in user_routes}
-    
+
     result = validate_config(CONFIG, routes_by_name)
-    
+
     # At minimum, should complete without crashing and return a valid result
     assert isinstance(result, ValidationResult)
 

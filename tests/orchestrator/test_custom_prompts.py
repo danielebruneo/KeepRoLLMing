@@ -6,6 +6,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+
 import keeprollming.app as app_mod
 
 
@@ -38,7 +39,11 @@ class _FakeAsyncClient:
                 "created": 0,
                 "model": json.get("model", "unknown") if json else "unknown",
                 "choices": [
-                    {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "stop",
+                    }
                 ],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             },
@@ -48,9 +53,10 @@ class _FakeAsyncClient:
         class _FakeStreamCtx:
             async def __aenter__(self):
                 return self
+
             async def __aexit__(self, exc_type, exc, tb):
                 return None
-        
+
         return _FakeStreamCtx()
 
 
@@ -64,8 +70,9 @@ def client(monkeypatch) -> TestClient:
     async def _fake_ctx(_model: str) -> int:
         return 512
 
-    from keeprollming.endpoints import chat_completions
     import keeprollming.upstream as upstream
+    from keeprollming.endpoints import chat_completions
+
     monkeypatch.setattr(chat_completions, "http_client", _fake_http_client)
     monkeypatch.setattr(upstream, "get_ctx_len_for_model", _fake_ctx)
 
@@ -75,13 +82,14 @@ def client(monkeypatch) -> TestClient:
 @pytest.mark.non_parallelizable
 def test_custom_prompt_in_payload(client):
     """Test that custom prompt is parsed from request payload"""
-    response = client.post("/v1/chat/completions", json={
-        "model": "local/quick",
-        "messages": [
-            {"role": "user", "content": "test message"}
-        ],
-        "summary_prompt": "This is a custom prompt"
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "messages": [{"role": "user", "content": "test message"}],
+            "summary_prompt": "This is a custom prompt",
+        },
+    )
 
     # Should not fail with parsing errors
     assert response.status_code == 200, response.text
@@ -90,14 +98,15 @@ def test_custom_prompt_in_payload(client):
 @pytest.mark.non_parallelizable
 def test_custom_prompt_with_type(client):
     """Test that custom prompt works when both type and text are provided"""
-    response = client.post("/v1/chat/completions", json={
-        "model": "local/quick",
-        "messages": [
-            {"role": "user", "content": "test message"}
-        ],
-        "summary_prompt_type": "custom",
-        "summary_prompt": "This is a custom prompt"
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "messages": [{"role": "user", "content": "test message"}],
+            "summary_prompt_type": "custom",
+            "summary_prompt": "This is a custom prompt",
+        },
+    )
 
     # Should not fail with parsing errors
     assert response.status_code == 200
@@ -105,12 +114,10 @@ def test_custom_prompt_with_type(client):
 
 def test_default_behavior_without_custom_prompt(client):
     """Test that default behavior works when no custom prompt is provided"""
-    response = client.post("/v1/chat/completions", json={
-        "model": "local/quick",
-        "messages": [
-            {"role": "user", "content": "test message"}
-        ]
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "local/quick", "messages": [{"role": "user", "content": "test message"}]},
+    )
 
     # Should not fail with parsing errors
     assert response.status_code == 200
@@ -118,13 +125,14 @@ def test_default_behavior_without_custom_prompt(client):
 
 def test_passthrough_with_custom_prompt(client):
     """Test that passthrough mode works with custom prompt"""
-    response = client.post("/v1/chat/completions", json={
-        "model": "pass/test-model",
-        "messages": [
-            {"role": "user", "content": "test message"}
-        ],
-        "summary_prompt": "This is a custom prompt"
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "pass/test-model",
+            "messages": [{"role": "user", "content": "test message"}],
+            "summary_prompt": "This is a custom prompt",
+        },
+    )
 
     # Should not fail with parsing errors
     assert response.status_code == 200

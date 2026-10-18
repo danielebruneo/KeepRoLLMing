@@ -15,9 +15,7 @@ SCHEMA = FilterSettingsSchema({"prompt": str, "prompt_file": str, "override": bo
 def validate_settings(settings: Mapping[str, Any]) -> None:
     """Validate the mutually exclusive prompt-source settings."""
     if "prompt" in settings and "prompt_file" in settings:
-        raise ValueError(
-            "filter 'system_prompt' accepts either 'prompt' or 'prompt_file', not both"
-        )
+        raise ValueError("filter 'system_prompt' accepts either 'prompt' or 'prompt_file', not both")
     if "prompt_file" in settings:
         prompt_file = settings["prompt_file"]
         if not isinstance(prompt_file, str):
@@ -51,10 +49,7 @@ def materialize_prompt_file(
     try:
         content = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        raise ValueError(
-            "invalid system prompt file for route "
-            f"'{route_name}': {prompt_file!r} ({exc})"
-        ) from exc
+        raise ValueError(f"invalid system prompt file for route '{route_name}': {prompt_file!r} ({exc})") from exc
 
     result["prompt"] = content
     del result["prompt_file"]

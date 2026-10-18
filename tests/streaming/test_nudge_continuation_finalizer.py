@@ -15,11 +15,11 @@ unit contract only.
 
 from __future__ import annotations
 
-import re
-from typing import List
-
 import pytest
 
+from keeprollming.filters.nudge.stream import (
+    NudgeContinuationFinalizer,
+)
 from keeprollming.streaming.events import (
     AssistantTextDelta,
     Done,
@@ -31,10 +31,6 @@ from keeprollming.streaming.events import (
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer
-from keeprollming.filters.nudge.stream import (
-    NudgeContinuationFinalizer,
-    RecoveryDecision,
-)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -100,10 +96,13 @@ def test_lazy_response_detected_at_finalize():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert nudge.lazy_detected is True
     assert nudge.decision is not None
@@ -134,9 +133,12 @@ def test_lazy_response_preserve_output_so_far():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Partial answer:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Partial answer:"),
+        ],
+    )
 
     assert nudge.decision is not None
     assert nudge.decision.preserve_output_so_far is True
@@ -150,9 +152,12 @@ def test_lazy_response_accepted_prefix_included():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     assert nudge.decision is not None
     assert nudge.decision.diagnostics["detected_pattern"] == "Here is the list:"
@@ -166,9 +171,12 @@ def test_original_text_not_discarded():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Partial answer:"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Partial answer:"),
+        ],
+    )
 
     # accepted_prefix still holds the original text
     assert nudge.accepted_prefix == "Partial answer:"
@@ -194,10 +202,13 @@ def test_nonlazy_no_recovery_decision():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the complete answer."),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the complete answer."),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert nudge.lazy_detected is False
     assert nudge.decision is None
@@ -223,9 +234,12 @@ def test_original_output_preserved_after_finalize():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Partial answer:"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Partial answer:"),
+        ],
+    )
 
     assert nudge.accepted_prefix == "Partial answer:"
     text_events = [e for e in events if isinstance(e, AssistantTextDelta)]
@@ -250,14 +264,12 @@ def test_tool_call_delta_skips_nudge():
     )
     result1 = nudge.process_event(AssistantTextDelta(delta="Here is the list:"))
     assert result1 == [], "Text should be buffered"
-    result2 = nudge.process_event(
-        ToolCallDelta(index=0, id="call_1", name="echo", arguments_delta='{}')
-    )
+    result2 = nudge.process_event(ToolCallDelta(index=0, id="call_1", name="echo", arguments_delta="{}"))
     assert len(result2) == 1 and isinstance(result2[0], ToolCallDelta)
     result3 = nudge.process_event(Finish(reason="stop"))
     assert len(result3) == 1 and isinstance(result3[0], Finish)
 
-    text_events = _flush(nudge)
+    _flush(nudge)
     passthrough_events = nudge.get_passthrough_events()
 
     assert nudge.has_tool_call is True
@@ -317,11 +329,14 @@ def test_reasoning_text_delta_passes_through():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        ReasoningTextDelta(delta="I think the answer is:"),
-        AssistantTextDelta(delta="42"),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            ReasoningTextDelta(delta="I think the answer is:"),
+            AssistantTextDelta(delta="42"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert nudge.lazy_detected is False
     assert nudge.decision is None
@@ -344,10 +359,13 @@ def test_reasoning_only_no_crash():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        ReasoningTextDelta(delta="Let me think..."),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            ReasoningTextDelta(delta="Let me think..."),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert nudge.lazy_detected is False
     assert nudge.decision is None
@@ -367,11 +385,14 @@ def test_reasoning_with_lazy_assistant_text():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        ReasoningTextDelta(delta="I think:"),
-        AssistantTextDelta(delta="Here is the list:"),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            ReasoningTextDelta(delta="I think:"),
+            AssistantTextDelta(delta="Here is the list:"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert nudge.lazy_detected is True
     assert nudge.decision is not None
@@ -400,12 +421,15 @@ def test_multiple_assistant_chunks_accumulated():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here "),
-        AssistantTextDelta(delta="is "),
-        AssistantTextDelta(delta="the list:"),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here "),
+            AssistantTextDelta(delta="is "),
+            AssistantTextDelta(delta="the list:"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert nudge.lazy_detected is True
     assert nudge.decision is not None
@@ -454,9 +478,12 @@ def test_done_only_no_crash():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        Done(),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            Done(),
+        ],
+    )
 
     assert nudge.lazy_detected is False
     assert nudge.decision is None
@@ -472,10 +499,13 @@ def test_empty_assistant_text_no_crash():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta=""),
-        Finish(reason="stop"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta=""),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert nudge.lazy_detected is False
     assert nudge.decision is None
@@ -493,9 +523,12 @@ def test_max_attempts_in_decision():
         nudge_message="Continue.",
         max_attempts=5,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     assert nudge.decision is not None
     assert nudge.decision.max_attempts == 5
@@ -508,9 +541,12 @@ def test_attempt_index_in_decision():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     assert nudge.decision is not None
     assert nudge.decision.attempt_index == 0
@@ -535,18 +571,19 @@ def test_lazy_prefix_in_merge_plan_exactly_once():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     prefix = nudge.accepted_prefix  # "Here is the list:"
     continuation = " item 1, item 2."
     merged = _simulate_merge(prefix, continuation)
 
     assert merged == "Here is the list: item 1, item 2."
-    assert merged.count("Here is the list:") == 1, (
-        "Lazy prefix must appear exactly once in merged output"
-    )
+    assert merged.count("Here is the list:") == 1, "Lazy prefix must appear exactly once in merged output"
 
 
 def test_continuation_text_in_merge_plan_exactly_once():
@@ -563,17 +600,18 @@ def test_continuation_text_in_merge_plan_exactly_once():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     prefix = nudge.accepted_prefix
     continuation = " item 1, item 2."
     merged = _simulate_merge(prefix, continuation)
 
-    assert merged.count("item 1, item 2.") == 1, (
-        "Continuation text must appear exactly once in merged output"
-    )
+    assert merged.count("item 1, item 2.") == 1, "Continuation text must appear exactly once in merged output"
 
 
 def test_nudge_message_not_in_planned_output():
@@ -590,18 +628,19 @@ def test_nudge_message_not_in_planned_output():
         nudge_message="Please continue the previous answer without restarting.",
         max_attempts=3,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     prefix = nudge.accepted_prefix
     continuation = " item 1, item 2."
     merged = _simulate_merge(prefix, continuation)
     nudge_msg = nudge.nudge_message
 
-    assert nudge_msg not in merged, (
-        f"Nudge message '{nudge_msg}' must not appear in merged output"
-    )
+    assert nudge_msg not in merged, f"Nudge message '{nudge_msg}' must not appear in merged output"
 
 
 def test_nudge_message_only_in_request_patch():
@@ -613,10 +652,13 @@ def test_nudge_message_only_in_request_patch():
         nudge_message="Please continue the previous answer without restarting.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+            Finish(reason="stop"),
+        ],
+    )
 
     nudge_msg = nudge.nudge_message
 
@@ -638,9 +680,7 @@ def test_nudge_message_only_in_request_patch():
         elif isinstance(ev, ReasoningTextDelta):
             all_text += ev.delta
 
-    assert nudge_msg not in all_text, (
-        f"Nudge message '{nudge_msg}' must not appear in emitted events"
-    )
+    assert nudge_msg not in all_text, f"Nudge message '{nudge_msg}' must not appear in emitted events"
 
 
 def test_first_attempt_finish_done_not_part_of_planned_output():
@@ -658,21 +698,20 @@ def test_first_attempt_finish_done_not_part_of_planned_output():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+            Finish(reason="stop"),
+        ],
+    )
 
     # finalize() returns text + reasoning events, NOT Finish/Done
     finish_events = [e for e in events if isinstance(e, Finish)]
     done_events = [e for e in events if isinstance(e, Done)]
 
-    assert len(finish_events) == 0, (
-        "finalize() should not emit Finish"
-    )
-    assert len(done_events) == 0, (
-        "finalize() should not emit Done"
-    )
+    assert len(finish_events) == 0, "finalize() should not emit Finish"
+    assert len(done_events) == 0, "finalize() should not emit Done"
 
     # Only text events are emitted
     text_events = [e for e in events if isinstance(e, AssistantTextDelta)]
@@ -690,14 +729,15 @@ def test_no_destructive_replace():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     original = "Here is the list:"
-    assert nudge.accepted_prefix == original, (
-        "Original output must be preserved exactly, not replaced"
-    )
+    assert nudge.accepted_prefix == original, "Original output must be preserved exactly, not replaced"
 
 
 def test_no_duplicate_append():
@@ -710,18 +750,19 @@ def test_no_duplicate_append():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Here is the list:"),
-    ])
+    _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Here is the list:"),
+        ],
+    )
 
     prefix = nudge.accepted_prefix
     continuation = " item 1, item 2."
     merged = _simulate_merge(prefix, continuation)
 
     expected = prefix + continuation
-    assert merged == expected, (
-        "Merged output must be exactly prefix + continuation"
-    )
+    assert merged == expected, "Merged output must be exactly prefix + continuation"
     assert merged.startswith(prefix)
     assert merged.endswith(continuation)
 
@@ -814,9 +855,12 @@ def test_nonlazy_text_emitted_from_finalize():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Complete answer."),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Complete answer."),
+        ],
+    )
 
     text_events = [e for e in events if isinstance(e, AssistantTextDelta)]
     assert len(text_events) == 1
@@ -830,12 +874,15 @@ def test_interleaved_text_and_reasoning():
         nudge_message="Continue.",
         max_attempts=3,
     )
-    events = _process_then_flush(nudge, [
-        AssistantTextDelta(delta="Hello "),
-        ReasoningTextDelta(delta="thinking..."),
-        AssistantTextDelta(delta="world."),
-        Finish(reason="stop"),
-    ])
+    events = _process_then_flush(
+        nudge,
+        [
+            AssistantTextDelta(delta="Hello "),
+            ReasoningTextDelta(delta="thinking..."),
+            AssistantTextDelta(delta="world."),
+            Finish(reason="stop"),
+        ],
+    )
 
     text_events = [e for e in events if isinstance(e, AssistantTextDelta)]
     reasoning_events = [e for e in events if isinstance(e, ReasoningTextDelta)]
@@ -880,12 +927,10 @@ def test_nudge_request_payload_patch_uses_messages_key():
     patch = nudge.decision.request_payload_patch
     assert patch is not None
     assert "messages" in patch, (
-        "request_payload_patch must contain 'messages' key for "
-        "_apply_request_payload_patch to apply it"
+        "request_payload_patch must contain 'messages' key for _apply_request_payload_patch to apply it"
     )
     assert "nudge_message" not in patch, (
-        "request_payload_patch must not use 'nudge_message' key — "
-        "_apply_request_payload_patch ignores it"
+        "request_payload_patch must not use 'nudge_message' key — _apply_request_payload_patch ignores it"
     )
 
     messages = patch["messages"]
@@ -987,6 +1032,5 @@ def test_nudge_v1_v2_merge_parity_golden():
             if isinstance(ev, AssistantTextDelta):
                 merged2 += ev.delta
         assert merged2 == expected, (
-            f"V2 merge {merged2!r} != V1 golden {expected!r} for "
-            f"prefix={prefix!r}, continuation={continuation!r}"
+            f"V2 merge {merged2!r} != V1 golden {expected!r} for prefix={prefix!r}, continuation={continuation!r}"
         )

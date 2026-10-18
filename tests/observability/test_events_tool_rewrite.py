@@ -4,14 +4,12 @@ Verifies that ``events_tool_rewrite`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_tool_rewrite import (
-    emit_tool_rewrite_event,
+    emit_body_error,
     emit_parse_error,
     emit_streaming_error,
-    emit_body_error,
+    emit_tool_rewrite_event,
 )
 
 
@@ -30,9 +28,7 @@ class TestEmitToolRewriteEvent:
         dispatcher = EventDispatcher()
         emitted_events: list[RuntimeEvent] = []
         dispatcher.subscribe("execution.tool_rewrite", emitted_events.append)
-        event = emit_tool_rewrite_event(
-            "req-2", "execution.tool_rewrite.parse_error", dispatcher=dispatcher
-        )
+        event = emit_tool_rewrite_event("req-2", "execution.tool_rewrite.parse_error", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
 

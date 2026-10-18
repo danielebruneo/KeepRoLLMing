@@ -5,8 +5,7 @@ legacy log() and emit_* helpers, while preserving RuntimeEvent emission
 through the dispatcher/projector pipeline.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from keeprollming.logger import log
 from keeprollming.observability import EventDispatcher, RuntimeEvent
@@ -15,8 +14,8 @@ from keeprollming.observability.events_app import (
     emit_starting,
 )
 from keeprollming.observability.events_upstream import (
-    emit_upstream_event,
     emit_response_received,
+    emit_upstream_event,
 )
 
 
@@ -32,21 +31,15 @@ class TestNoDirectJSONStdoutFromLog:
         log("INFO", "test_message", key="value")
 
         captured = capfd.readouterr()
-        assert captured.out == "", (
-            f"log() wrote to stdout, violating I-D072-01: {captured.out!r}"
-        )
+        assert captured.out == "", f"log() wrote to stdout, violating I-D072-01: {captured.out!r}"
 
     def test_log_does_not_print_json_to_stdout(self, capfd):
         """log() output does not contain JSON objects on stdout."""
         log("DEBUG", "request_sent", url="http://example.com")
 
         captured = capfd.readouterr()
-        assert '{"ts"' not in captured.out, (
-            "JSON object found on stdout from log()"
-        )
-        assert '"level"' not in captured.out or captured.out == "", (
-            "JSON-level field found on stdout from log()"
-        )
+        assert '{"ts"' not in captured.out, "JSON object found on stdout from log()"
+        assert '"level"' not in captured.out or captured.out == "", "JSON-level field found on stdout from log()"
 
     def test_log_still_emits_via_dispatcher(self):
         """log() continues emitting RuntimeEvents via EventDispatcher shim."""
@@ -94,9 +87,7 @@ class TestEmitNoOpWithoutDispatcher:
     def test_emit_response_received_no_dispatcher_is_noop(self, capfd):
         """emit_response_received() without dispatcher produces no output."""
         with patch("keeprollming.logger.log") as mock_log:
-            emit_response_received(
-                url="http://test", method="GET", status=200, dispatcher=None
-            )
+            emit_response_received(url="http://test", method="GET", status=200, dispatcher=None)
 
         mock_log.assert_not_called()
         captured = capfd.readouterr()
@@ -121,7 +112,6 @@ class TestProjectorOutputStillPresent:
     def test_plain_formatter_produces_human_readable_output(self, capfd):
         """PLAIN formatter produces human-readable output via StdoutSink."""
         from keeprollming.observability.formatters import PlainTextFormatter
-        from keeprollming.observability.projectors import Projector, StdoutSink
 
         formatter = PlainTextFormatter()
         event = RuntimeEvent(
@@ -154,6 +144,7 @@ class TestUpstreamDispatcherWiring:
     def test_set_upstream_dispatcher_sets_global(self):
         """set_upstream_dispatcher() configures the module-level dispatcher."""
         import keeprollming.upstream.upstream_client as uc
+
         previous = uc._upstream_dispatcher
         mock_disp = MagicMock()
         try:

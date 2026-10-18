@@ -17,8 +17,6 @@ covering all 11 categories defined in D-072 §8:
 
 import time
 
-import pytest
-
 from keeprollming.observability.events import EventSource, RuntimeEvent
 from keeprollming.observability.formatters import PlainTextFormatter
 from keeprollming.observability.projectors import _colorize_stdout_plain
@@ -71,10 +69,12 @@ class TestPlainTextFormatterNotJsonDump:
 
     def test_stream_progress_marks_unrepresentative_tps_unavailable(self):
         formatter = PlainTextFormatter()
-        result = formatter.format(_make_event(
-            "execution.streaming.progress",
-            {"output_tokens_est": 1, "decode_tps_est": None},
-        ))
+        result = formatter.format(
+            _make_event(
+                "execution.streaming.progress",
+                {"output_tokens_est": 1, "decode_tps_est": None},
+            )
+        )
         assert "decode_tps_est=unavailable" in result
 
 
@@ -101,14 +101,18 @@ class TestRequestRouteRendering:
 
     def test_renders_filter_names_and_empty_chain(self):
         formatter = PlainTextFormatter()
-        active = formatter.format(_make_event(
-            "execution.chat.request_route",
-            {"stream": True, "route": "chat/main", "filters": ["model_nudge", "timestamp"]},
-        ))
-        empty = formatter.format(_make_event(
-            "execution.chat.request_route",
-            {"stream": True, "route": "chat/main", "filters": []},
-        ))
+        active = formatter.format(
+            _make_event(
+                "execution.chat.request_route",
+                {"stream": True, "route": "chat/main", "filters": ["model_nudge", "timestamp"]},
+            )
+        )
+        empty = formatter.format(
+            _make_event(
+                "execution.chat.request_route",
+                {"stream": True, "route": "chat/main", "filters": []},
+            )
+        )
         assert "filters=[model_nudge, timestamp]" in active
         assert "filters=[]" in empty
 
@@ -138,11 +142,7 @@ class TestStdoutPlainColors:
 
         monkeypatch.setattr(constants, "LOG_PLAIN_COLORS", True)
         result = _colorize_stdout_plain(
-            "    TOOL_RESULT:\n"
-            "        stdout:\n"
-            "        normal output\n"
-            "        stderr:\n"
-            "        error output"
+            "    TOOL_RESULT:\n        stdout:\n        normal output\n        stderr:\n        error output"
         )
 
         assert constants.ANSI_BRIGHT_YELLOW in result
@@ -373,7 +373,8 @@ class TestContentTranscriptRendering:
                 "reasoning_content": "First think.",
                 "reasoning_length": 12,
             },
-            domain="execution", component="chat",
+            domain="execution",
+            component="chat",
         )
         result = formatter.format(event)
         assert "REASONING:" in result
@@ -390,12 +391,15 @@ class TestContentTranscriptRendering:
                 "content": "",
                 "total_length": 0,
                 "finish_reason": "tool_calls",
-                "tool_calls": [{
-                    "id": "call-1",
-                    "function": {"name": "bash_tool", "arguments": '{"command":"date"}'},
-                }],
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {"name": "bash_tool", "arguments": '{"command":"date"}'},
+                    }
+                ],
             },
-            domain="execution", component="chat",
+            domain="execution",
+            component="chat",
         )
         result = formatter.format(event)
         assert "TOOL_CALL:" in result
@@ -411,7 +415,8 @@ class TestContentTranscriptRendering:
         event = _make_event(
             "execution.chat.conversation",
             {"role": "system", "text": "A system prompt with enough words to wrap cleanly."},
-            domain="execution", component="chat",
+            domain="execution",
+            component="chat",
         )
         result = formatter.format(event)
         body_lines = result.splitlines()[2:]
@@ -423,7 +428,8 @@ class TestContentTranscriptRendering:
         event = _make_event(
             "execution.chat.override",
             {"param": "max_tokens", "old_value": 8192, "new_value": 4096},
-            domain="execution", component="chat",
+            domain="execution",
+            component="chat",
         )
         result = formatter.format(event)
         assert "param=max_tokens" in result
@@ -439,11 +445,7 @@ class TestToolCallsResultsRendering:
         formatter = PlainTextFormatter()
         event = _make_event(
             "execution.chat.tool_call",
-            {
-                "tool_calls": [
-                    {"id": "tc1", "name": "get_weather", "arguments": '{"city":"Rome"}'}
-                ]
-            },
+            {"tool_calls": [{"id": "tc1", "name": "get_weather", "arguments": '{"city":"Rome"}'}]},
             domain="execution",
             component="chat",
         )
@@ -520,12 +522,17 @@ class TestRetriesNudgesRendering:
         event = _make_event(
             "execution.chat.fallback",
             {
-                "from_route": "chat/main", "from_model": "gpt-4",
+                "from_route": "chat/main",
+                "from_model": "gpt-4",
                 "from_upstream_url": "http://primary:8000/v1/chat/completions",
-                "to_route": "chat/remote", "to_model": "gpt-3.5-turbo",
+                "to_route": "chat/remote",
+                "to_model": "gpt-3.5-turbo",
                 "to_upstream_url": "http://secondary:9000/v1/chat/completions",
-                "attempt": 1, "total_attempts": 2, "reason": "http_status",
-                "status": 404, "error": "model not found",
+                "attempt": 1,
+                "total_attempts": 2,
+                "reason": "http_status",
+                "status": 404,
+                "error": "model not found",
             },
             domain="execution",
             component="chat",
@@ -544,28 +551,72 @@ class TestRetriesNudgesRendering:
         formatter = PlainTextFormatter()
         event = _make_event(
             "execution.chat.fallback_chain",
-            {"attempts": [
-                {"position": 1, "route": "chat/main", "model": "main", "upstream_url": "http://main:8000/v1/chat/completions", "timeout_s": 30},
-                {"position": 2, "route": "chat/alt", "model": "alt", "upstream_url": "http://alt:9000/v1/chat/completions", "timeout_s": 45},
-            ]},
-            domain="execution", component="chat",
+            {
+                "attempts": [
+                    {
+                        "position": 1,
+                        "route": "chat/main",
+                        "model": "main",
+                        "upstream_url": "http://main:8000/v1/chat/completions",
+                        "timeout_s": 30,
+                    },
+                    {
+                        "position": 2,
+                        "route": "chat/alt",
+                        "model": "alt",
+                        "upstream_url": "http://alt:9000/v1/chat/completions",
+                        "timeout_s": 45,
+                    },
+                ]
+            },
+            domain="execution",
+            component="chat",
         )
         result = formatter.format(event)
         assert "execution.chat.fallback_chain attempts=2" in result
         assert "[1] route=chat/main" in result
         assert "[2] route=chat/alt" in result
 
+    def test_balance_decision_shows_routes_without_affinity_identifier(self):
+        formatter = PlainTextFormatter()
+        event = _make_event(
+            "execution.routing.balance_decision",
+            {
+                "requested_route": "public/code",
+                "selected_route": "code/runner-a",
+                "affinity_state": "cache_hit",
+                "selected_model": "qwen3",
+                "selected_upstream_url": "http://runner-a:8000/v1",
+                "alternatives": ["code/runner-a", "code/runner-b"],
+                "reroute_chain": ["public/code", "code/runner-a"],
+            },
+            domain="execution",
+            component="routing",
+        )
+        result = formatter.format(event)
+        assert "execution.routing.balance_decision" in result
+        assert 'requested_route="public/code"' in result
+        assert 'selected_route="code/runner-a"' in result
+        assert 'affinity="cache_hit"' in result
+        assert 'model="qwen3"' in result
+        assert "upstream=runner-a:8000/v1" in result
+        assert "alternatives=[code/runner-a, code/runner-b]" in result
+
     def test_recovered_upstream_error_shows_body_and_attempt(self):
         formatter = PlainTextFormatter()
         event = _make_event(
             "execution.chat.upstream_error",
             {
-                "status": 400, "route": "code/architect",
+                "status": 400,
+                "route": "code/architect",
                 "url": "http://primary:7901/v1/chat/completions",
                 "body": '{"error":{"message":"invalid payload"}}',
-                "recovered": True, "attempt": 1, "total_attempts": 2,
+                "recovered": True,
+                "attempt": 1,
+                "total_attempts": 2,
             },
-            domain="execution", component="chat",
+            domain="execution",
+            component="chat",
         )
         result = formatter.format(event)
         assert "recovered_by_fallback=true" in result
@@ -660,7 +711,7 @@ class TestErrorRendering:
         lines = result.split("\n")
         assert len(lines) > 1
         # Traceback lines are indented
-        assert any(l.startswith("    ") for l in lines[1:])
+        assert any(line.startswith("    ") for line in lines[1:])
 
 
 class TestTimestampFormat:

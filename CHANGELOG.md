@@ -2,7 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.9.4 — 2026-10-01
+## v0.9.5
+
+### Added
+- Opt-in `multimodal_validator.strip_all_files` removes structured file/PDF
+  attachments throughout conversation history while preserving text and images.
+- JSON log viewer aligned with current event envelopes and the server's plain
+  formatter; request-ID, original-route and resolved-backend filters correlate full
+  requests across balancing/fallback, with event globs and rotation-aware follow.
+- Repository-wide Ruff lint/format checks and the automated test suite now run
+  in development-repository GitHub Actions for pushes and pull requests.
+- Configuration and troubleshooting references now cover all supported
+  inference overrides, request/error capture boundaries and restart semantics,
+  reasoning-history responsibility, and truncated tool-call arguments.
+- Public onboarding now includes a consolidated HTTP API reference, OpenAI SDK
+  and LibreChat examples, a routing guide in the README index, and a short
+  glossary for core proxy concepts.
+- README presentation now highlights prioritized local/multi-GPU serving,
+  sticky sessions, configurable balancing/admission policies, and mixed
+  LAN/public access with an explicit network-policy example.
+- Smart routing with explicit reroutes, balanced target selection, bounded
+  session affinity, backend capacity/admission state, reservation aging, and
+  request-boundary promotion when a better target is worth the cold-prefill
+  cost.
+- Configurable override preservation and filter preservation across balance
+  reroutes.
+- Filter modules now compose by name across multi-parent `extends` chains, so a
+  later parent that configures one filter no longer discards other inherited
+  filters.
+- Default-on, configurable compaction handoff for balanced agent routes: after
+  a near-context-limit long decode, a sharply smaller prompt arriving shortly
+  from the same route/client scope can inherit the prior backend reservation
+  without requiring a client session ID. A one-shot continuation also keeps
+  the backend across the next short-lived rewrite of the post-compaction prompt.
+- Configurable client network access policies: routes can be LAN-restricted,
+  public only with effective API keys, or intentionally open. Forwarded client
+  IPs are honored only from explicitly trusted proxies; `/routes` and
+  `/metrics` follow the global network policy.
+- Recognized CUDA/device runtime failures mislabeled by an upstream as HTTP 400
+  now trigger configured fallback routes; ordinary client 400 errors such as
+  context overflow remain terminal.
+
+### Fixes
+- Ordinary upstream HTTP 400 errors in streaming no longer count as backend
+  circuit failures. They still reach the client unchanged and complete any
+  half-open health probe, matching non-streaming behaviour. Recognized CUDA
+  failures mislabeled as 400 still trigger backend failure accounting/fallback.
+- RLS/TLS recovery now preserves the original upstream request, tools, auth
+  headers and route timeout. Retry budgets and detection thresholds are
+  independent, configured intervention messages are honored in both serving
+  modes, failed retries cannot become empty successes, and real truncation
+  reasons remain visible. Non-streaming regenerated responses are revalidated
+  through the response pipeline with bounded budgets and complete retry
+  accounting/diagnostics. Streaming checks current calls against history and
+  pairs synthetic tool results with their assistant calls.
+- Non-streaming responses now honor tool-call suppression by RLS/TLS and other
+  response filters. Replaced responses no longer leak the original upstream
+  tool calls or reasoning; downstream finish reasons and completion logs match
+  the filtered result, while genuine token-limit truncation remains visible.
+
+## v0.9.4
 
 ### Added
 - Native structured tool-call deltas can now reach compatible clients during a
@@ -24,9 +83,6 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - The test suite has a 120-second default per-test timeout, with documented
   opt-outs only for deliberately longer integration scenarios.
-- `multimodal_validator.max_images_policy` makes image-overflow retention
-  explicit: the default `strip_first` retains the newest images, while
-  `strip_latest` preserves the former policy.
 
 ### Fixes
 - A route fallback now resolves and uses the fallback route's own upstream URL,

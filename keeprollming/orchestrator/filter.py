@@ -15,11 +15,10 @@ test helper; it does not parse route configuration and is not a runtime path.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
 from keeprollming.logger import log
-
 
 # ── Base classes ────────────────────────────────────────────────────────────
 
@@ -27,6 +26,7 @@ from keeprollming.logger import log
 @dataclass
 class FilterConfig:
     """Base configuration for all filters."""
+
     enabled: bool = True
     name: Optional[str] = None
 
@@ -47,6 +47,7 @@ class StreamingResponse:
     local class definitions across pipeline.py, streaming_handlers.py,
     chat_completions.py, and tests.
     """
+
     content: str = ""
     model: str = ""
     finish_reason: str | None = None
@@ -57,6 +58,7 @@ class StreamingResponse:
 
 class Request(Protocol):
     """Protocol for request objects that can be processed by filters."""
+
     messages: List[Dict[str, Any]]
     model: str
     stream: bool
@@ -65,6 +67,7 @@ class Request(Protocol):
 
 class Response(Protocol):
     """Protocol for response objects that can be processed by filters."""
+
     content: str
     model: str
     usage: Optional[Dict[str, int]]
@@ -79,7 +82,16 @@ class FilterExecutionContext:
     This allows filters to share data and maintain state when needed.
     """
 
-    def __init__(self, req_id: Optional[str] = None, upstream_payload: Optional[Dict[str, Any]] = None, route_name: Optional[str] = None, is_streaming_post_process: bool = False, upstream_model: Optional[str] = None, upstream_url: Optional[str] = None, event_dispatcher: Any = None):
+    def __init__(
+        self,
+        req_id: Optional[str] = None,
+        upstream_payload: Optional[Dict[str, Any]] = None,
+        route_name: Optional[str] = None,
+        is_streaming_post_process: bool = False,
+        upstream_model: Optional[str] = None,
+        upstream_url: Optional[str] = None,
+        event_dispatcher: Any = None,
+    ):
         self.state: Dict[str, Any] = {}
         self.request_history: List[Dict[str, Any]] = []
         self.response_history: List[Dict[str, Any]] = []
@@ -100,21 +112,25 @@ class FilterExecutionContext:
 
     def add_request_history(self, request: Request) -> None:
         """Track request for stateful filters (e.g., loop detector)."""
-        self.request_history.append({
-            "messages": request.messages,
-            "model": request.model,
-            "timestamp": len(self.request_history),  # Simple counter instead of datetime
-        })
+        self.request_history.append(
+            {
+                "messages": request.messages,
+                "model": request.model,
+                "timestamp": len(self.request_history),  # Simple counter instead of datetime
+            }
+        )
 
     def add_response_history(self, response: Response) -> None:
         """Track response for stateful filters (e.g., loop detector)."""
-        self.response_history.append({
-            "content": response.content,
-            "model": response.model,
-            "finish_reason": response.finish_reason,
-            "tool_calls": response.tool_calls,
-            "timestamp": len(self.response_history),
-        })
+        self.response_history.append(
+            {
+                "content": response.content,
+                "model": response.model,
+                "finish_reason": response.finish_reason,
+                "tool_calls": response.tool_calls,
+                "timestamp": len(self.response_history),
+            }
+        )
 
     def increment_nudge_attempts(self, max_attempts: int) -> bool:
         """
@@ -146,7 +162,7 @@ class FilterExecutionContext:
         """
         if not self.response_history:
             return []
-        
+
         # Return last 'count' responses in original order (oldest first among recent)
         return self.response_history[-count:]
 
@@ -195,7 +211,7 @@ class Filter(ABC):
     def name(self) -> str:
         """Get the filter's instance name (from config or class)."""
         # Return instance name if set, otherwise use class default
-        return getattr(self, '_instance_name', None) or self.__class__._default_name
+        return getattr(self, "_instance_name", None) or self.__class__._default_name
 
     @property
     def is_enabled(self) -> bool:
@@ -250,27 +266,25 @@ class Filter(ABC):
     def _resolve_upstream_url(self, context: FilterExecutionContext) -> str:
         """Resolve upstream_url: context attribute > filter config > metadata."""
         return (
-            getattr(context, 'upstream_url', None)
-            or getattr(self, '_upstream_url', '')
+            getattr(context, "upstream_url", None)
+            or getattr(self, "_upstream_url", "")
             or context.metadata.get("upstream_url", "")
         )
 
     def _resolve_upstream_model(self, context: FilterExecutionContext) -> Optional[str]:
         """Resolve upstream_model from context."""
-        return getattr(context, 'upstream_model', None) or context.metadata.get("upstream_model")
+        return getattr(context, "upstream_model", None) or context.metadata.get("upstream_model")
 
     def _resolve_req_id(self, context: FilterExecutionContext) -> str:
         """Generate or extract a request ID for logging."""
         import uuid
-        return (
-            context.req_id
-            if context.req_id and context.req_id != "-"
-            else str(uuid.uuid4())[:8]
-        )
+
+        return context.req_id if context.req_id and context.req_id != "-" else str(uuid.uuid4())[:8]
 
     def _get_conversation(self, context: FilterExecutionContext) -> list:
         """Extract conversation history from context metadata or payload."""
         import copy
+
         conv = context.metadata.get("conversation_history", []) or []
         if not conv:
             payload = context.upstream_payload or {}
@@ -390,23 +404,14 @@ class FilterChain:
         missing = set(self.execution_order) - set(self.filters.keys())
         if missing:
             raise ValueError(
-                f"Filter(s) in execution order not found: {missing}. "
-                f"Available filters: {list(self.filters.keys())}"
+                f"Filter(s) in execution order not found: {missing}. Available filters: {list(self.filters.keys())}"
             )
 
     def get_enabled_filters(self) -> List[Filter]:
         """Get filters in execution order, filtering out disabled ones."""
-        return [
-            self.filters[name]
-            for name in self.execution_order
-            if self.filters[name].is_enabled
-        ]
+        return [self.filters[name] for name in self.execution_order if self.filters[name].is_enabled]
 
-    async def process_request(
-        self,
-        request: Request,
-        context: FilterExecutionContext
-    ) -> Request:
+    async def process_request(self, request: Request, context: FilterExecutionContext) -> Request:
         """
         Process request through all enabled filters in order.
 
@@ -423,11 +428,7 @@ class FilterChain:
 
         return request
 
-    async def process_response(
-        self,
-        response: Response,
-        context: FilterExecutionContext
-    ) -> Response:
+    async def process_response(self, response: Response, context: FilterExecutionContext) -> Response:
         """
         Process response through all enabled filters in order.
 
@@ -443,42 +444,44 @@ class FilterChain:
         """
         nudge_count = 0
         loop_count = 0
-        
+
         for filter_obj in self.get_enabled_filters():
             context.current_filter = filter_obj.name
             try:
                 response = await filter_obj.process_response(response, context)
-                
+
                 # Track nudges and loops from metadata
                 if context.metadata.get("nudge_attempts", 0) > nudge_count:
                     nudge_count = context.metadata["nudge_attempts"]
-                    
+
             except StopFilterChain as e:
                 # Emit filter error event
                 from keeprollming.orchestrator.filters.events import emit_filter_error
+
                 emit_filter_error(
                     context,
                     error_type="StopFilterChain",
                     message=e.message,
                 )
-                
+
                 # Track filter type for stats
                 if "nudge" in str(e).lower() or "lazy" in str(e).lower():
                     nudge_count += 1
                 elif "loop" in str(e).lower():
                     loop_count += 1
-                
+
                 # Re-raise with current filter context - preserve nudge_message!
                 raise StopFilterChain(
                     f"[{filter_obj.name}] {e.message}",
                     action=e.action,
-                    nudge_message=getattr(e, 'nudge_message', None)
+                    nudge_message=getattr(e, "nudge_message", None),
                 )
 
         # Emit filter chain executed event
         enabled_filters = self.get_enabled_filters()
         if enabled_filters:
             from keeprollming.orchestrator.filters.events import emit_filter_chain_executed
+
             emit_filter_chain_executed(
                 context,
                 filters_executed=[f.name for f in enabled_filters],
@@ -503,5 +506,5 @@ class FilterChain:
     def reset_all_filters(self) -> None:
         """Reset state for all filters in the chain."""
         for filter_obj in self.filters.values():
-            if hasattr(filter_obj, 'reset'):
+            if hasattr(filter_obj, "reset"):
                 filter_obj.reset()

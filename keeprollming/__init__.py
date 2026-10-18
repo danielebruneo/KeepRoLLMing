@@ -1,6 +1,6 @@
 "Keeprollming orchestrator package."
 
-__version__ = "0.9.4"
+__version__ = "0.9.5"
 
 
 def main():
@@ -8,7 +8,9 @@ def main():
     Parses --port from sys.argv (or defaults to 8000).
     """
     import sys
+
     import uvicorn
+
     port = 8000
     for i, arg in enumerate(sys.argv):
         if arg == "--port" and i + 1 < len(sys.argv):

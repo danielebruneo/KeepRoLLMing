@@ -6,7 +6,7 @@ with the FastAPI app, using a mock HTTP server to simulate LLM responses.
 """
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -25,15 +25,15 @@ class TestFilterIntegrationEndToEnd:
     @pytest.mark.asyncio
     async def test_filter_chain_built_from_route_config(self):
         """Test that FilterChain is correctly built from route configuration."""
-        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
+        from keeprollming.orchestrator.filter import FilterExecutionContext
 
         # Use the raw config dict (like route.filters would be)
         filter_chain_config = {
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [":$"],
-                    "action": "nudge",
-                }
+            "model_nudge": {
+                "enabled": True,
+                "trigger_patterns": [":$"],
+                "action": "nudge",
+            }
         }
 
         # Step 1: Build filter chain from route config
@@ -42,13 +42,17 @@ class TestFilterIntegrationEndToEnd:
         # Step 2: Simulate HTTP response from upstream LLM (lazy pattern)
         class MockHTTPResponse:
             def __init__(self):
-                self.content = json.dumps({
-                    "choices": [{
-                        "message": {"content": "Here's the plan for today:"},
-                        "finish_reason": None,
-                    }],
-                    "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-                }).encode("utf-8")
+                self.content = json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "message": {"content": "Here's the plan for today:"},
+                                "finish_reason": None,
+                            }
+                        ],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+                    }
+                ).encode("utf-8")
 
             def json(self):
                 return json.loads(self.content.decode("utf-8"))
@@ -69,7 +73,7 @@ class TestFilterIntegrationEndToEnd:
                             self.content = msg_data.get("content", "") or ""
                         self.usage = resp_json.get("usage")
                         self.finish_reason = choices[0].get("finish_reason") if choices else None
-                    except:
+                    except Exception:
                         self.usage = None
                         self.finish_reason = None
                 else:
@@ -83,10 +87,9 @@ class TestFilterIntegrationEndToEnd:
         context = FilterExecutionContext()
 
         # Mock _make_http_retry so nudge can complete retry (it makes real HTTP otherwise)
-        from unittest.mock import AsyncMock
-        chain.filters.get('model_nudge')._make_http_retry = AsyncMock(return_value={
-            "choices": [{"message": {"content": "Complete response after retry."}}]
-        })
+        chain.filters.get("model_nudge")._make_http_retry = AsyncMock(
+            return_value={"choices": [{"message": {"content": "Complete response after retry."}}]}
+        )
         result = await chain.process_response(mock_response, context)
 
         # Verify filter returns Response directly (new architecture)

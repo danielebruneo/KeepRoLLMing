@@ -8,6 +8,18 @@ ctx_len: 32768
 max_tokens: 4096
 default_request_timeout: 120
 
+# Recommended network boundary. Replace 192.168.1.0/24 with your LAN's actual
+# subnet. Only add a reverse proxy to trusted_proxies if it is the direct
+# network peer seen by KRM. Existing deployments retain `any` unless this
+# policy is configured.
+client_access:
+  default: lan
+  lan_networks:
+    - "127.0.0.0/8"
+    - "::1/128"
+    - "192.168.1.0/24"
+  trusted_proxies: []
+
 # Broad process-wide guard before JSON parsing. It protects against accidental
 # or hostile OOM-sized requests; increase it only for genuinely huge payloads.
 request_limits:
@@ -33,6 +45,25 @@ routes:
   chat/local:
     extends: base/local
     pattern: "chat/local"
+
+  # Optional basic smart-routing pattern. Uncomment and set a second worker
+  # URL when two independent upstream instances are available. `queue_timeout`
+  # is a single budget shared by target selection and backend admission.
+  #
+  # chat/worker-b:
+  #   model: "your-upstream-model"
+  #   upstream_url: "http://127.0.0.1:8081"
+  #   max_concurrent: 1
+  #
+  # chat/balanced:
+  #   extends: base/local
+  #   pattern: "chat/balanced"
+  #   max_concurrent: 1
+  #   queue_timeout: 15
+  #   balance:
+  #     targets:
+  #       - {route: chat/local, priority: 100}
+  #       - {route: chat/worker-b, priority: 80}
 
   # The same backend with two optional reliability filters enabled.
   code/assistant:

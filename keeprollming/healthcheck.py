@@ -5,26 +5,28 @@ by making actual API calls to backends and verifying responses.
 
 Usage:
     from keeprollming.healthcheck import run_health_check
-    
+
     results = run_health_check(config, timeout=10)
     results.print_report()
 """
+
 from __future__ import annotations
 
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import httpx
 
-from keeprollming.config import CONFIG, get_route_settings
-from keeprollming.routing import Route, resolve_route
+from keeprollming.config import CONFIG
+from keeprollming.routing import Route
 
 
 @dataclass
 class HealthCheckResult:
     """Result of a health check for a single route."""
+
     route_name: str
     status: str  # "healthy", "unhealthy", "timeout", "error"
     upstream_url: Optional[str] = None
@@ -37,7 +39,7 @@ class HealthCheckResult:
 
 class HealthCheckResults:
     """Container for multiple health check results."""
-    
+
     def __init__(self):
         self.results: List[HealthCheckResult] = []
         self.summary = {
@@ -47,11 +49,11 @@ class HealthCheckResults:
             "timeout": 0,
             "error": 0,
         }
-    
+
     def add_result(self, result: HealthCheckResult):
         self.results.append(result)
         self.summary["total"] += 1
-        
+
         if result.status == "healthy":
             self.summary["healthy"] += 1
         elif result.status == "unhealthy":
@@ -60,30 +62,30 @@ class HealthCheckResults:
             self.summary["timeout"] += 1
         else:
             self.summary["error"] += 1
-    
+
     @property
     def is_healthy(self) -> bool:
         return self.summary["unhealthy"] == 0 and self.summary["timeout"] == 0 and self.summary["error"] == 0
-    
+
     def print_report(self):
         """Print a human-readable health check report."""
         print("=" * 60)
         print("KEEPROLLMING HEALTH CHECK REPORT")
         print("=" * 60)
-        
-        print(f"\nSummary:")
+
+        print("\nSummary:")
         print(f"  Total routes checked: {self.summary['total']}")
         print(f"  ✓ Healthy: {self.summary['healthy']}")
         print(f"  ✗ Unhealthy: {self.summary['unhealthy']}")
         print(f"  ⏱ Timeout: {self.summary['timeout']}")
         print(f"  ❌ Error: {self.summary['error']}")
-        
+
         if self.is_healthy:
             print("\n✓ All routes are healthy!")
         else:
             print("\n✗ Some routes have issues:")
-        
-        print(f"\nDetailed Results:")
+
+        print("\nDetailed Results:")
         for result in self.results:
             status_icon = {
                 "healthy": "✓",
@@ -91,7 +93,7 @@ class HealthCheckResults:
                 "timeout": "⏱",
                 "error": "❌",
             }.get(result.status, "?")
-            
+
             print(f"\n{status_icon} {result.route_name}")
             print(f"  Status: {result.status.upper()}")
             if result.upstream_url:
@@ -112,13 +114,13 @@ class HealthCheckResults:
 def _has_valid_upstream(route: Route, all_routes: list[Route]) -> bool:
     """Check if a route has a valid upstream URL after inheritance resolution."""
     from keeprollming.routing import resolve_inherited_route
-    
+
     # Build routes_by_name dict
     routes_by_name = {r.name: r for r in all_routes}
-    
+
     # Resolve the route with inheritance
     resolved = resolve_inherited_route(route, routes_by_name)
-    
+
     # Check if it has an upstream URL
     return resolved.upstream_url is not None
 
@@ -148,13 +150,14 @@ def run_health_check(
     # Load routes
     user_routes = load_user_routes(config)
     all_routes = user_routes
-    
+
     # Use provided routes or filter to non-private routes only
     if routes_to_check is not None:
         checkable_routes = list(routes_to_check)
     else:
         checkable_routes = [
-            route for route in all_routes
+            route
+            for route in all_routes
             if not getattr(route, "is_private", False) and not route.name.startswith("builtin/")
         ]
 
@@ -174,22 +177,22 @@ async def _run_health_check_async(
 ) -> HealthCheckResults:
     """Internal async implementation of health check."""
     results = HealthCheckResults()
-    
+
     # Create semaphore for concurrency control
     semaphore = asyncio.Semaphore(max_concurrent)
-    
+
     async def check_route(route: Route):
         """Check a single route's health."""
         async with semaphore:
             try:
                 from keeprollming.routing import get_route_settings, resolve_inherited_route
-                
+
                 # Build routes_by_name dict for inheritance resolution
                 routes_by_name = {r.name: r for r in all_routes}
-                
-                # Resolve the route with inheritance (don't use resolve_route which matches by pattern)
+
+                # Resolve inheritance directly; request matching is not needed here.
                 resolved_route = resolve_inherited_route(route, routes_by_name)
-                
+
                 # For backend model, use model if set, otherwise fall back to route name
                 model = resolved_route.model or route.name
                 settings = get_route_settings(resolved_route, model)
@@ -199,7 +202,7 @@ async def _run_health_check_async(
                     return HealthCheckResult(
                         route_name=route.name,
                         status="error",
-                        error_message="No upstream URL configured"
+                        error_message="No upstream URL configured",
                     )
 
                 # Build test payload - use model (actual model name) not route name
@@ -208,7 +211,7 @@ async def _run_health_check_async(
                     "messages": [{"role": "user", "content": "Health check"}],
                     "max_tokens": 10,
                 }
-                
+
                 # Make request
                 start_time = time.time()
                 async with httpx.AsyncClient(timeout=timeout) as client:
@@ -217,9 +220,9 @@ async def _run_health_check_async(
                         json=test_payload,
                         headers={"Content-Type": "application/json"},
                     )
-                
+
                 latency_ms = (time.time() - start_time) * 1000
-                
+
                 # Check response
                 if response.status_code != 200:
                     return HealthCheckResult(
@@ -230,12 +233,12 @@ async def _run_health_check_async(
                         error_message=f"HTTP {response.status_code}: {response.text[:100]}",
                         latency_ms=latency_ms,
                     )
-                
+
                 # Parse response
                 try:
                     data = response.json()
                     actual_model = data.get("model")
-                    
+
                     if "error" in data:
                         return HealthCheckResult(
                             route_name=route.name,
@@ -245,7 +248,7 @@ async def _run_health_check_async(
                             error_message=data["error"].get("message", str(data["error"])),
                             latency_ms=latency_ms,
                         )
-                    
+
                     return HealthCheckResult(
                         route_name=route.name,
                         status="healthy",
@@ -263,47 +266,47 @@ async def _run_health_check_async(
                         error_message=f"Failed to parse response: {str(e)}",
                         latency_ms=latency_ms,
                     )
-                    
+
             except httpx.TimeoutException:
                 return HealthCheckResult(
                     route_name=route.name,
                     status="timeout",
-                    error_message=f"Request timed out after {timeout}s"
+                    error_message=f"Request timed out after {timeout}s",
                 )
             except httpx.ConnectError as e:
                 return HealthCheckResult(
                     route_name=route.name,
                     status="error",
-                    error_message=f"Connection failed: {str(e)}"
+                    error_message=f"Connection failed: {str(e)}",
                 )
             except Exception as e:
                 return HealthCheckResult(
                     route_name=route.name,
                     status="error",
-                    error_message=f"Unexpected error: {str(e)}"
+                    error_message=f"Unexpected error: {str(e)}",
                 )
-    
+
     # Run all checks concurrently (within concurrency limit)
     tasks = [check_route(route) for route in checkable_routes]
     results_list = await asyncio.gather(*tasks)
-    
+
     for result in results_list:
         results.add_result(result)
-    
+
     return results
 
 
 def quick_healthcheck(timeout: int = 10) -> bool:
     """
     Quick health check with summary output.
-    
+
     Args:
         timeout: Timeout in seconds for each request
-        
+
     Returns:
         True if all routes are healthy, False otherwise
     """
     results = run_health_check(CONFIG, timeout=timeout, verbose=True)
     results.print_report()
-    
+
     return results.is_healthy

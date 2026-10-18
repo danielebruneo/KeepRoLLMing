@@ -4,7 +4,6 @@
 Test to demonstrate actual application startup logs with DEBUG mode.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -15,45 +14,34 @@ print("=== Testing Application Startup Logs ===")
 
 try:
     # Import config and logger modules
-    from keeprollming.config import (
-        BASE_MAIN_MODEL,
-        BASE_SUMMARY_MODEL,
-        DEFAULT_CTX_LEN,
-        DEEP_MAIN_MODEL,
-        DEEP_SUMMARY_MODEL,
-        MAIN_MODEL,
-        QUICK_MAIN_MODEL,
-        QUICK_SUMMARY_MODEL,
-        SUMMARY_MODEL,
-        UPSTREAM_BASE_URL,
-        CONFIG
-    )
-    
+    from keeprollming.config import CONFIG, DEFAULT_CTX_LEN, UPSTREAM_BASE_URL
     from keeprollming.logger import log
-    
+
+    configured_routes = CONFIG.get("routes", {})
+    route_models = {
+        route_name: settings.get("model")
+        for route_name, settings in configured_routes.items()
+        if isinstance(settings, dict) and settings.get("model")
+    }
+
     print("Simulating startup logging...")
-    
+
     # This mimics what happens in main() function when the app starts up
     log(
         "INFO",
         "startup",
         upstream=UPSTREAM_BASE_URL,
-        main_model=MAIN_MODEL,
-        summary_model=SUMMARY_MODEL,
         log_mode="DEBUG",
-        profiles={
-            "quick": {"main": QUICK_MAIN_MODEL, "summary": QUICK_SUMMARY_MODEL},
-            "main": {"main": BASE_MAIN_MODEL, "summary": BASE_SUMMARY_MODEL},
-            "deep": {"main": DEEP_MAIN_MODEL, "summary": DEEP_SUMMARY_MODEL},
-        },
+        routes=route_models,
         default_ctx=DEFAULT_CTX_LEN,
     )
-    
+
     print("Startup logs displayed successfully!")
-    
+
 except Exception as e:
     print(f"Error during test: {e}")
     import traceback
+
     traceback.print_exc()
 
 print("=== Startup log test complete ===")

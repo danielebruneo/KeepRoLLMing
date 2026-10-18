@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keeprollming"
-version = "0.9.4"
+version = "0.9.5"
 description = "OpenAI-compatible proxy with filter pipeline, rolling summarization, and streaming support"
 readme = "README.md"
 license = {text = "AGPL-3.0-only"}
@@ -50,10 +50,14 @@ include = ["keeprollming*"]
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+# E501 is intentionally excluded: the remaining long lines are literal prompt
+# text or exact SSE/JSON fixtures whose wrapping would change test/runtime data.
+# Ruff formatter still enforces the configured width for executable syntax.
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 # A test that blocks for two minutes is an infrastructure failure, not useful

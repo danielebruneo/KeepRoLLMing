@@ -26,9 +26,9 @@ pipeline after stream completion.
 from __future__ import annotations
 
 import time
+from collections import deque
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
-from collections import defaultdict, deque
-from dataclasses import dataclass, asdict
 
 from .streaming.accounting import ExecutionUsage
 
@@ -39,6 +39,7 @@ class ConversationMetrics:
 
     Token counts are derived from ExecutionUsage, not tracked independently.
     """
+
     conversation_id: str
     user_id: str
     model_used: str
@@ -68,6 +69,7 @@ class SystemMetrics:
 
     Aggregates ExecutionUsage-derived data across all conversations.
     """
+
     timestamp: float
     total_requests: int
     average_request_time_ms: float
@@ -107,17 +109,30 @@ class MetricsCollector:
             total_usage_reported_attempts=0,
             total_recovery_count=0,
             avg_retry_amplification_ratio=0.0,
-            total_usage_complete=0
+            total_usage_complete=0,
         )
         self.request_times: deque[float] = deque(maxlen=1000)
         self.conversation_lengths: deque[int] = deque(maxlen=1000)
 
-    def record_request(self, conversation_id: str, user_id: str, model_used: str,
-                      prompt_tokens: int, completion_tokens: int, total_tokens: int,
-                      summary_used: bool, summary_tokens: int, context_length: int,
-                      elapsed_time_ms: float, request_count: int, first_message_length: int,
-                      last_message_length: int, avg_message_length: float, summary_decision_reason: str,
-                      execution_usage: Optional[ExecutionUsage] = None):
+    def record_request(
+        self,
+        conversation_id: str,
+        user_id: str,
+        model_used: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+        summary_used: bool,
+        summary_tokens: int,
+        context_length: int,
+        elapsed_time_ms: float,
+        request_count: int,
+        first_message_length: int,
+        last_message_length: int,
+        avg_message_length: float,
+        summary_decision_reason: str,
+        execution_usage: Optional[ExecutionUsage] = None,
+    ):
         """Record metrics for a single conversation.
 
         Token counts are derived from ExecutionUsage if provided, otherwise
@@ -182,7 +197,7 @@ class MetricsCollector:
             usage_reported_attempts=eu_usage_reported_attempts,
             recovery_count=eu_recovery_count,
             retry_amplification_ratio=eu_retry_amplification_ratio,
-            usage_complete=eu_usage_complete
+            usage_complete=eu_usage_complete,
         )
 
         # Update system-level ExecutionUsage aggregates
@@ -191,9 +206,9 @@ class MetricsCollector:
         self.system_metrics.total_recovery_count += eu_recovery_count
         if eu_upstream_attempts > 0:
             self.system_metrics.avg_retry_amplification_ratio = (
-                (self.system_metrics.avg_retry_amplification_ratio * (self.system_metrics.total_requests - 1) + eu_retry_amplification_ratio)
-                / self.system_metrics.total_requests
-            )
+                self.system_metrics.avg_retry_amplification_ratio * (self.system_metrics.total_requests - 1)
+                + eu_retry_amplification_ratio
+            ) / self.system_metrics.total_requests
         if eu_usage_complete:
             self.system_metrics.total_usage_complete += 1
 
@@ -215,7 +230,9 @@ class MetricsCollector:
         # Update max and average conversation lengths
         if len(self.conversation_lengths) > 0:
             self.system_metrics.max_conversation_length = max(self.conversation_lengths)
-            self.system_metrics.avg_conversation_length = sum(self.conversation_lengths) / len(self.conversation_lengths)
+            self.system_metrics.avg_conversation_length = sum(self.conversation_lengths) / len(
+                self.conversation_lengths
+            )
 
         return asdict(self.system_metrics)
 
@@ -245,7 +262,7 @@ class MetricsCollector:
             total_usage_reported_attempts=0,
             total_recovery_count=0,
             avg_retry_amplification_ratio=0.0,
-            total_usage_complete=0
+            total_usage_complete=0,
         )
 
     def get_summary_statistics(self) -> Dict[str, Any]:
@@ -278,12 +295,25 @@ class MetricsCollector:
 # Global metrics collector instance
 METRICS_COLLECTOR = MetricsCollector()
 
-def record_conversation_metrics(conversation_id: str, user_id: str, model_used: str,
-                               prompt_tokens: int, completion_tokens: int, total_tokens: int,
-                               summary_used: bool, summary_tokens: int, context_length: int,
-                               elapsed_time_ms: float, request_count: int, first_message_length: int,
-                               last_message_length: int, avg_message_length: float, summary_decision_reason: str,
-                               execution_usage: Optional[ExecutionUsage] = None):
+
+def record_conversation_metrics(
+    conversation_id: str,
+    user_id: str,
+    model_used: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    total_tokens: int,
+    summary_used: bool,
+    summary_tokens: int,
+    context_length: int,
+    elapsed_time_ms: float,
+    request_count: int,
+    first_message_length: int,
+    last_message_length: int,
+    avg_message_length: float,
+    summary_decision_reason: str,
+    execution_usage: Optional[ExecutionUsage] = None,
+):
     """Record metrics for a conversation - convenience function.
 
     Token counts are derived from ExecutionUsage if provided, otherwise
@@ -305,16 +335,19 @@ def record_conversation_metrics(conversation_id: str, user_id: str, model_used: 
         last_message_length=last_message_length,
         avg_message_length=avg_message_length,
         summary_decision_reason=summary_decision_reason,
-        execution_usage=execution_usage
+        execution_usage=execution_usage,
     )
+
 
 def record_summary_cache_hit():
     """Record a cache hit for summary"""
     METRICS_COLLECTOR.record_summary_cache_hit()
 
+
 def record_summary_cache_miss():
     """Record a cache miss for summary"""
     METRICS_COLLECTOR.record_summary_cache_miss()
+
 
 def record_summary_reuse():
     """Record when a summary is reused/consolidated"""

@@ -8,13 +8,7 @@ TASK_ID: TASK-20260805-013
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
-from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestEmitExecutionEventFallback:
@@ -34,7 +28,7 @@ class TestEmitExecutionEventFallback:
 
         # Patch at the app module level where get_event_dispatcher is defined
         with patch("keeprollming.app.get_event_dispatcher", return_value=mock_dispatcher):
-            result = emit_execution_event(
+            emit_execution_event(
                 req_id="test-req-1",
                 event_type="execution.chat.http_in",
                 client_model="test-model",
@@ -77,7 +71,7 @@ class TestEmitStreamingEventFallback:
         emitted_events = []
         mock_dispatcher.emit.side_effect = lambda event: emitted_events.append(event)
 
-        result = emit_streaming_event(
+        emit_streaming_event(
             req_id="test-req-3",
             event_type="execution.streaming.handler_entry",
             dispatcher=mock_dispatcher,
@@ -123,14 +117,13 @@ class TestChatCompletionsDispatcherWiring:
         process_streaming_request().
         """
         import inspect
+
         from keeprollming.endpoints import chat_completions
 
         source = inspect.getsource(chat_completions.process_chat_request)
 
         # Verify the Phase P5 change: dispatcher is fetched and passed
-        assert "get_event_dispatcher" in source, (
-            "process_chat_request() does not call get_event_dispatcher()"
-        )
+        assert "get_event_dispatcher" in source, "process_chat_request() does not call get_event_dispatcher()"
         assert "dispatcher=dispatcher" in source or "dispatcher = get_event_dispatcher()" in source, (
             "process_chat_request() does not pass dispatcher to process_streaming_request()"
         )
@@ -141,14 +134,14 @@ class TestChatCompletionsDispatcherWiring:
         Verifies that the streaming handler function signature includes dispatcher.
         """
         import inspect
+
         from keeprollming.endpoints.streaming_handlers import process_streaming_request
 
         sig = inspect.signature(process_streaming_request)
         params = list(sig.parameters.keys())
 
         assert "dispatcher" in params, (
-            f"process_streaming_request() does not accept dispatcher parameter. "
-            f"Parameters: {params}"
+            f"process_streaming_request() does not accept dispatcher parameter. Parameters: {params}"
         )
 
 
@@ -171,18 +164,12 @@ class TestBuildPipelineDispatcherWiring:
         mock_route.name = "test-route"
         mock_route.api_key = None
 
-        with patch(
-            "keeprollming.endpoints.streaming_handlers.Pipeline.from_route_config"
-        ) as mock_from_config:
+        with patch("keeprollming.endpoints.streaming_handlers.Pipeline.from_route_config") as mock_from_config:
             mock_pipeline = MagicMock()
             mock_from_config.return_value = mock_pipeline
 
-            with patch(
-                "keeprollming.endpoints.streaming_handlers.emit_pipeline_build"
-            ) as mock_emit:
-                result = _build_pipeline(
-                    mock_route, req_id="test-req", dispatcher=mock_dispatcher
-                )
+            with patch("keeprollming.endpoints.streaming_handlers.emit_pipeline_build") as mock_emit:
+                _build_pipeline(mock_route, req_id="test-req", dispatcher=mock_dispatcher)
 
                 # Verify emit_pipeline_build was called with dispatcher
                 mock_emit.assert_called_once()
@@ -200,16 +187,12 @@ class TestBuildPipelineDispatcherWiring:
         mock_route.name = "test-route"
         mock_route.api_key = None
 
-        with patch(
-            "keeprollming.endpoints.streaming_handlers.Pipeline.from_route_config"
-        ) as mock_from_config:
+        with patch("keeprollming.endpoints.streaming_handlers.Pipeline.from_route_config") as mock_from_config:
             mock_pipeline = MagicMock()
             mock_from_config.return_value = mock_pipeline
 
-            with patch(
-                "keeprollming.endpoints.streaming_handlers.emit_pipeline_build"
-            ) as mock_emit:
-                result = _build_pipeline(mock_route, req_id="test-req")
+            with patch("keeprollming.endpoints.streaming_handlers.emit_pipeline_build") as mock_emit:
+                _build_pipeline(mock_route, req_id="test-req")
 
                 call_kwargs = mock_emit.call_args[1]
                 assert call_kwargs["dispatcher"] is None

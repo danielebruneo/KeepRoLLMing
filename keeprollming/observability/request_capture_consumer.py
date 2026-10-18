@@ -28,7 +28,7 @@ Storage layout:
 from __future__ import annotations
 
 import json
-import os
+import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +37,7 @@ from typing import Any, Dict, Optional
 from .events import RuntimeEvent
 from .redactor import NoOpRedactor, Redactor
 
+logger = logging.getLogger(__name__)
 
 # Max file size per capture (50MB)
 _MAX_BODY_SIZE_BYTES = 50 * 1024 * 1024
@@ -200,7 +201,7 @@ class RequestCaptureConsumer:
 
         except Exception:
             # Consumer failure isolation — never propagate into request lifecycle
-            pass
+            logger.exception("request capture failed req_id=%s event=%s", event.req_id, event.type)
 
     def _write_json(self, path: Path, data: Any) -> None:
         """Write JSON to file with max body size enforcement.

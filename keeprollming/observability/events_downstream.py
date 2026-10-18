@@ -71,39 +71,59 @@ def emit_downstream_event(
 
 
 def emit_chunk_sent(
-    req_id: str, chunk_index: int = 0, delta_len: int = 0,
+    req_id: str,
+    chunk_index: int = 0,
+    delta_len: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_downstream_event(req_id, "downstream.delivery.chunk.sent",
-                         chunk_index=chunk_index,
-                         delta_len=delta_len or None,
-                         dispatcher=dispatcher)
+    return emit_downstream_event(
+        req_id,
+        "downstream.delivery.chunk.sent",
+        chunk_index=chunk_index,
+        delta_len=delta_len or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_delivery_completed(
-    req_id: str, total_chunks: int = 0, elapsed_ms: float = 0.0,
+    req_id: str,
+    total_chunks: int = 0,
+    elapsed_ms: float = 0.0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_downstream_event(req_id, "downstream.delivery.completed",
-                         total_chunks=total_chunks or None,
-                         elapsed_ms=elapsed_ms or None,
-                         dispatcher=dispatcher)
+    return emit_downstream_event(
+        req_id,
+        "downstream.delivery.completed",
+        total_chunks=total_chunks or None,
+        elapsed_ms=elapsed_ms or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_delivery_closed(
-    req_id: str, finish_reason: str = "",
+    req_id: str,
+    finish_reason: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_downstream_event(req_id, "downstream.delivery.closed",
-                         finish_reason=finish_reason or None,
-                         dispatcher=dispatcher)
+    return emit_downstream_event(
+        req_id,
+        "downstream.delivery.closed",
+        finish_reason=finish_reason or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_delivery_failed(
-    req_id: str, error: str, status: int = 0,
+    req_id: str,
+    error: str,
+    status: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_downstream_event(req_id, "downstream.delivery.failed",
-                         level="ERROR",
-                         error=error, status=status or None,
-                         dispatcher=dispatcher)
+    return emit_downstream_event(
+        req_id,
+        "downstream.delivery.failed",
+        level="ERROR",
+        error=error,
+        status=status or None,
+        dispatcher=dispatcher,
+    )

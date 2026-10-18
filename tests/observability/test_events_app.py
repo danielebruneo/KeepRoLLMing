@@ -3,17 +3,15 @@
 Verifies that ``events_app`` creates correct RuntimeEvent envelopes.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_app import (
     emit_app_event,
-    emit_perf_logs_dir,
-    emit_config_reloaded,
     emit_config_reload_failed,
+    emit_config_reloaded,
+    emit_not_found,
+    emit_perf_logs_dir,
     emit_starting,
     emit_stopping,
-    emit_not_found,
 )
 
 

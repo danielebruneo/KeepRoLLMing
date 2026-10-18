@@ -58,10 +58,26 @@ class ZeroContentRedactor(Redactor):
     """
 
     _SAFE_STRING_FIELDS = {
-        "route", "route_name", "resolved_route", "upstream_model", "model",
-        "upstream_url", "url", "endpoint", "method", "phase", "boundary",
-        "direction", "finish_reason", "error_type", "component",
-        "policy", "state", "client_model", "type", "code",
+        "route",
+        "route_name",
+        "resolved_route",
+        "upstream_model",
+        "model",
+        "upstream_url",
+        "url",
+        "endpoint",
+        "method",
+        "phase",
+        "boundary",
+        "direction",
+        "finish_reason",
+        "error_type",
+        "component",
+        "policy",
+        "state",
+        "client_model",
+        "type",
+        "code",
     }
 
     def redact(self, data: Any) -> Any:

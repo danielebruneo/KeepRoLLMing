@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 import keeprollming.app as app_mod
 import keeprollming.config as config_mod
-import keeprollming.logger as logger_mod
 
 
 class _FakeResponse:
@@ -55,7 +54,7 @@ class _FakeStreamCtx:
 
 class _CustomFakeAsyncClient:
     """Extended fake client that supports streaming with custom content."""
-    
+
     def __init__(self) -> None:
         self.last_post_url: Optional[str] = None
         self.last_post_json: Optional[Dict[str, Any]] = None
@@ -65,21 +64,33 @@ class _CustomFakeAsyncClient:
     async def post(self, url: str, json: Dict[str, Any] = None, headers: Dict[str, Any] = None) -> _FakeResponse:
         self.last_post_url = url
         self.last_post_json = json
-        
-        # For streaming requests (stream=True), return custom SSE response  
+
+        # For streaming requests (stream=True), return custom SSE response
         if json and json.get("stream"):
             chunks = [
-                ("data: " + JSON.dumps({
-                    "id": "x",
-                    "object": "chat.completion.chunk", 
-                    "created": 0,
-                    "model": str(json.get("model", "test")),
-                    "choices": [{"index": 0, "delta": {"content": "Hello world!"}, "finish_reason": None}]
-                }) + "\n\n").encode("utf-8"),
+                (
+                    "data: "
+                    + JSON.dumps(
+                        {
+                            "id": "x",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": str(json.get("model", "test")),
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": "Hello world!"},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                    )
+                    + "\n\n"
+                ).encode("utf-8"),
                 b"data: [DONE]\n\n",
             ]
             return _FakeStreamResponse(chunks)
-        
+
         # For non-streaming requests, return standard response
         return _FakeResponse(
             status_code=200,
@@ -89,40 +100,69 @@ class _CustomFakeAsyncClient:
                 "created": 0,
                 "model": json.get("model", "unknown") if json else "unknown",
                 "choices": [
-                    {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "stop",
+                    }
                 ],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             },
         )
 
-    def stream(self, method: str, url: str, json: Dict[str, Any] = None, headers: Dict[str, Any] = None, payload: Dict[str, Any] = None) -> _FakeStreamCtx:
+    def stream(
+        self,
+        method: str,
+        url: str,
+        json: Dict[str, Any] = None,
+        headers: Dict[str, Any] = None,
+        payload: Dict[str, Any] = None,
+    ) -> _FakeStreamCtx:
         assert method == "POST"
         body = json if json is not None else payload
         self.last_stream_url = url
         self.last_stream_json = body
-        
+
         # For streaming requests with stream=True, return full SSE chunks like in post()
         if body and body.get("stream"):
             chunks = [
-                ("data: " + JSON.dumps({
-                    "id": "x",
-                    "object": "chat.completion.chunk", 
-                    "created": 0,
-                    "model": str(body.get("model", "test")),
-                    "choices": [{"index": 0, "delta": {"content": "Hello world!"}, "finish_reason": None}]
-                }) + "\n\n").encode("utf-8"),
+                (
+                    "data: "
+                    + JSON.dumps(
+                        {
+                            "id": "x",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": str(body.get("model", "test")),
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": "Hello world!"},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                    )
+                    + "\n\n"
+                ).encode("utf-8"),
                 b"data: [DONE]\n\n",
             ]
         else:
             # Default fallback for non-streaming or other cases
             chunks = [
-                ("data: " + JSON.dumps({
-                    "id": "x",
-                    "object": "chat.completion.chunk", 
-                    "created": 0,
-                    "model": str(body.get("model", "m")),
-                    "choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": None}]
-                }) + "\n\n").encode("utf-8"),
+                (
+                    "data: "
+                    + JSON.dumps(
+                        {
+                            "id": "x",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": str(body.get("model", "m")),
+                            "choices": [{"index": 0, "delta": {"content": "hi"}, "finish_reason": None}],
+                        }
+                    )
+                    + "\n\n"
+                ).encode("utf-8"),
                 b"data: [DONE]\n\n",
             ]
         return _FakeStreamCtx(_FakeStreamResponse(chunks))
@@ -143,6 +183,7 @@ def client(monkeypatch, tmp_path) -> TestClient:
         return fake
 
     from keeprollming.endpoints import chat_completions
+
     monkeypatch.setattr(chat_completions, "http_client", _fake_http_client)
 
     monkeypatch.setattr(config_mod, "SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache"))
@@ -154,4 +195,3 @@ def client(monkeypatch, tmp_path) -> TestClient:
 
     # Expose fake client to tests
     monkeypatch.setattr(app_mod, "_TEST_FAKE_UPSTREAM", fake, raising=False)
-

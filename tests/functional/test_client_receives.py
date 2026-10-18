@@ -10,8 +10,6 @@ net for architectural refactoring.
 
 import json
 
-import httpx
-
 
 class TestNormalResponse:
     """Basic request/response without any filter triggers."""
@@ -50,9 +48,7 @@ class TestSystemPromptInjection:
     def test_system_prompt_injected(self, harness):
         """System prompt reaches upstream and doesn't break response."""
         harness.set_scenario(chat_content="Response with injected prompt.")
-        resp = harness.post(messages=[
-            {"role": "user", "content": "question"}
-        ])
+        resp = harness.post(messages=[{"role": "user", "content": "question"}])
         assert resp.status_code == 200
         body = resp.json()
         assert "error" not in body

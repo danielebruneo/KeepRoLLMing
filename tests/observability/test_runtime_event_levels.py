@@ -8,8 +8,8 @@ import time
 import pytest
 
 from keeprollming.observability.events import (
-    EventSource,
     LEVEL_ORDER,
+    EventSource,
     RuntimeEvent,
     level_at_or_above,
 )

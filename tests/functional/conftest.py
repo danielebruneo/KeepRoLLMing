@@ -20,6 +20,7 @@ PROJECT_DIR = str(Path(__file__).parent.parent.parent)
 
 def _free_port() -> int:
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
@@ -45,9 +46,14 @@ class FunctionalHarness:
 
         # Start fake backend
         self._backend = subprocess.Popen(
-            [sys.executable, str(Path(PROJECT_DIR) / "scripts" / "start-fake-backend.py"),
-             "--port", str(self.fake_port)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            [
+                sys.executable,
+                str(Path(PROJECT_DIR) / "scripts" / "start-fake-backend.py"),
+                "--port",
+                str(self.fake_port),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         time.sleep(2)
 
@@ -84,10 +90,17 @@ routes:
         env["LOG_PATH"] = self._log_dir
 
         self._orchestrator = subprocess.Popen(
-            [sys.executable, "-u", str(Path(PROJECT_DIR) / "keeprollming.py"),
-             "--port", str(self.orch_port)],
-            env=env, cwd=PROJECT_DIR,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            [
+                sys.executable,
+                "-u",
+                str(Path(PROJECT_DIR) / "keeprollming.py"),
+                "--port",
+                str(self.orch_port),
+            ],
+            env=env,
+            cwd=PROJECT_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         time.sleep(5)
 
@@ -104,17 +117,17 @@ routes:
 
     # ── Client helpers ────────────────────────────────────────────────
 
-    def post(self, model: str = "internal/full", messages: list = None,
-             stream: bool = False, **kwargs):
+    def post(self, model: str = "internal/full", messages: list = None, stream: bool = False, **kwargs):
         """Make a chat completion request and return response."""
-        payload = {"model": model, "messages": messages or [
-            {"role": "user", "content": "hello"}
-        ], "stream": stream, **kwargs}
-        return httpx.post(f"{self.orch_base}/v1/chat/completions",
-                          json=payload, timeout=30)
+        payload = {
+            "model": model,
+            "messages": messages or [{"role": "user", "content": "hello"}],
+            "stream": stream,
+            **kwargs,
+        }
+        return httpx.post(f"{self.orch_base}/v1/chat/completions", json=payload, timeout=30)
 
-    def post_stream(self, model: str = "internal/full", messages: list = None,
-                    **kwargs):
+    def post_stream(self, model: str = "internal/full", messages: list = None, **kwargs):
         """Make a streaming request and collect SSE chunks."""
         return self.post(model=model, messages=messages, stream=True, **kwargs)
 
@@ -129,7 +142,14 @@ routes:
         """
         # Convert old flat format to new structured format
         if "chat_content" in scenario and "scenario" not in scenario:
-            payload = {"scenario": {"chat": {"content": [scenario["chat_content"]], "stream_pieces": [[scenario["chat_content"]]]}}}
+            payload = {
+                "scenario": {
+                    "chat": {
+                        "content": [scenario["chat_content"]],
+                        "stream_pieces": [[scenario["chat_content"]]],
+                    }
+                }
+            }
         elif "scenario" in scenario:
             payload = {"scenario": scenario["scenario"]}
         else:
@@ -156,6 +176,7 @@ routes:
         on disk before reading.
         """
         import time
+
         time.sleep(1.2)  # allow the async writer's periodic flush to fire
 
         path = self.log_path
@@ -196,13 +217,17 @@ def broken_harness():
     fake_port = _free_port()
     orch_port = _free_port()
     # Deliberately pass no fake backend URL — simulates misconfiguration
-    h = FunctionalHarness(fake_port, orch_port, extra_config="""
+    h = FunctionalHarness(
+        fake_port,
+        orch_port,
+        extra_config="""
   internal/broken:
     pattern: "internal/broken"
     model: test-model
     # Deliberately no upstream_url — verifies error handling
     summary_enabled: false
-""")
+""",
+    )
     h.start()
     yield h
     h.stop()

@@ -18,15 +18,16 @@ accounting is handled by `metrics.py` which consumes `ExecutionUsage` directly.
 
 import json
 import math
-import yaml
 import shutil
-from pathlib import Path
-from datetime import datetime
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import yaml
 
 # ── Incremental statistics accumulator ─────────────────────────────
+
 
 class _MetricAccum:
     """Running min/max/avg accumulator for a single numeric metric.
@@ -74,14 +75,29 @@ class RouteStats:
     """
 
     __slots__ = (
-        "route_name", "model", "route_hierarchy",
-        "count", "last_ts", "first_completed_at", "last_completed_at", "window_request_count",
-        "total_tps", "completion_tps", "prompt_tps",
-        "completion_tokens", "prompt_tokens", "cached_prompt_tokens", "uncached_prompt_tokens",
-        "ttft_ms", "elapsed_ms",
+        "route_name",
+        "model",
+        "route_hierarchy",
+        "count",
+        "last_ts",
+        "first_completed_at",
+        "last_completed_at",
+        "window_request_count",
+        "total_tps",
+        "completion_tps",
+        "prompt_tps",
+        "completion_tokens",
+        "prompt_tokens",
+        "cached_prompt_tokens",
+        "uncached_prompt_tokens",
+        "ttft_ms",
+        "elapsed_ms",
         # ExecutionUsage accumulators (Phase 12)
-        "upstream_attempts", "usage_reported_attempts",
-        "recovery_count", "retry_amplification_ratio", "usage_complete_count",
+        "upstream_attempts",
+        "usage_reported_attempts",
+        "recovery_count",
+        "retry_amplification_ratio",
+        "usage_complete_count",
     )
 
     def __init__(self, entry: Dict[str, Any]) -> None:
@@ -133,9 +149,17 @@ class RouteStats:
 
     def _apply_entry(self, entry: Dict[str, Any]) -> None:
         # Performance metrics
-        for name in ("total_tps", "completion_tps", "prompt_tps",
-                     "completion_tokens", "prompt_tokens", "cached_prompt_tokens", "uncached_prompt_tokens",
-                     "ttft_ms", "elapsed_ms"):
+        for name in (
+            "total_tps",
+            "completion_tps",
+            "prompt_tps",
+            "completion_tokens",
+            "prompt_tokens",
+            "cached_prompt_tokens",
+            "uncached_prompt_tokens",
+            "ttft_ms",
+            "elapsed_ms",
+        ):
             v = _safe_float(entry.get(name))
             if v is not None:
                 getattr(self, name).update(v)
@@ -168,11 +192,12 @@ class RouteStats:
             usage_complete_pct = self.usage_complete_count / self.count
 
         requests_per_hour = None
-        if (self.first_completed_at is not None and self.last_completed_at is not None
-                and self.last_completed_at > self.first_completed_at):
-            requests_per_hour = self.window_request_count * 3600.0 / (
-                self.last_completed_at - self.first_completed_at
-            )
+        if (
+            self.first_completed_at is not None
+            and self.last_completed_at is not None
+            and self.last_completed_at > self.first_completed_at
+        ):
+            requests_per_hour = self.window_request_count * 3600.0 / (self.last_completed_at - self.first_completed_at)
 
         return {
             "route_name": self.route_name,
@@ -198,7 +223,7 @@ class RouteStats:
             "window_started_at": self.first_completed_at,
             "window_ended_at": self.last_completed_at,
             "window_requests": self.window_request_count,
-            "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
 
@@ -217,6 +242,7 @@ _route_stats_seeded: bool = False
 
 
 # ── Public API ──────────────────────────────────────────────────────
+
 
 def set_performance_logs_dir(directory: str) -> None:
     """Set the directory for performance logs (can be changed at runtime)."""
@@ -241,6 +267,7 @@ def reset_route_stats() -> None:
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
+
 
 def _ensure_dir() -> Path:
     if _PERF_LOGS_DIR is not None:
@@ -272,6 +299,7 @@ def _safe_int(v: Any) -> Optional[int]:
 
 def _safe_slug(s: str) -> str:
     import re
+
     return re.sub(r"[^a-zA-Z0-9_-]", "_", str(s))[:50]
 
 
@@ -326,6 +354,7 @@ def _append_entry(path: Path, record: Dict[str, Any]) -> None:
     """
     try:
         from .async_log_writer import get_async_writer
+
         writer = get_async_writer()
         sink_name = f"perf_{path.name}"
         if writer._running and not writer.is_sink_dead(sink_name):
@@ -343,6 +372,7 @@ def _append_entry(path: Path, record: Dict[str, Any]) -> None:
 
 # ── Summary (now incremental, O(routes) I/O instead of O(entries)) ─
 
+
 def _update_summary(base_dir: Path) -> None:
     """Write ``summary.yaml`` from in-memory route statistics.
 
@@ -352,7 +382,7 @@ def _update_summary(base_dir: Path) -> None:
     _seed_route_stats(base_dir)
 
     if not _route_stats:
-        with open(base_dir / "summary.yaml", 'w', encoding='utf-8') as f:
+        with open(base_dir / "summary.yaml", "w", encoding="utf-8") as f:
             yaml.dump({"models": []}, f)
         return
 
@@ -370,18 +400,23 @@ def _update_summary(base_dir: Path) -> None:
         models_list.append({"model": model, "routes": routes})
 
     summary_data = {
-        "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "models": models_list,
     }
-    with open(base_dir / "summary.yaml", 'w', encoding='utf-8') as f:
+    with open(base_dir / "summary.yaml", "w", encoding="utf-8") as f:
         yaml.dump(summary_data, f, allow_unicode=True, sort_keys=False)
 
 
 # ── Performance computation ─────────────────────────────────────────
 
+
 def compute_request_performance(
-    *, elapsed_ms: Any, completion_tokens: Any, ttft_ms: Any = None,
-    prompt_tokens: Any = None, total_tokens: Any = None,
+    *,
+    elapsed_ms: Any,
+    completion_tokens: Any,
+    ttft_ms: Any = None,
+    prompt_tokens: Any = None,
+    total_tokens: Any = None,
     cached_prompt_tokens: Any = None,
 ) -> Dict[str, Any]:
     """Compute physical throughput while retaining logical token counts.
@@ -403,10 +438,7 @@ def compute_request_performance(
         cached_prompt = max(0, cached_prompt)
         if prompt is not None:
             cached_prompt = min(cached_prompt, prompt)
-    uncached_prompt = (
-        prompt - (cached_prompt or 0)
-        if prompt is not None else None
-    )
+    uncached_prompt = prompt - (cached_prompt or 0) if prompt is not None else None
 
     # Calculate total if not provided
     if total_tokens is None and prompt is not None and completion is not None:
@@ -492,9 +524,7 @@ def record_request_performance(
         base_dir = _ensure_dir()
 
     if cached_prompt_tokens is None and execution_usage is not None:
-        cached_prompt_tokens = getattr(
-            execution_usage, "final_cached_prompt_tokens", None
-        )
+        cached_prompt_tokens = getattr(execution_usage, "final_cached_prompt_tokens", None)
 
     perf = compute_request_performance(
         elapsed_ms=elapsed_ms,
@@ -524,22 +554,14 @@ def record_request_performance(
     # ── Extract ExecutionUsage fields (Phase 12) ───────────────────
     if execution_usage is not None:
         # execution_usage is an ExecutionUsage dataclass
-        record["upstream_attempts"] = getattr(execution_usage, 'upstream_attempts', 0)
-        record["usage_reported_attempts"] = getattr(execution_usage, 'usage_reported_attempts', 0)
-        record["recovery_count"] = getattr(execution_usage, 'recovery_count', 0)
-        record["retry_amplification_ratio"] = _safe_float(
-            getattr(execution_usage, 'retry_amplification_ratio', None)
-        )
-        record["usage_complete"] = getattr(execution_usage, 'usage_complete', False)
-        record["upstream_prompt_tokens"] = getattr(
-            execution_usage, 'upstream_prompt_tokens', None
-        )
-        record["upstream_completion_tokens"] = getattr(
-            execution_usage, 'upstream_completion_tokens', None
-        )
-        record["upstream_total_tokens"] = getattr(
-            execution_usage, 'upstream_total_tokens', None
-        )
+        record["upstream_attempts"] = getattr(execution_usage, "upstream_attempts", 0)
+        record["usage_reported_attempts"] = getattr(execution_usage, "usage_reported_attempts", 0)
+        record["recovery_count"] = getattr(execution_usage, "recovery_count", 0)
+        record["retry_amplification_ratio"] = _safe_float(getattr(execution_usage, "retry_amplification_ratio", None))
+        record["usage_complete"] = getattr(execution_usage, "usage_complete", False)
+        record["upstream_prompt_tokens"] = getattr(execution_usage, "upstream_prompt_tokens", None)
+        record["upstream_completion_tokens"] = getattr(execution_usage, "upstream_completion_tokens", None)
+        record["upstream_total_tokens"] = getattr(execution_usage, "upstream_total_tokens", None)
 
     # ── Seed in-memory stats from disk BEFORE any async I/O ──
     # This ensures existing data is loaded even if the async writer hasn't

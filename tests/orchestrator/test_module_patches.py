@@ -21,6 +21,7 @@ Usage in tests:
         })
 """
 
+
 def patch_app_mod_functions(monkeypatch, func_patches: dict):
     """Apply a function patch at all necessary import locations.
 
@@ -28,12 +29,11 @@ def patch_app_mod_functions(monkeypatch, func_patches: dict):
         monkeypatch: pytest monkeypatch fixture
         func_patches: dict mapping function names to mock implementations
     """
+    import keeprollming.metrics as metrics_mod
     import keeprollming.summary as summary_mod
-    import keeprollming.summary as summary_mod
+    import keeprollming.summary_cache as summary_cache_mod
     from keeprollming.endpoints import chat_completions
     from keeprollming.processing import summarization as processing_summarization_mod
-    import keeprollming.summary_cache as summary_cache_mod
-    import keeprollming.metrics as metrics_mod
 
     # Also patch at import locations for modular code to work
     # This is critical: chat_completions.py imports from summary directly
@@ -51,5 +51,8 @@ def patch_app_mod_functions(monkeypatch, func_patches: dict):
 
     # Also patch where it's used in chat_completions.process_chat_request
     # The function is imported at module level and called directly
-    if 'should_summarise' in func_patches:
-        monkeypatch.setattr('keeprollming.endpoints.chat_completions.should_summarise', func_patches['should_summarise'])
+    if "should_summarise" in func_patches:
+        monkeypatch.setattr(
+            "keeprollming.endpoints.chat_completions.should_summarise",
+            func_patches["should_summarise"],
+        )

@@ -21,13 +21,10 @@ Test categories:
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 from unittest.mock import patch
 
-import pytest
-
-from keeprollming.orchestrator.pipeline import Pipeline
 from keeprollming.orchestrator.filter import FilterExecutionContext
+from keeprollming.orchestrator.pipeline import Pipeline
 
 
 class TestPipelineRequestPhaseFilters:
@@ -64,9 +61,7 @@ class TestPipelineRequestPhaseFilters:
             "stream": True,
         }
         result = asyncio.run(
-            pipeline.process_request(
-                payload, "test-req-001", "test-model", "test-route", "http://test"
-            )
+            pipeline.process_request(payload, "test-req-001", "test-model", "test-route", "http://test")
         )
 
         # Verify system prompt was injected
@@ -99,9 +94,7 @@ class TestPipelineRequestPhaseFilters:
             "stream": True,
         }
         result = asyncio.run(
-            pipeline.process_request(
-                payload, "test-req-002", "test-model", "test-route", "http://test"
-            )
+            pipeline.process_request(payload, "test-req-002", "test-model", "test-route", "http://test")
         )
 
         messages = result["messages"]
@@ -131,9 +124,7 @@ class TestPipelineRequestPhaseFilters:
         # Verify the filter is in the pipeline
         filters = pipeline.filters
         assert len(filters) >= 1
-        assert any(
-            f.__class__.__name__ == "MultimodalValidatorFilter" for f in filters
-        )
+        assert any(f.__class__.__name__ == "MultimodalValidatorFilter" for f in filters)
 
         # Call process_request with a multimodal message
         payload = {
@@ -149,9 +140,7 @@ class TestPipelineRequestPhaseFilters:
             "stream": True,
         }
         result = asyncio.run(
-            pipeline.process_request(
-                payload, "test-req-003", "test-model", "test-route", "http://test"
-            )
+            pipeline.process_request(payload, "test-req-003", "test-model", "test-route", "http://test")
         )
 
         # Verify the multimodal content is preserved (no orphaned markers)
@@ -195,17 +184,13 @@ class TestPipelineRequestPhaseFilters:
             "stream": True,
         }
         result = asyncio.run(
-            pipeline.process_request(
-                payload, "test-req-004", "test-model", "test-route", "http://test"
-            )
+            pipeline.process_request(payload, "test-req-004", "test-model", "test-route", "http://test")
         )
 
         # Both markers should be stripped (2 markers > 1 image_url)
         messages = result["messages"]
         content = messages[0]["content"]
-        text_part = next(
-            item for item in content if item.get("type") == "text"
-        )
+        text_part = next(item for item in content if item.get("type") == "text")
         assert "![image]" not in text_part["text"]
 
     # ── Test 3: SummarizationFilter runs before streaming ──────────────
@@ -246,17 +231,19 @@ class TestPipelineRequestPhaseFilters:
             upstream_model="test-model",
             upstream_url="http://test",
         )
-        context.metadata["route"] = type("MockRoute", (), {
-            "passthrough_enabled": False,
-            "summary_enabled": True,
-        })()
+        context.metadata["route"] = type(
+            "MockRoute",
+            (),
+            {
+                "passthrough_enabled": False,
+                "summary_enabled": True,
+            },
+        )()
         context.metadata["plan"] = type("MockPlan", (), {"should": False})()
 
         # Call process_request directly with the modified context
         result = asyncio.run(
-            pipeline.process_request(
-                payload, "test-req-005", "test-model", "test-route", "http://test"
-            )
+            pipeline.process_request(payload, "test-req-005", "test-model", "test-route", "http://test")
         )
 
         # Messages should be preserved (no summarization needed)
@@ -277,23 +264,30 @@ class TestPipelineRequestPhaseFilters:
         not just that it's registered in the pipeline.
         """
         from keeprollming.filters.summarization.request import SummarizationFilter
-        from keeprollming.orchestrator.filter import Request
 
         # Create a mock route and plan that trigger summarization
-        mock_route = type("MockRoute", (), {
-            "passthrough_enabled": False,
-            "summary_enabled": True,
-            "summary_model": "test-summary-model",
-        })()
-        mock_plan = type("MockPlan", (), {
-            "should": True,
-            "head_n": 1,
-            "tail_n": 2,
-            "middle_count": 3,
-            "threshold": 1000,
-            "prompt_tok_est": 500,
-            "repacked_tok_est": 300,
-        })()
+        mock_route = type(
+            "MockRoute",
+            (),
+            {
+                "passthrough_enabled": False,
+                "summary_enabled": True,
+                "summary_model": "test-summary-model",
+            },
+        )()
+        mock_plan = type(
+            "MockPlan",
+            (),
+            {
+                "should": True,
+                "head_n": 1,
+                "tail_n": 2,
+                "middle_count": 3,
+                "threshold": 1000,
+                "prompt_tok_est": 500,
+                "repacked_tok_est": 300,
+            },
+        )()
 
         # Create a context with route and plan set
         context = FilterExecutionContext(
@@ -332,15 +326,11 @@ class TestPipelineRequestPhaseFilters:
             {"role": "system", "content": "Summary: Previous conversation was about X"},
             {"role": "user", "content": "Message 3"},
         ]
-        with patch(
-            "keeprollming.processing._execute_summarization"
-        ) as mock_exec:
+        with patch("keeprollming.processing._execute_summarization") as mock_exec:
             mock_exec.return_value = (mock_repacked, True, 100)
 
             # Call process_request directly
-            result = asyncio.run(
-                filter_instance.process_request(request, context)
-            )
+            result = asyncio.run(filter_instance.process_request(request, context))
 
             # Verify the mock was called
             mock_exec.assert_called_once()
@@ -382,9 +372,10 @@ class TestPipelineRequestPhaseFilters:
         async def mock_upstream(payload):
             captured_payload.update(payload)
             import json
-            yield b"data: " + json.dumps({
-                "choices": [{"index": 0, "delta": {"content": "Hello"}}]
-            }).encode() + b"\n\n"
+
+            yield (
+                b"data: " + json.dumps({"choices": [{"index": 0, "delta": {"content": "Hello"}}]}).encode() + b"\n\n"
+            )
             yield b"data: [DONE]\n\n"
 
         async def collect_chunks():
@@ -433,9 +424,10 @@ class TestPipelineRequestPhaseFilters:
         async def mock_upstream(payload):
             call_order.append("upstream")
             import json
-            yield b"data: " + json.dumps({
-                "choices": [{"index": 0, "delta": {"content": "Response"}}]
-            }).encode() + b"\n\n"
+
+            yield (
+                b"data: " + json.dumps({"choices": [{"index": 0, "delta": {"content": "Response"}}]}).encode() + b"\n\n"
+            )
             yield b"data: [DONE]\n\n"
 
         # Patch _build_stream_finalizers to track when it's called
@@ -517,9 +509,7 @@ class TestPipelineRequestPhaseFilters:
             "stream": True,
         }
         result = asyncio.run(
-            pipeline.process_request(
-                payload, "test-req-008", "test-model", "test-route", "http://test"
-            )
+            pipeline.process_request(payload, "test-req-008", "test-model", "test-route", "http://test")
         )
 
         # System prompt should be first, multimodal content preserved

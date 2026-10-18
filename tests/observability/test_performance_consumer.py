@@ -13,7 +13,6 @@ Usage:
 """
 
 import json
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -22,8 +21,8 @@ from typing import Any, Dict, List
 import pytest
 import yaml
 
-from keeprollming.observability.events import EventSource, RuntimeEvent
 from keeprollming.observability.consumers import PerformanceConsumer
+from keeprollming.observability.events import EventSource, RuntimeEvent
 
 
 def _make_request_complete_event(
@@ -93,6 +92,7 @@ def clean_perf_dir():
     # Reset global in-memory stats so tests are isolated
     import keeprollming.performance as performance
     from keeprollming.performance import reset_route_stats
+
     previous_dir = performance._PERF_LOGS_DIR
     reset_route_stats()
 
@@ -150,9 +150,11 @@ class TestPerformanceConsumerBasic:
 
         # Flush async writer to ensure records are written
         from keeprollming.async_log_writer import get_async_writer
+
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         entries = load_requests_jsonl(clean_perf_dir)
@@ -186,9 +188,11 @@ class TestPerformanceConsumerBasic:
         consumer(event)
 
         from keeprollming.async_log_writer import get_async_writer
+
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         entries = load_requests_jsonl(clean_perf_dir)
@@ -209,9 +213,11 @@ class TestPerformanceConsumerBasic:
         consumer(event)
 
         from keeprollming.async_log_writer import get_async_writer
+
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         entries = load_requests_jsonl(clean_perf_dir)
@@ -222,13 +228,19 @@ class TestPerformanceConsumerBasic:
         assert entry["completion_tokens_source"] == "missing"
 
     def test_uses_timestamp_window_and_omits_nonfinite_ratio(self, consumer, clean_perf_dir):
-        consumer(_make_request_complete_event(
-            req_id="window-1", timestamp_ns=1_700_000_000_000_000_000,
-            retry_amplification_ratio=float("inf"),
-        ))
-        consumer(_make_request_complete_event(
-            req_id="window-2", timestamp_ns=1_700_000_002_000_000_000,
-        ))
+        consumer(
+            _make_request_complete_event(
+                req_id="window-1",
+                timestamp_ns=1_700_000_000_000_000_000,
+                retry_amplification_ratio=float("inf"),
+            )
+        )
+        consumer(
+            _make_request_complete_event(
+                req_id="window-2",
+                timestamp_ns=1_700_000_002_000_000_000,
+            )
+        )
 
         summary = load_summary_yaml(clean_perf_dir)
         route = summary["models"][0]["routes"][0]
@@ -252,9 +264,11 @@ class TestPerformanceConsumerRouteStats:
             consumer(event)
 
         from keeprollming.async_log_writer import get_async_writer
+
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         entries = load_requests_jsonl(clean_perf_dir)
@@ -272,9 +286,11 @@ class TestPerformanceConsumerRouteStats:
             consumer(event)
 
         from keeprollming.async_log_writer import get_async_writer
+
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         logs_path = Path(clean_perf_dir)
@@ -337,9 +353,11 @@ class TestPerformanceConsumerExecutionUsage:
         consumer(event)
 
         from keeprollming.async_log_writer import get_async_writer
+
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         entries = load_requests_jsonl(clean_perf_dir)
@@ -402,17 +420,17 @@ class TestPerformanceConsumerParity:
 
     def test_parity_with_legacy_record_request_performance(self, clean_perf_dir):
         """Test that PerformanceConsumer produces identical output to legacy function."""
+        from keeprollming.async_log_writer import get_async_writer
         from keeprollming.performance import (
             record_request_performance,
             reset_route_stats,
         )
-        from keeprollming.async_log_writer import get_async_writer
 
         # Reset state for clean comparison
         reset_route_stats()
 
         # Record using legacy function
-        legacy_result = record_request_performance(
+        record_request_performance(
             model="parity-model",
             route_name="test/parity",
             req_id="parity-legacy-001",
@@ -433,6 +451,7 @@ class TestPerformanceConsumerParity:
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         # Load legacy entry
@@ -475,6 +494,7 @@ class TestPerformanceConsumerParity:
         writer = get_async_writer()
         if writer._running:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(writer.flush())
 
         # Load consumer entry
@@ -483,12 +503,23 @@ class TestPerformanceConsumerParity:
         consumer_entry = consumer_entries[0]
 
         # Compare key fields (excluding req_id which differs)
-        for field in ["model", "route_name", "stream", "elapsed_ms", "ttft_ms",
-                      "completion_tokens", "prompt_tokens", "total_tokens",
-                      "finish_reason", "did_summarize", "passthrough",
-                      "completion_tokens_source"]:
-            assert legacy_entry[field] == consumer_entry[field], \
+        for field in [
+            "model",
+            "route_name",
+            "stream",
+            "elapsed_ms",
+            "ttft_ms",
+            "completion_tokens",
+            "prompt_tokens",
+            "total_tokens",
+            "finish_reason",
+            "did_summarize",
+            "passthrough",
+            "completion_tokens_source",
+        ]:
+            assert legacy_entry[field] == consumer_entry[field], (
                 f"Field {field} mismatch: legacy={legacy_entry[field]}, consumer={consumer_entry[field]}"
+            )
 
         # Verify TPS calculations match
         assert abs(legacy_entry.get("total_tps", 0) - consumer_entry.get("total_tps", 0)) < 0.01

@@ -21,7 +21,12 @@ def _ts() -> float:
 
 LOG_SNIP_CHARS = int(os.getenv("LOG_SNIP_CHARS", "4000"))
 BASIC_SNIP_CHARS = int(os.getenv("BASIC_SNIP_CHARS", "0"))
-LOG_STREAM_CHUNKS = os.getenv("LOG_STREAM_CHUNKS", "0").strip().lower() in {"1", "true", "yes", "on"}
+LOG_STREAM_CHUNKS = os.getenv("LOG_STREAM_CHUNKS", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 LOG_PLAIN_COLORS = os.getenv("LOG_PLAIN_COLORS", "1").strip().lower() in {"1", "true", "yes", "on"}
 LOG_PLAIN_WRAP_WIDTH = int(os.getenv("LOG_PLAIN_WRAP_WIDTH", "80"))
 

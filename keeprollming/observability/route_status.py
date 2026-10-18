@@ -50,9 +50,7 @@ def _finite_number(value: Any) -> float | None:
 
 
 def _utc_minute(minute_epoch: int) -> str:
-    return datetime.fromtimestamp(minute_epoch * 60, tz=timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    return datetime.fromtimestamp(minute_epoch * 60, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class RouteStatusRegistry:
@@ -62,11 +60,10 @@ class RouteStatusRegistry:
         self._clock = clock
         self._lock = threading.RLock()
         self._activity: dict[str, dict[int, int]] = defaultdict(dict)
-        self._samples: dict[str, deque[dict[str, Any]]] = defaultdict(
+        self._samples: dict[str, deque[dict[str, Any]]] = defaultdict(lambda: deque(maxlen=MAX_SAMPLES_PER_ROUTE))
+        self._errors: dict[str, deque[dict[str, Any]]] = defaultdict(lambda: deque(maxlen=MAX_ERRORS_PER_ROUTE))
+        self._balance_decisions: dict[str, deque[dict[str, Any]]] = defaultdict(
             lambda: deque(maxlen=MAX_SAMPLES_PER_ROUTE)
-        )
-        self._errors: dict[str, deque[dict[str, Any]]] = defaultdict(
-            lambda: deque(maxlen=MAX_ERRORS_PER_ROUTE)
         )
         self._request_routes: dict[str, tuple[str, float]] = {}
         self._in_flight: dict[str, dict[str, Any]] = {}
@@ -87,6 +84,45 @@ class RouteStatusRegistry:
                             "phase": "preparing",
                             "stream": None,
                         }
+            elif event.type == "execution.routing.balance_decision":
+                requested_route = self._text(event.data.get("requested_route"))
+                selected_route = self._text(event.data.get("selected_route"))
+                if requested_route:
+                    # A selector is a real public-facing route. Count it once
+                    # here; the later route_resolved event counts the concrete
+                    # execution target independently.
+                    self._record_activity(requested_route, now)
+                    self._balance_decisions[requested_route].append(
+                        {
+                            "at": now,
+                            "selected_route": selected_route,
+                            "affinity_state": self._text(event.data.get("affinity_state")),
+                        }
+                    )
+            elif event.type == "execution.routing.balance_rejected":
+                requested_route = self._text(event.data.get("requested_route"))
+                if requested_route:
+                    # A selector rejection has no later ``route_resolved``
+                    # event, so make it visible in the selector's operational
+                    # history here. Capacity expiry is a retryable 429; hard
+                    # selection incompatibility remains a 503.
+                    status = event.data.get("status", 503)
+                    if not isinstance(status, int):
+                        status = 503
+                    self._record_activity(requested_route, now)
+                    self._record_error(
+                        requested_route,
+                        now,
+                        event.req_id,
+                        event_type=event.type,
+                        message=(
+                            "capacity unavailable until admission timeout"
+                            if status == 429
+                            else "no eligible balance target"
+                        ),
+                        status=status,
+                    )
+                self._in_flight.pop(event.req_id or "", None)
             elif event.type == "request.lifecycle.admission.queued":
                 self._set_admission_state(event, now, phase="queued")
             elif event.type == "request.lifecycle.admission.acquired":
@@ -197,22 +233,18 @@ class RouteStatusRegistry:
                 for minute in range(current_minute - (WINDOW_MINUTES - 1), current_minute + 1)
             ]
             samples = list(self._samples.get(route_name, ()))
-            errors = [
-                error for error in self._errors.get(route_name, ())
-                if error["at"] >= current - WINDOW_SECONDS
+            balance_decisions = [
+                decision
+                for decision in self._balance_decisions.get(route_name, ())
+                if decision["at"] >= current - WINDOW_SECONDS
             ]
+            errors = [error for error in self._errors.get(route_name, ()) if error["at"] >= current - WINDOW_SECONDS]
             return {
                 "activity": activity,
                 "errors": list(reversed(errors)),
-                "queued_requests": self._requests_for_route(
-                    route_name, current, phases={"queued"}
-                ),
-                "pending_requests": self._requests_for_route(
-                    route_name, current, phases={"preparing", "connecting"}
-                ),
-                "active_requests": self._requests_for_route(
-                    route_name, current, phases={"requesting", "streaming"}
-                ),
+                "queued_requests": self._requests_for_route(route_name, current, phases={"queued"}),
+                "pending_requests": self._requests_for_route(route_name, current, phases={"preparing", "connecting"}),
+                "active_requests": self._requests_for_route(route_name, current, phases={"requesting", "streaming"}),
                 "performance": {
                     "samples": len(samples),
                     "avg_prompt_tps": self._average(samples, "prompt_tps"),
@@ -220,6 +252,57 @@ class RouteStatusRegistry:
                     "avg_ttft_ms": self._average(samples, "ttft_ms"),
                     "avg_elapsed_ms": self._average(samples, "elapsed_ms"),
                 },
+                "balance": self._balance_summary(balance_decisions),
+            }
+
+    def estimated_ttft_ms(
+        self,
+        route_name: str,
+        *,
+        min_samples: int,
+    ) -> float | None:
+        """Return a conservative recent TTFT estimate when evidence is enough.
+
+        This is deliberately a process-local scheduling hint, not a published
+        SLA. Samples without a finite TTFT are discarded; sparse history
+        returns ``None`` so admission applies no deadline pressure.
+        """
+        with self._lock:
+            self._prune(self._clock())
+            values = [
+                sample["ttft_ms"]
+                for sample in self._samples.get(route_name, ())
+                if isinstance(sample.get("ttft_ms"), (int, float))
+            ]
+            if len(values) < min_samples:
+                return None
+            # Use the upper middle sample instead of a mean: one slow prefill
+            # should influence a safety-oriented scheduling estimate.
+            values.sort()
+            return float(values[(len(values) * 3) // 4])
+
+    def promotion_metrics(
+        self,
+        route_name: str,
+        *,
+        min_samples: int = 3,
+    ) -> dict[str, float] | None:
+        """Return measured PP/decode rates only when both have enough samples."""
+        with self._lock:
+            self._prune(self._clock())
+            samples = [
+                sample
+                for sample in self._samples.get(route_name, ())
+                if isinstance(sample.get("prompt_tps"), (int, float))
+                and isinstance(sample.get("completion_tps"), (int, float))
+                and sample["prompt_tps"] > 0
+                and sample["completion_tps"] > 0
+            ]
+            if len(samples) < min_samples:
+                return None
+            return {
+                "prompt_tps": sum(s["prompt_tps"] for s in samples) / len(samples),
+                "completion_tps": sum(s["completion_tps"] for s in samples) / len(samples),
             }
 
     @staticmethod
@@ -273,23 +356,21 @@ class RouteStatusRegistry:
         if request is not None:
             request["phase"] = phase
 
-    def _requests_for_route(
-        self, route_name: str, now: float, *, phases: set[str]
-    ) -> list[dict[str, Any]]:
+    def _requests_for_route(self, route_name: str, now: float, *, phases: set[str]) -> list[dict[str, Any]]:
         requests = []
         for req_id, request in self._in_flight.items():
             if request["route_name"] != route_name or request["phase"] not in phases:
                 continue
             started_at = request["started_at"]
-            requests.append({
-                "request_id": req_id,
-                "phase": request["phase"],
-                "stream": request["stream"],
-                "started_at": datetime.fromtimestamp(
-                    started_at, tz=timezone.utc
-                ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "elapsed_ms": round((now - started_at) * 1000, 1),
-            })
+            requests.append(
+                {
+                    "request_id": req_id,
+                    "phase": request["phase"],
+                    "stream": request["stream"],
+                    "started_at": datetime.fromtimestamp(started_at, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "elapsed_ms": round((now - started_at) * 1000, 1),
+                }
+            )
         return sorted(requests, key=lambda item: item["started_at"])
 
     def _record_activity(self, route_name: str, at: float) -> None:
@@ -297,24 +378,28 @@ class RouteStatusRegistry:
         buckets = self._activity[route_name]
         buckets[minute] = buckets.get(minute, 0) + 1
 
-    def _record_sample(
-        self, route_name: str, data: dict[str, Any], at: float, *, precomputed: bool = False
-    ) -> None:
-        metrics = data if precomputed else compute_request_performance(
-            elapsed_ms=data.get("elapsed_ms"),
-            completion_tokens=data.get("completion_tokens"),
-            ttft_ms=data.get("ttft_ms"),
-            prompt_tokens=data.get("prompt_tokens"),
-            total_tokens=data.get("total_tokens"),
-            cached_prompt_tokens=data.get("cached_prompt_tokens"),
+    def _record_sample(self, route_name: str, data: dict[str, Any], at: float, *, precomputed: bool = False) -> None:
+        metrics = (
+            data
+            if precomputed
+            else compute_request_performance(
+                elapsed_ms=data.get("elapsed_ms"),
+                completion_tokens=data.get("completion_tokens"),
+                ttft_ms=data.get("ttft_ms"),
+                prompt_tokens=data.get("prompt_tokens"),
+                total_tokens=data.get("total_tokens"),
+                cached_prompt_tokens=data.get("cached_prompt_tokens"),
+            )
         )
-        self._samples[route_name].append({
-            "at": at,
-            "prompt_tps": _finite_number(metrics.get("prompt_tps")),
-            "completion_tps": _finite_number(metrics.get("completion_tps")),
-            "ttft_ms": _finite_number(metrics.get("ttft_ms")),
-            "elapsed_ms": _finite_number(metrics.get("elapsed_ms")),
-        })
+        self._samples[route_name].append(
+            {
+                "at": at,
+                "prompt_tps": _finite_number(metrics.get("prompt_tps")),
+                "completion_tps": _finite_number(metrics.get("completion_tps")),
+                "ttft_ms": _finite_number(metrics.get("ttft_ms")),
+                "elapsed_ms": _finite_number(metrics.get("elapsed_ms")),
+            }
+        )
 
     def _record_error(
         self,
@@ -350,6 +435,25 @@ class RouteStatusRegistry:
         values = [sample[key] for sample in samples if sample.get(key) is not None]
         return round(sum(values) / len(values), 4) if values else None
 
+    @staticmethod
+    def _balance_summary(decisions: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """Return bounded aggregate selection evidence for a selector route."""
+        if not decisions:
+            return None
+        targets: dict[str, int] = {}
+        affinity: dict[str, int] = {}
+        for decision in decisions:
+            target = decision.get("selected_route") or "unknown"
+            targets[target] = targets.get(target, 0) + 1
+            state = decision.get("affinity_state") or "unknown"
+            affinity[state] = affinity.get(state, 0) + 1
+        return {
+            "selections": len(decisions),
+            "targets": targets,
+            "affinity": affinity,
+            "last_selected_route": decisions[-1].get("selected_route"),
+        }
+
     def _prune(self, now: float) -> None:
         cutoff = now - WINDOW_SECONDS
         for route_name, buckets in list(self._activity.items()):
@@ -369,6 +473,11 @@ class RouteStatusRegistry:
                 errors.popleft()
             if not errors:
                 self._errors.pop(route_name, None)
+        for route_name, decisions in list(self._balance_decisions.items()):
+            while decisions and decisions[0]["at"] < cutoff:
+                decisions.popleft()
+            if not decisions:
+                self._balance_decisions.pop(route_name, None)
         for req_id, (_, at) in tuple(self._request_routes.items()):
             if at < cutoff:
                 del self._request_routes[req_id]

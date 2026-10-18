@@ -6,14 +6,13 @@ Tests pattern matching, fallback chains, and route resolution.
 """
 
 import pytest
+
 from keeprollming.routing import (
     Route,
-    DEFAULT_FALLBACK_ROUTE,
     _parse_pattern,
-    _match_route,
-    resolve_route,
-    resolve_fallback_chain,
     get_route_settings,
+    resolve_fallback_chain,
+    resolve_route_from_routes,
 )
 
 
@@ -58,12 +57,12 @@ class TestRouteResolution:
 
     def test_resolve_fallback(self):
         """Test fallback for unmatched model."""
-        route, backend = resolve_route("completely/unknown/model")
+        route, backend = resolve_route_from_routes("completely/unknown/model")
         assert route is not None  # Falls back to DEFAULT_FALLBACK_ROUTE
 
     def test_resolve_fallback_for_unknown(self):
         """Test fallback for unknown model."""
-        route, backend = resolve_route("unknown-model")
+        route, backend = resolve_route_from_routes("unknown-model")
         assert route is not None
         assert "fallback" in route.name.lower()
 
@@ -84,7 +83,7 @@ class TestFallbackChain:
         )
 
         attempts = resolve_fallback_chain(route, "qwen2.5-27b-instruct")
-        
+
         assert len(attempts) == 3  # primary + 2 fallbacks
         assert attempts[0] == (route, "qwen2.5-27b-instruct")
         assert attempts[1][1] == "qwen2.5-14b-instruct"
@@ -103,7 +102,7 @@ class TestFallbackChain:
         )
 
         attempts = resolve_fallback_chain(route, "qwen3.5-35b-a3b")
-        
+
         assert len(attempts) == 2
         assert attempts[0] == (route, "qwen3.5-35b-a3b")
         # Second attempt should reference the matched route
@@ -124,7 +123,7 @@ class TestFallbackChain:
         )
 
         attempts = resolve_fallback_chain(route, "qwen2.5-27b-instruct")
-        
+
         assert len(attempts) == 4  # primary + 3 fallbacks (max depth)
 
     def test_fallback_chain_prevents_loops(self):
@@ -141,7 +140,7 @@ class TestFallbackChain:
         )
 
         attempts = resolve_fallback_chain(route, "qwen2.5-27b-instruct")
-        
+
         # Should skip the duplicate model
         assert len(attempts) == 3  # primary + 14b + quick (not 27b again)
 
@@ -209,9 +208,7 @@ class TestRouteInheritance:
         # Resolve the child route - it should inherit summary_enabled=False from parent
         resolved_child = resolve_inherited_route(child, routes_by_name)
 
-        assert resolved_child.summary_enabled is False, (
-            "Child should inherit summary_enabled=False from parent"
-        )
+        assert resolved_child.summary_enabled is False, "Child should inherit summary_enabled=False from parent"
 
     def test_summary_enabled_override(self):
         """Test that child can override summary_enabled from parent."""
@@ -239,9 +236,7 @@ class TestRouteInheritance:
         # Resolve the child route - should use child's value
         resolved_child = resolve_inherited_route(child, routes_by_name)
 
-        assert resolved_child.summary_enabled is False, (
-            "Child should use its own summary_enabled=False value"
-        )
+        assert resolved_child.summary_enabled is False, "Child should use its own summary_enabled=False value"
 
     def test_passthrough_enabled_inheritance(self):
         """Test that passthrough_enabled is properly inherited from parent routes."""
@@ -268,9 +263,7 @@ class TestRouteInheritance:
         # Resolve the child route - it should inherit passthrough_enabled=True from parent
         resolved_child = resolve_inherited_route(child, routes_by_name)
 
-        assert resolved_child.passthrough_enabled is True, (
-            "Child should inherit passthrough_enabled=True from parent"
-        )
+        assert resolved_child.passthrough_enabled is True, "Child should inherit passthrough_enabled=True from parent"
 
     def test_summary_model_not_route_object(self):
         """Test that summary_model is always a string, never a Route object."""
@@ -287,14 +280,13 @@ class TestRouteInheritance:
         settings = get_route_settings(route, "qwen2.5-3b-instruct")
 
         # summary_model should be a string, not an object
-        assert isinstance(settings.summary_model, str), (
-            "summary_model should be a string"
-        )
+        assert isinstance(settings.summary_model, str), "summary_model should be a string"
         assert settings.summary_model == "qwen2.5-1.5b-instruct"
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
 
 class TestSummaryModelDefault:
     """Test summary_model defaulting behavior."""
@@ -314,16 +306,14 @@ class TestSummaryModelDefault:
         settings = get_route_settings(route, "qwen2.5-3b-instruct")
 
         # summary_model should default to the main model
-        assert isinstance(settings.summary_model, str), (
-            "summary_model should be a string"
-        )
+        assert isinstance(settings.summary_model, str), "summary_model should be a string"
         assert settings.summary_model == "qwen2.5-3b-instruct", (
             "summary_model should default to model when not explicitly set"
         )
 
     def test_summary_model_inheritance_with_default(self):
         """Test that summary_model defaults to model after inheritance resolution."""
-        from keeprollming.routing import resolve_inherited_route, get_route_settings
+        from keeprollming.routing import get_route_settings, resolve_inherited_route
 
         # Parent route with model defined but no summary_model
         parent = Route(
@@ -347,16 +337,12 @@ class TestSummaryModelDefault:
         settings = get_route_settings(resolved, "qwen3.5-4b")
 
         # summary_model should default to the main model after inheritance
-        assert isinstance(settings.summary_model, str), (
-            "summary_model should be a string"
-        )
-        assert settings.summary_model == "qwen3.5-4b", (
-            "summary_model should default to model after inheritance"
-        )
+        assert isinstance(settings.summary_model, str), "summary_model should be a string"
+        assert settings.summary_model == "qwen3.5-4b", "summary_model should default to model after inheritance"
 
     def test_summary_model_override_in_child(self):
         """Test that child can override summary_model from parent."""
-        from keeprollming.routing import resolve_inherited_route, get_route_settings
+        from keeprollming.routing import get_route_settings, resolve_inherited_route
 
         # Parent route with explicit summary_model
         parent = Route(
@@ -382,6 +368,4 @@ class TestSummaryModelDefault:
         settings = get_route_settings(resolved, "qwen3.5-4b")
 
         # Child should use its own summary_model override
-        assert settings.summary_model == "qwen2.5-1.5b-instruct", (
-            "Child should use overridden summary_model"
-        )
+        assert settings.summary_model == "qwen2.5-1.5b-instruct", "Child should use overridden summary_model"

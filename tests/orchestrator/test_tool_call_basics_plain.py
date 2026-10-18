@@ -12,17 +12,16 @@ This test verifies that in BASIC_PLAIN mode we see:
 - TOOL_RESULT markers for tool responses
 """
 
-import json as JSON
 import pytest
 from fastapi.testclient import TestClient
 
-import keeprollming.app as app_mod
 import keeprollming.config as config_mod
 import keeprollming.logger as logger_mod
 
 
 class _FakeStreamCtx:
     """Mock stream context manager."""
+
     def __init__(self, resp):
         self._resp = resp
 
@@ -35,6 +34,7 @@ class _FakeStreamCtx:
 
 class _FakeStreamResponse:
     """Mock stream response for streaming endpoints."""
+
     def __init__(self, chunks):
         self._chunks = chunks
         self.status_code = 200
@@ -52,11 +52,12 @@ _fake_client_instance = None
 class AgentFlowClient:
     """
     Fake client that simulates a real agent loop with tool calls.
-    
+
     Simulates a conversation like:
-      User: "Check /tmp and calculate 2+2"  
+      User: "Check /tmp and calculate 2+2"
       Assistant: [tool_call: run_command("/tmp")] → result → [tool_call: compute(2+2)] → result → final answer
     """
+
     def __init__(self):
         self.requests = []
 
@@ -65,48 +66,46 @@ class AgentFlowClient:
         self.requests.append({"method": "POST", "url": url, "json": json})
         # Return a proper non-streaming response object
         import json as _json
+
         class _FakeResp:
             status_code = 200
+
             def json(self):
-                return {"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"total_tokens": 5}}
+                return {
+                    "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                    "usage": {"total_tokens": 5},
+                }
+
             async def text(self):
                 return _json.dumps({"choices": [{"message": {"role": "assistant", "content": "ok"}}]})
+
         return _FakeResp()
 
     def stream(self, method=None, url=None, json=None, headers=None, **kwargs):
         """Streaming — simulates a full agent round-trip with tool calls."""
         self.requests.append({"method": "stream", "json": json})
-        body = json or kwargs.get("payload") or {}
+        json or kwargs.get("payload") or {}
 
         # Simulate: assistant calls two tools sequentially in one stream
         chunks = [
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
-
             # Tool call 1 starts
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_run123","type":"function","function":{"name":"run_command","arguments":""}}]},"finish_reason":null}]}\n\n',
-
             # Tool call 1: arguments arriving
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"/tmp"}}]},"finish_reason":null}]}\n\n',
-
             # Tool call 1: done
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}]},"finish_reason":null}]}\n\n',
-
             # Some text between tool calls
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"content":"Checking /tmp... "},"finish_reason":null}]}\n\n',
-
             # Tool call 2 starts
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_calc456","type":"function","function":{"name":"calculate","arguments":""}}]},"finish_reason":null}]}\n\n',
-
             # Tool call 2: arguments
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"2+2"}}]},"finish_reason":null}]}\n\n',
-
             # Tool call 2: done
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":""}}]},"finish_reason":null}]}\n\n',
-
             # Final text
             b'data: {"id":"chat-1","object":"chat.completion.chunk","created":1700000000,"model":"test-model","choices":[{"index":0,"delta":{"content":"Done."},"finish_reason":"stop"}]}\n\n',
-
-            b'data: [DONE]\n\n'
+            b"data: [DONE]\n\n",
         ]
 
         class AgentStreamCtx:
@@ -132,17 +131,20 @@ def setup_agent_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(logger_mod, "LOG_SNIP_CHARS", 2000)
     monkeypatch.setattr(logger_mod, "BASIC_SNIP_CHARS", 0)
     from keeprollming.logging import constants as logging_constants
+
     monkeypatch.setattr(logging_constants, "LOG_PLAIN_COLORS", False)
 
-     # Mock upstream http_client — must match signature used by chat_completions.py
+    # Mock upstream http_client — must match signature used by chat_completions.py
     async def _fake_http_client(request_timeout):
         return _fake_client_instance
 
     from keeprollming import upstream
+
     monkeypatch.setattr(upstream, "http_client", _fake_http_client)
-    
+
     # Also patch where it's imported in chat_completions module
     from keeprollming.endpoints import chat_completions as cc_mod
+
     monkeypatch.setattr(cc_mod, "http_client", _fake_http_client)
 
     # Summary cache settings
@@ -153,6 +155,7 @@ def setup_agent_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(config_mod, "SUMMARY_FORCE_CONSOLIDATE", False)
 
     from keeprollming.app import app
+
     yield app
 
 

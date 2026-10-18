@@ -44,17 +44,11 @@ class FilterModule:
         """Validate operator-supplied settings owned by this module."""
         unknown = set(config) - {"enabled", "priority"} - set(self.config_types)
         if unknown:
-            raise ValueError(
-                f"filter '{self.name}' does not support setting(s): "
-                + ", ".join(sorted(unknown))
-            )
+            raise ValueError(f"filter '{self.name}' does not support setting(s): " + ", ".join(sorted(unknown)))
         for key, expected_type in self.config_types.items():
             value = config.get(key)
             if value is not None and not isinstance(value, expected_type):
-                raise ValueError(
-                    f"filter '{self.name}.{key}' must be "
-                    f"{_type_name(expected_type)}"
-                )
+                raise ValueError(f"filter '{self.name}.{key}' must be {_type_name(expected_type)}")
         if self.settings_validator is not None:
             self.settings_validator(config)
 
@@ -75,6 +69,8 @@ def built_in_filter_modules() -> dict[str, FilterModule]:
     from keeprollming.filters.tool_loop_stopper import ToolLoopStopperFilter
     from keeprollming.filters.tool_rewrite import ToolRewriteFilter
 
+    from .loop_recovery import validate_settings as validate_loop_settings
+
     classes = {
         "system_prompt": (
             SystemPromptFilter,
@@ -84,8 +80,8 @@ def built_in_filter_modules() -> dict[str, FilterModule]:
         ),
         "summarization": (SummarizationFilter, None, SUMMARIZATION_SCHEMA.fields),
         "tool_rewrite": (ToolRewriteFilter, 15, TOOL_REWRITE_SCHEMA.fields),
-        "reasoning_loop_stopper": (ReasoningLoopStopperFilter, 60, RLS_SCHEMA.fields),
-        "model_tool_loop_stopper": (ToolLoopStopperFilter, 55, TLS_SCHEMA.fields),
+        "reasoning_loop_stopper": (ReasoningLoopStopperFilter, 60, RLS_SCHEMA.fields, validate_loop_settings),
+        "model_tool_loop_stopper": (ToolLoopStopperFilter, 55, TLS_SCHEMA.fields, validate_loop_settings),
         "multimodal_validator": (
             MultimodalValidatorFilter,
             None,
@@ -110,10 +106,7 @@ def built_in_filter_modules() -> dict[str, FilterModule]:
 
 def request_priorities() -> dict[str, int]:
     """Effective built-in request phase defaults, keyed by module name."""
-    return {
-        name: module.request_priority
-        for name, module in built_in_filter_modules().items()
-    }
+    return {name: module.request_priority for name, module in built_in_filter_modules().items()}
 
 
 def stream_priorities() -> dict[str, int]:

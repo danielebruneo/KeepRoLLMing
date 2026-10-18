@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 def _get_config():
     """Lazy import of config constants."""
     from .config import MAX_HEAD, SUMMARY_PIN_FIRST_USER
+
     return {
         "MAX_HEAD": MAX_HEAD,
         "SUMMARY_PIN_FIRST_USER": SUMMARY_PIN_FIRST_USER,
@@ -21,6 +22,7 @@ def _get_config():
 # Message building utilities
 # ---------------------------------------------------------------------
 
+
 def build_repacked_messages(
     messages: List[Dict[str, Any]],
     summary: str,
@@ -30,9 +32,9 @@ def build_repacked_messages(
 ) -> List[Dict[str, Any]]:
     """Build a repacked message array with the summary inserted."""
     from .decision_engine import split_messages
-    
+
     sys_msg, non_system = split_messages(messages)
-    
+
     # Determine how many head messages to keep (respecting pin_first_user)
     pinned_head_n = 0
     if pin_first_user:
@@ -40,27 +42,29 @@ def build_repacked_messages(
             if msg.get("role") == "user":
                 pinned_head_n = idx + 1
                 break
-    
+
     max_head_eff = min(max(1, pinned_head_n), len(non_system) - 1)
     head_n = min(max_head, max_head_eff)
-    
+
     # Build repacked array: system + head + summary + tail
     result: List[Dict[str, Any]] = []
     if sys_msg:
         result.append(sys_msg)
     result.extend(non_system[:head_n])
-    
+
     # Add summary message (as user message for backward compatibility)
-    result.append({
-        "role": "user",
-        "content": f"[ARCHIVED_COMPACT_CONTEXT]\n{summary}\n[/ARCHIVED_COMPACT_CONTEXT]",
-    })
-    
+    result.append(
+        {
+            "role": "user",
+            "content": f"[ARCHIVED_COMPACT_CONTEXT]\n{summary}\n[/ARCHIVED_COMPACT_CONTEXT]",
+        }
+    )
+
     # Add tail messages if any remain
     remaining = len(non_system) - head_n
     if remaining > 1:
-        result.extend(non_system[-(remaining - 1):])
-    
+        result.extend(non_system[-(remaining - 1) :])
+
     return result
 
 
@@ -72,7 +76,7 @@ def build_archived_summary_message(summary: str, *, prefix: bool = True) -> Dict
     content_parts.append(summary.strip())
     if prefix:
         content_parts.append("[/ARCHIVED_COMPACT_CONTEXT]")
-    
+
     return {
         "role": "user",
         "content": "\n".join(content_parts),
@@ -90,7 +94,7 @@ def build_messages_from_summary_prefix(
             idx_start = content.find("[ARCHIVED_COMPACT_CONTEXT]")
             idx_end = content.find("[/ARCHIVED_COMPACT_CONTEXT]")
             if idx_start != -1 and idx_end != -1:
-                summary = content[idx_start + len("[ARCHIVED_COMPACT_CONTEXT]"):idx_end].strip()
+                summary = content[idx_start + len("[ARCHIVED_COMPACT_CONTEXT]") : idx_end].strip()
                 return {
                     "role": msg.get("role", "user"),
                     "content": f"[ARCHIVED_COMPACT_CONTEXT]\n{summary}\n[/ARCHIVED_COMPACT_CONTEXT]",
@@ -104,12 +108,12 @@ def ensure_repacked_has_user_message(
     """Ensure the repacked array has at least one user message."""
     if not repacked:
         return repacked
-    
+
     # Check if we have any user messages
     has_user = any(m.get("role") == "user" for m in repacked)
     if has_user:
         return repacked
-    
+
     # If no user message, convert the last non-system message to user role
     result = list(repacked)
     for i in range(len(result) - 1, -1, -1):
@@ -117,7 +121,7 @@ def ensure_repacked_has_user_message(
         if msg.get("role") != "system":
             result[i] = {**msg, "role": "user"}
             break
-    
+
     return result
 
 
@@ -132,14 +136,14 @@ def choose_append_until_idx(
     """
     if len(messages) <= 1:
         return len(messages)
-    
+
     # Simple heuristic: count user messages and estimate tokens
     user_count = sum(1 for m in messages if m.get("role") == "user")
     estimated_tokens = int(len(messages) * 50 + user_count * 100)
-    
+
     if estimated_tokens <= threshold:
         return len(messages)
-    
+
     # Binary search to find the optimal cutoff
     lo, hi = 1, len(messages)
     while lo < hi:
@@ -149,5 +153,5 @@ def choose_append_until_idx(
             lo = mid
         else:
             hi = mid - 1
-    
+
     return max(lo, 1)

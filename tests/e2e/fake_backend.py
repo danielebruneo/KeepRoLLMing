@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import random
 import time
 from collections import defaultdict
 from copy import deepcopy
@@ -11,7 +10,6 @@ from typing import Any, AsyncIterator, Dict, List
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-
 
 EMBEDDINGS_DIM = 256
 
@@ -113,7 +111,7 @@ class State:
 
     def next_prng(self) -> float:
         """Deterministic PRNG based on LCG (Linear Congruential Generator).
-        
+
         Returns a float in [0, 1) based on (seed, internal counter).
         Same seed + same sequence of calls = same sequence of values.
         """
@@ -181,7 +179,13 @@ def _usage_for(content: str) -> Dict[str, int]:
     }
 
 
-def _json_success(model: str, content: str, include_usage: bool, tool_calls: list | None = None, reasoning_content: str | None = None) -> JSONResponse:
+def _json_success(
+    model: str,
+    content: str,
+    include_usage: bool,
+    tool_calls: list | None = None,
+    reasoning_content: str | None = None,
+) -> JSONResponse:
     message: Dict[str, Any] = {"role": "assistant", "content": content}
     if tool_calls:
         message["tool_calls"] = tool_calls
@@ -207,9 +211,10 @@ def _json_success(model: str, content: str, include_usage: bool, tool_calls: lis
 
 # ── Degradation Layer (ST-01) ────────────────────────────────────────────────
 
+
 def _degrade_event(event: Dict[str, Any], level: int, prng_fn: callable, chunk_index: int) -> Dict[str, Any]:
     """Apply degradation transformations to a single SSE event.
-    
+
     L1: Fragment tool_call arguments across multiple deltas
     L2: Interleave reasoning and content, add keepalive comments
     L3: Add empty deltas, mix line endings
@@ -217,7 +222,7 @@ def _degrade_event(event: Dict[str, Any], level: int, prng_fn: callable, chunk_i
     """
     if level == 0:
         return event
-    
+
     # L1+ Fragment tool_call arguments
     if level >= 1:
         choices = event.get("choices", [])
@@ -234,38 +239,38 @@ def _degrade_event(event: Dict[str, Any], level: int, prng_fn: callable, chunk_i
                                 mid = len(args) // 2
                                 tc["function"]["arguments"] = args[:mid]
                                 # Note: caller must emit additional events for remaining args
-    
+
     # L2+ Add keepalive comments (handled at chunk level, not event level)
-    
+
     # L4+ Occasionally duplicate events
     if level >= 4 and prng_fn() < 0.1:
         # Signal that this event should be duplicated
         event["_duplicate"] = True
-    
+
     return event
 
 
 def _degrade_chunks(chunks: List[bytes], level: int, prng_fn: callable) -> List[bytes]:
     """Apply degradation transformations to SSE chunks.
-    
+
     L2: Interleave reasoning and content boundaries
     L3: Split JSON across chunks, add empty chunks
     L4: Omit [DONE], split UTF-8 characters
     """
     if level == 0:
         return chunks
-    
+
     result = []
-    
+
     for i, chunk in enumerate(chunks):
         # L2+ Add keepalive comments occasionally
         if level >= 2 and prng_fn() < 0.1:
             result.append(b": ping\n\n")
-        
+
         # L3+ Add empty/whitespace chunks occasionally
         if level >= 3 and prng_fn() < 0.05:
             result.append(b"data: {}\n\n")
-        
+
         # L3+ Split JSON across chunks (simulate TCP fragmentation)
         if level >= 3 and len(chunk) > 100 and prng_fn() < 0.2:
             # Split the chunk in two
@@ -274,14 +279,14 @@ def _degrade_chunks(chunks: List[bytes], level: int, prng_fn: callable) -> List[
             result.append(chunk[mid:])
         else:
             result.append(chunk)
-    
+
     # L4+ Omit [DONE] occasionally
     if level >= 4:
         # Remove last [DONE] marker if present
         if result and result[-1] == b"data: [DONE]\n\n":
             if prng_fn() < 0.5:
                 result = result[:-1]
-    
+
     return result
 
 
@@ -314,11 +319,13 @@ async def _stream_sse(
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"reasoning_content": rp},
-                        "finish_reason": None,
-                    }],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"reasoning_content": rp},
+                            "finish_reason": None,
+                        }
+                    ],
                 }
                 chunks.append(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
 
@@ -333,11 +340,17 @@ async def _stream_sse(
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": model,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"tool_calls": tool_calls_delta if isinstance(tool_calls_delta, list) else [tool_calls_delta]},
-                        "finish_reason": None,
-                    }],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "tool_calls": tool_calls_delta
+                                if isinstance(tool_calls_delta, list)
+                                else [tool_calls_delta]
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
                 }
             chunks.append(f"data: {json.dumps(tc_event, ensure_ascii=False)}\n\n".encode("utf-8"))
 
@@ -364,7 +377,13 @@ async def _stream_sse(
             "object": "chat.completion.chunk",
             "created": int(time.time()),
             "model": model,
-            "choices": [{"index": 0, "delta": {}, "finish_reason": final_finish_reason or ("tool_calls" if tool_calls_delta else "stop")}],
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": final_finish_reason or ("tool_calls" if tool_calls_delta else "stop"),
+                }
+            ],
         }
         content = "".join(pieces)
         if include_usage:
@@ -436,32 +455,25 @@ def create_app() -> FastAPI:
     @app.post("/__degrade")
     async def set_degradation(payload: Dict[str, Any]) -> Dict[str, Any]:
         """Set degradation level and seed for realistic stream testing.
-        
+
         Args:
             level: Degradation level (0-4)
             seed: Random seed for deterministic output
-        
+
         Returns:
             Current degradation settings
         """
         level = int(payload.get("level", 0))
         seed = int(payload.get("seed", 0))
-        
+
         if level < 0 or level > 4:
-            return JSONResponse(
-                {"error": "level must be 0-4"},
-                status_code=400
-            )
-        
+            return JSONResponse({"error": "level must be 0-4"}, status_code=400)
+
         STATE.degradation_level = level
         STATE.seed = seed
         STATE._prng_state = seed
-        
-        return {
-            "ok": "true",
-            "level": STATE.degradation_level,
-            "seed": STATE.seed
-        }
+
+        return {"ok": "true", "level": STATE.degradation_level, "seed": STATE.seed}
 
     @app.get("/__stats")
     async def stats() -> Dict[str, Any]:
@@ -495,27 +507,36 @@ def create_app() -> FastAPI:
         STATE.calls_by_model[model] += 1
 
         text = _extract_text([{"content": " ".join(inputs)}])
-        STATE.requests.append({
-            "kind": "embedding",
-            "model": model,
-            "messages_count": len(inputs),
-            "prompt_chars": len(text),
-        })
+        STATE.requests.append(
+            {
+                "kind": "embedding",
+                "model": model,
+                "messages_count": len(inputs),
+                "prompt_chars": len(text),
+            }
+        )
 
         data = []
         for i, inp in enumerate(inputs):
-            data.append({
-                "index": i,
-                "embedding": [0.1 * (j % 10) for j in range(EMBEDDINGS_DIM)],
-                "object": "embedding",
-            })
+            data.append(
+                {
+                    "index": i,
+                    "embedding": [0.1 * (j % 10) for j in range(EMBEDDINGS_DIM)],
+                    "object": "embedding",
+                }
+            )
 
-        return JSONResponse({
-            "object": "list",
-            "data": data,
-            "model": model,
-            "usage": {"prompt_tokens": max(1, len(text) // 4), "total_tokens": max(1, len(text) // 4)},
-        })
+        return JSONResponse(
+            {
+                "object": "list",
+                "data": data,
+                "model": model,
+                "usage": {
+                    "prompt_tokens": max(1, len(text) // 4),
+                    "total_tokens": max(1, len(text) // 4),
+                },
+            }
+        )
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request):
@@ -559,7 +580,11 @@ def create_app() -> FastAPI:
 
         overflow_limit = action.get("overflow_if_prompt_chars_gt", section.get("overflow_if_prompt_chars_gt"))
         if isinstance(overflow_limit, int) and len(text) > overflow_limit:
-            message = str(action.get("overflow_message") or section.get("overflow_message") or "Prompt exceeds the available context size.")
+            message = str(
+                action.get("overflow_message")
+                or section.get("overflow_message")
+                or "Prompt exceeds the available context size."
+            )
             return JSONResponse({"error": {"message": message}}, status_code=400)
 
         # Support array of responses for multi-retry testing
@@ -589,7 +614,7 @@ def create_app() -> FastAPI:
 
         if stream:
             pieces = action.get("stream_pieces") or section.get("stream_pieces") or [content]
-            
+
             # Support array of response arrays for multi-retry testing in streaming mode
             if isinstance(pieces, list) and pieces and isinstance(pieces[0], list):
                 # Nested array: return appropriate set based on call index
@@ -600,7 +625,7 @@ def create_app() -> FastAPI:
                     pieces = [str(p) if p is not None else "" for p in pieces[-1]]  # Fallback to last
             else:
                 pieces = [str(p) if p is not None else "" for p in pieces]
-            
+
             ttft_ms = int(action.get("ttft_ms", section.get("ttft_ms", 0)))
             chunk_delay_ms = int(action.get("chunk_delay_ms", section.get("chunk_delay_ms", 0)))
             abort_after_chunks = action.get("abort_after_chunks", section.get("abort_after_chunks"))
@@ -623,7 +648,12 @@ def create_app() -> FastAPI:
             )
 
         reasoning_content = action.get("reasoning_content", section.get("reasoning_content"))
-        return _json_success(model, content, include_usage=include_usage, tool_calls=tool_calls,
-                             reasoning_content=reasoning_content)
+        return _json_success(
+            model,
+            content,
+            include_usage=include_usage,
+            tool_calls=tool_calls,
+            reasoning_content=reasoning_content,
+        )
 
     return app

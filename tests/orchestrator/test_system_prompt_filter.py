@@ -3,6 +3,7 @@ Tests for System Prompt Filter.
 """
 
 import pytest
+
 from keeprollming.filters.system_prompt.request import SystemPromptFilter
 from keeprollming.orchestrator.filter import FilterExecutionContext
 
@@ -75,7 +76,11 @@ class TestProcessResponse:
     @pytest.mark.asyncio
     async def test_passes_through(self):
         """process_response is a no-op."""
-        resp = type('obj', (object,), {'content': 'test', 'model': 'm', 'usage': None, 'finish_reason': 'stop'})()
+        resp = type(
+            "obj",
+            (object,),
+            {"content": "test", "model": "m", "usage": None, "finish_reason": "stop"},
+        )()
         ctx = make_context()
         f = SystemPromptFilter({"enabled": True, "prompt": "x"})
         result = await f.process_response(resp, ctx)
@@ -87,4 +92,5 @@ class TestPriority:
         """System prompt filter runs first (lowest priority)."""
         assert SystemPromptFilter.priority == 10
         from keeprollming.filters.tool_loop_stopper import ToolLoopStopperFilter
+
         assert SystemPromptFilter.priority < ToolLoopStopperFilter.priority  # 10 < 25

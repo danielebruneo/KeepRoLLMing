@@ -8,10 +8,9 @@ This test corresponds to Regression 2 from INVESTIGATION-092-RUNTIME-PARITY-AUDI
 
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from keeprollming.endpoints.streaming_handlers import _build_pipeline
-
 
 # ---------------------------------------------------------------------------
 # test_build_pipeline_if_configured_passes_reqid
@@ -25,15 +24,9 @@ def test_build_pipeline_passes_reqid():
     and passes req_id through for event correlation.
     """
     # Mock the dependencies
-    with patch(
-        "keeprollming.endpoints.streaming_handlers.PIPELINE_AVAILABLE", True
-    ):
-        with patch(
-            "keeprollming.endpoints.streaming_handlers.Pipeline"
-        ) as mock_pipeline:
-            with patch(
-                "keeprollming.endpoints.streaming_handlers.emit_pipeline_build"
-            ) as mock_emit:
+    with patch("keeprollming.endpoints.streaming_handlers.PIPELINE_AVAILABLE", True):
+        with patch("keeprollming.endpoints.streaming_handlers.Pipeline") as mock_pipeline:
+            with patch("keeprollming.endpoints.streaming_handlers.emit_pipeline_build") as mock_emit:
                 # Setup mocks
                 mock_pipeline.from_route_config.return_value = MagicMock()
                 route = MagicMock()
@@ -68,15 +61,9 @@ def test_build_pipeline_default_none():
 
     Backward compatibility: callers that don't pass req_id still work.
     """
-    with patch(
-        "keeprollming.endpoints.streaming_handlers.PIPELINE_AVAILABLE", True
-    ):
-        with patch(
-            "keeprollming.endpoints.streaming_handlers.Pipeline"
-        ) as mock_pipeline:
-            with patch(
-                "keeprollming.endpoints.streaming_handlers.emit_pipeline_build"
-            ) as mock_emit:
+    with patch("keeprollming.endpoints.streaming_handlers.PIPELINE_AVAILABLE", True):
+        with patch("keeprollming.endpoints.streaming_handlers.Pipeline") as mock_pipeline:
+            with patch("keeprollming.endpoints.streaming_handlers.emit_pipeline_build") as mock_emit:
                 mock_pipeline.from_route_config.return_value = MagicMock()
                 route = MagicMock()
                 route.filters = {"system_prompt": {}}

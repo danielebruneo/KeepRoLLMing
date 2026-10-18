@@ -73,58 +73,84 @@ def emit_request_event(
 
 
 def emit_received(
-    req_id: str, client_model: str, stream: bool = False,
+    req_id: str,
+    client_model: str,
+    stream: bool = False,
     endpoint: str = "/v1/chat/completions",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_request_event(req_id, "request.lifecycle.received",
-                         client_model=client_model, stream=stream,
-                         endpoint=endpoint, dispatcher=dispatcher)
+    return emit_request_event(
+        req_id,
+        "request.lifecycle.received",
+        client_model=client_model,
+        stream=stream,
+        endpoint=endpoint,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_preprocessing_started(
-    req_id: str, endpoint: str = "/v1/chat/completions",
+    req_id: str,
+    endpoint: str = "/v1/chat/completions",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_request_event(req_id, "request.lifecycle.preprocessing.started",
-                         endpoint=endpoint, dispatcher=dispatcher)
+    return emit_request_event(
+        req_id, "request.lifecycle.preprocessing.started", endpoint=endpoint, dispatcher=dispatcher
+    )
 
 
 def emit_preprocessing_completed(
-    req_id: str, stream: bool = False,
+    req_id: str,
+    stream: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_request_event(req_id, "request.lifecycle.preprocessing.completed",
-                         stream=stream, dispatcher=dispatcher)
+    return emit_request_event(req_id, "request.lifecycle.preprocessing.completed", stream=stream, dispatcher=dispatcher)
 
 
 def emit_completed(
-    req_id: str, status: int = 200, elapsed_ms: float = 0.0,
+    req_id: str,
+    status: int = 200,
+    elapsed_ms: float = 0.0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_request_event(req_id, "request.lifecycle.completed",
-                         status=status, elapsed_ms=elapsed_ms,
-                         dispatcher=dispatcher)
+    return emit_request_event(
+        req_id,
+        "request.lifecycle.completed",
+        status=status,
+        elapsed_ms=elapsed_ms,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_failed(
-    req_id: str, error: str, status: int = 500,
+    req_id: str,
+    error: str,
+    status: int = 500,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_request_event(req_id, "request.lifecycle.failed",
-                         level="ERROR",
-                         error=error, status=status,
-                         dispatcher=dispatcher)
+    return emit_request_event(
+        req_id,
+        "request.lifecycle.failed",
+        level="ERROR",
+        error=error,
+        status=status,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_cancelled(
-    req_id: str, reason: str = "",
+    req_id: str,
+    reason: str = "",
     level: str = "INFO",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_request_event(req_id, "request.lifecycle.cancelled",
-                         level=level, reason=reason or None,
-                         dispatcher=dispatcher)
+    return emit_request_event(
+        req_id,
+        "request.lifecycle.cancelled",
+        level=level,
+        reason=reason or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_auth_rejected(
@@ -148,39 +174,100 @@ def emit_auth_rejected(
 
 
 def emit_admission_queued(
-    req_id: str, *, route: str, max_concurrent: int, queue_timeout_ms: int,
+    req_id: str,
+    *,
+    route: str,
+    max_concurrent: int,
+    queue_timeout_ms: int,
+    routing_priority: int = 0,
+    service_route: str | None = None,
+    queue_aging_interval_ms: int | None = None,
+    queue_aging_priority_step: int | None = None,
+    queue_aging_max_boost: int | None = None,
+    deadline_policy_enabled: bool = False,
+    first_token_target_remaining_ms: int | None = None,
+    estimated_ttft_ms: float | None = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
     return emit_request_event(
-        req_id, "request.lifecycle.admission.queued", route=route,
-        max_concurrent=max_concurrent, queue_timeout_ms=queue_timeout_ms,
+        req_id,
+        "request.lifecycle.admission.queued",
+        route=route,
+        max_concurrent=max_concurrent,
+        queue_timeout_ms=queue_timeout_ms,
+        routing_priority=routing_priority,
+        service_route=service_route,
+        queue_aging_interval_ms=queue_aging_interval_ms,
+        queue_aging_priority_step=queue_aging_priority_step,
+        queue_aging_max_boost=queue_aging_max_boost,
+        deadline_policy_enabled=deadline_policy_enabled,
+        first_token_target_remaining_ms=first_token_target_remaining_ms,
+        estimated_ttft_ms=estimated_ttft_ms,
         dispatcher=dispatcher,
     )
 
 
 def emit_admission_acquired(
-    req_id: str, *, route: str, max_concurrent: int, waited: bool,
+    req_id: str,
+    *,
+    route: str,
+    max_concurrent: int,
+    waited: bool,
+    routing_priority: int = 0,
+    service_route: str | None = None,
+    effective_routing_priority: int | None = None,
+    queue_wait_ms: int | None = None,
+    deadline_boost: int = 0,
+    deadline_policy_enabled: bool = False,
+    first_token_target_remaining_ms: int | None = None,
+    estimated_ttft_ms: float | None = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
     return emit_request_event(
-        req_id, "request.lifecycle.admission.acquired", route=route,
-        max_concurrent=max_concurrent, waited=waited, dispatcher=dispatcher,
+        req_id,
+        "request.lifecycle.admission.acquired",
+        route=route,
+        max_concurrent=max_concurrent,
+        waited=waited,
+        routing_priority=routing_priority,
+        service_route=service_route,
+        effective_routing_priority=effective_routing_priority,
+        queue_wait_ms=queue_wait_ms,
+        deadline_boost=deadline_boost,
+        deadline_policy_enabled=deadline_policy_enabled,
+        first_token_target_remaining_ms=first_token_target_remaining_ms,
+        estimated_ttft_ms=estimated_ttft_ms,
+        dispatcher=dispatcher,
     )
 
 
 def emit_admission_rejected(
-    req_id: str, *, route: str, max_concurrent: int, queue_timeout_ms: int,
+    req_id: str,
+    *,
+    route: str,
+    max_concurrent: int,
+    queue_timeout_ms: int,
+    routing_priority: int = 0,
+    service_route: str | None = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
     return emit_request_event(
-        req_id, "request.lifecycle.admission.rejected", level="WARN", route=route,
-        max_concurrent=max_concurrent, queue_timeout_ms=queue_timeout_ms,
+        req_id,
+        "request.lifecycle.admission.rejected",
+        level="WARN",
+        route=route,
+        max_concurrent=max_concurrent,
+        queue_timeout_ms=queue_timeout_ms,
+        routing_priority=routing_priority,
+        service_route=service_route,
         dispatcher=dispatcher,
     )
 
 
 def emit_admission_released(route: str, *, dispatcher: Optional[Any] = None) -> None:
     return emit_request_event(
-        "-", "request.lifecycle.admission.released", route=route,
+        "-",
+        "request.lifecycle.admission.released",
+        route=route,
         dispatcher=dispatcher,
     )

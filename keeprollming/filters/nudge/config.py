@@ -9,16 +9,23 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
-from keeprollming.orchestrator.filter import FilterConfig
 from keeprollming.filters.contracts import FilterSettingsSchema
+from keeprollming.orchestrator.filter import FilterConfig
 
-
-SCHEMA = FilterSettingsSchema({
-    "trigger_patterns": list, "action": str, "nudge_message": str,
-    "max_attempts": int, "nudge_on_empty": bool,
-    "nudge_fallback_message": str, "max_retries": int,
-    "tail_buffer_size": int, "upstream_url": str, "api_key": str,
-})
+SCHEMA = FilterSettingsSchema(
+    {
+        "trigger_patterns": list,
+        "action": str,
+        "nudge_message": str,
+        "max_attempts": int,
+        "nudge_on_empty": bool,
+        "nudge_fallback_message": str,
+        "max_retries": int,
+        "tail_buffer_size": int,
+        "upstream_url": str,
+        "api_key": str,
+    }
+)
 
 
 @dataclass

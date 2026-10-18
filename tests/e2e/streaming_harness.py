@@ -51,7 +51,6 @@ async def collect_streaming_chunks(
             add_empty_content_when_reasoning_only=False,
             reasoning_placeholder="",
             t_start=time.perf_counter(),
-            record_metrics_func=lambda _: None,
         ):
             for line in raw_chunk.decode("utf-8", errors="replace").splitlines():
                 if not line.startswith("data:") or "[DONE]" in line:

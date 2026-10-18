@@ -16,6 +16,9 @@ routes:
     ctx_len: 2048
     max_tokens: 1024
     summary_enabled: true
+    # Most E2E routes exercise independent concurrent clients. Dedicated
+    # internal/admission remains at one slot for admission-control coverage.
+    max_concurrent: 6
 
   base/main:
     model: "test-main-model"
@@ -23,6 +26,7 @@ routes:
     ctx_len: 2048
     max_tokens: 1024
     summary_enabled: true
+    max_concurrent: 6
 
   base/deep:
     model: "test-deep-model"
@@ -30,6 +34,7 @@ routes:
     ctx_len: 4096
     max_tokens: 2048
     summary_enabled: true
+    max_concurrent: 6
 
   # Quick route
   local/quick:
@@ -43,6 +48,38 @@ routes:
     summary_enabled: false
     max_concurrent: 1
     queue_timeout: 0
+
+  # P5: real HTTP selector coverage. The text-only target has higher balance
+  # preference, so a tools request proves that request requirements—not merely
+  # declaration order—select the compatible target.
+  internal/capability-text:
+    pattern: "internal/capability-text"
+    model: "test-capability-text-model"
+    summary_enabled: false
+    ctx_len: 2048
+    max_tokens: 1024
+    max_concurrent: 6
+    capabilities: ["chat"]
+
+  internal/capability-tools:
+    pattern: "internal/capability-tools"
+    model: "test-capability-tools-model"
+    summary_enabled: false
+    ctx_len: 2048
+    max_tokens: 1024
+    max_concurrent: 6
+    capabilities: ["chat", "tools"]
+
+  internal/capability-selector:
+    pattern: "internal/capability-selector"
+    summary_enabled: false
+    balance:
+      enforce_capabilities: true
+      targets:
+        - route: internal/capability-text
+          priority: 100
+        - route: internal/capability-tools
+          priority: 50
 
   # Main route
   local/main:
@@ -76,6 +113,7 @@ routes:
     max_tokens: 4096
     passthrough_enabled: true
     model_pattern: "${1}"
+    max_concurrent: 6
 
   # Production-like route matching code/red config
   code/red:

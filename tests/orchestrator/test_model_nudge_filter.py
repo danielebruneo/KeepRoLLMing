@@ -1,15 +1,12 @@
 """Tests for Model Nudge filter."""
 
 import re
-from unittest.mock import MagicMock
 
-import pytest
-
+from keeprollming.filters.nudge.request import ModelNudgeFilter
 from keeprollming.orchestrator.filter import (
     FilterConfig,
     FilterExecutionContext,
 )
-from keeprollming.filters.nudge.request import ModelNudgeFilter
 
 
 class MockResponse:
@@ -31,7 +28,7 @@ class TestModelNudgeFilter:
             enabled=True,
             name="model_nudge",
         )
-        
+
         # Manually set attributes since FilterConfig doesn't support them directly
         filter_instance = ModelNudgeFilter(config)
         filter_instance._trigger_patterns = [re.compile(r":$", re.IGNORECASE)]
@@ -47,7 +44,7 @@ class TestModelNudgeFilter:
     def test_invalid_pattern_raises_error(self):
         """Test that invalid regex patterns raise ValueError."""
         config = FilterConfig(name="model_nudge")
-        
+
         # Manually trigger pattern initialization with invalid pattern
         filter_instance = ModelNudgeFilter(config)
         try:
@@ -61,7 +58,7 @@ class TestModelNudgeFilter:
         """Test regex pattern matching for lazy responses."""
         config = FilterConfig(name="model_nudge")
         filter_instance = ModelNudgeFilter(config)
-        
+
         # Add a pattern that matches text ending with colon
         filter_instance._init_patterns([r":$"])
 
@@ -144,5 +141,3 @@ class TestRegenerateAction:
         assert result is not None
         assert hasattr(result, "content")
         assert "Now I will:" in result.content
-
-

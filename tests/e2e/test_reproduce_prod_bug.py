@@ -23,12 +23,9 @@ def client(monkeypatch, tmp_path):
 
 def test_nudge_filter_with_ellipsis_content(client):
     """Test nudge filter with response containing just '...' (production bug reproduction)."""
-    import keeprollming.app as app_mod
-    
+
     # Make NON-streaming request that will trigger lazy pattern detection
-    messages = [
-        {"role": "user", "content": "Rispondi esattamente con \"Ora faccio questo:\""}
-    ]
+    messages = [{"role": "user", "content": 'Rispondi esattamente con "Ora faccio questo:"'}]
 
     response = client.post(
         "/v1/chat/completions",
@@ -43,23 +40,20 @@ def test_nudge_filter_with_ellipsis_content(client):
     print(f"\n=== Response status: {response.status_code} ===")
     if response.status_code != 200:
         print(f"Response text: {response.text}")
-    
+
     assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.text}"
 
 
 def test_streaming_with_filter_chain_dict(client):
     """Test streaming with a route that has filters as dict.
-    
+
     This is the exact scenario from production:
     - Route has filters configured as dict (not None)
     - Streaming request
     - Should not cause RuntimeWarning or 500 error
     """
-    import keeprollming.app as app_mod
-    
-    messages = [
-        {"role": "user", "content": "Say something with a colon:"}
-    ]
+
+    messages = [{"role": "user", "content": "Say something with a colon:"}]
 
     response = client.post(
         "/v1/chat/completions",
@@ -74,13 +68,13 @@ def test_streaming_with_filter_chain_dict(client):
     print(f"\n=== Streaming Response status: {response.status_code} ===")
     if response.status_code != 200:
         print(f"Response text: {response.text}")
-    
+
     assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.text}"
-    
+
     # Should have streamed some content
     chunks = []
     for line in response.iter_lines():
         if line:
             chunks.append(line)
-    
+
     assert len(chunks) > 0, "Expected at least one chunk"

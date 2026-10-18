@@ -6,9 +6,15 @@
 
 # Root defaults and summary behaviour
 upstream_base_url: "http://127.0.0.1:8080"
-# Credentials accepted from API clients. This is distinct from route-level
-# `api_key`, which is sent by KRM to an upstream provider.
-api_keys: ["replace-with-a-client-secret"]
+# Accepted client keys inherited by routes. Empty means no global key check;
+# public/demo below supplies its own keys. This is NOT upstream authentication.
+api_keys: []
+# Network source policy for clients. Replace the example LAN subnet and list
+# only reverse proxies that KRM sees as the direct TCP peer.
+client_access:
+  default: lan
+  lan_networks: ["127.0.0.0/8", "::1/128", "192.168.1.0/24"]
+  trusted_proxies: []
 ctx_len: 32768
 max_tokens: 4096
 default_max_completion_tokens: 4096
@@ -41,6 +47,17 @@ summary_min_raw_tail: 1
 summary_force_consolidate: 0
 summary_consolidate_when_needed: 1
 log_payload_max_chars: 20000000
+
+# Optional JSON request snapshot for targeted diagnosis. Captures the effective
+# upstream payload after routing/repacking, BEFORE request filters; despite the
+# historical raw_inbound filename, this is not the original client body or the
+# exact post-filter wire request. Output: __request_captures__/date/req_id/.
+# May contain sensitive messages/tools. Set selected_routes only temporarily.
+request_capture:
+  policy: disabled  # disabled | all | selected_routes
+  selected_routes: ["debug/raw-trace"]
+body_capture:
+  policy: errors_only  # errors_only (default) | disabled; error payloads may be sensitive.
 
 # Logging projections and opt-in raw transport capture.
 observability:
@@ -89,11 +106,30 @@ routes:
     summary_enabled: true
     passthrough_enabled: false
     request_timeout: 120
-    # Optional route work governor. With a zero queue timeout, requests beyond
-    # the limit return HTTP 429 immediately; a positive timeout queues only
-    # that long. Omit max_concurrent for the default unlimited behaviour.
+    # Route work governor. Every resolved route defaults to one concurrent
+    # request; this base intentionally permits two and queues for five seconds.
     max_concurrent: 2
     queue_timeout: 5
+    # Cross-route service-class priority when several routes resolve to the
+    # same upstream URL and model. Higher queued work runs first; active work
+    # is never interrupted. Omit it for the default FIFO priority of zero.
+    routing_priority: 0
+    # Optional starvation protection for bounded admission queues. The policy
+    # is disabled when omitted; an older waiter gains one priority point every
+    # 30 seconds, capped at +20, and never preempts a live request.
+    queue_aging:
+      interval_seconds: 30
+      priority_step: 1
+      max_boost: 20
+    # Optional first-token scheduling pressure. It is server-owned and stays
+    # neutral until the selected backend has enough recent TTFT observations.
+    deadline_policy:
+      enabled: false
+      # first_token_budget_ms: 8000
+      # urgency_window_ms: 5000
+      # max_priority_boost: 20
+      # ttft_safety_factor: 1.5
+      # min_samples: 5
     # Optional upstream health breaker. After three terminal upstream failures
     # it opens for 60 seconds; a declared fallback model can still be used.
     circuit_breaker_enabled: true
@@ -123,6 +159,14 @@ routes:
     overrides:
       temperature: 0.7
       top_p: 0.95
+      # Optional backend-specific sampling controls; remove unsupported fields.
+      top_k: 20
+      min_p: 0.05
+      repetition_penalty: 1.05
+      frequency_penalty: 0.0
+      presence_penalty: 0.0
+      seed: 42
+      stop: ["<END_OF_REPLY>"]
       max_tokens: 2048
       # The same top-level field used by LibreChat's reasoning-effort control.
       # The accepted values depend on the upstream model/runtime.
@@ -132,19 +176,109 @@ routes:
     extends: base/remote
     pattern: "chat/remote"
 
-  # Explicitly public despite the global client key above.
+  # Publicly reachable only with this client key.
   public/demo:
     extends: base/local
     pattern: "public/demo"
-    api_keys: []
+    client_access: public
+    api_keys: ["replace-with-a-client-secret"]
 
-  # A fallback chain is evaluated after an upstream failure. `cost_priority`
-  # controls route selection where multiple fallback candidates apply.
+  # A fallback chain is evaluated after an upstream failure. Fallback entries
+  # are tried in declaration order. `cost_priority` is accepted for
+  # compatibility but does not influence current routing decisions.
   chat/resilient:
     extends: base/local
     pattern: "chat/resilient"
     fallback_chain: ["chat/remote"]
     cost_priority: 100
+
+  # A balancing selector reroutes each request to one independently resolved
+  # concrete route. Targets must not be private. Higher priority wins when
+  # capacity and a valid session affinity are otherwise equivalent.
+  code/runner-a:
+    extends: base/local
+    pattern: "code/runner-a"
+    upstream_url: "http://127.0.0.1:8081"
+    max_concurrent: 1
+
+  code/runner-b:
+    extends: base/local
+    pattern: "code/runner-b"
+    upstream_url: "http://127.0.0.1:8082"
+    max_concurrent: 1
+
+  public/code:
+    extends: base/local
+    pattern: "public/code"
+    # This is the client-facing service class. It owns queue tolerance and
+    # priority; each selected target owns its backend capacity.
+    queue_timeout: 20
+    routing_priority: 0
+    deadline_policy:
+      enabled: true
+      first_token_budget_ms: 12000
+      urgency_window_ms: 5000
+      max_priority_boost: 20
+      ttft_safety_factor: 1.5
+      min_samples: 5
+    overrides:
+      reasoning_effort: high
+    balance:
+      # Capability declarations are advisory by default. Turn this on only
+      # once every target's capabilities are complete and maintained.
+      enforce_capabilities: false
+      targets:
+        - route: code/runner-a
+          priority: 100
+        - route: code/runner-b
+          priority: 80
+      # Preserve explicitly named source route overrides across the reroute.
+      preserve_overrides: [reasoning_effort]
+      # Carry every filter configured on this source route into the selected
+      # target. Use a list instead to preserve only named modules.
+      preserve_filters: all
+      # At each new request boundary, promote an assigned session to a better
+      # available target only when observed PP/decode rates justify the cold
+      # prefill cost. Defaults to true; false keeps it pinned until lease expiry.
+      promote_when_beneficial: true
+      # Preserve a warm agent backend when a long decode is followed shortly
+      # by a much smaller prompt, the common Qwen Code context-compaction shape.
+      # A one-shot continuation also covers the next prompt rewrite when the
+      # first system message retains its beginning and end. Both steps are
+      # heuristic (not a session ID) and enabled by default.
+      compaction_handoff:
+        enabled: true
+        max_age_seconds: 60
+        min_context_ratio: 0.80
+        min_completion_tokens: 5000
+        min_prompt_reduction_ratio: 0.50
+      # Remember session affinity for an hour and reserve the selected idle
+      # resource for that session only. This prevents another agent session
+      # from evicting a warm prefix between tool-call turns.
+      affinity_ttl_seconds: 3600
+      idle_reservation:
+        enabled: true
+        mode: session
+        timeout_seconds: 900
+        # Do not reserve a backend after a tiny title/review turn.  Requiring
+        # a reported cache hit also avoids leasing a cold backend.
+        min_prompt_tokens: 4096
+        min_cached_prompt_tokens: 2048
+      # Wait/re-evaluate all candidates within queue_timeout before reporting
+      # capacity exhaustion. At the deadline, a soft idle reservation may be
+      # bypassed; capacity, health and compatibility never are.
+      selection_retry_interval_ms: 250
+      allow_reservation_bypass: true
+    # Applied only after every balance target (and a target's own fallback)
+    # has failed before emitting client-visible output.
+    fallback_chain: ["chat/remote"]
+
+  # A higher-priority client group may share runner-a with public/code. The
+  # two routes contend at that physical backend resource, not independently.
+  code/priority:
+    extends: code/runner-a
+    pattern: "code/priority"
+    routing_priority: 100
 
   # Raw traces are intentionally limited to explicitly selected routes.
   debug/raw-trace:
@@ -162,6 +296,7 @@ routes:
         # Relative paths are resolved from this config file, not from the
         # directory where `krm` is launched. Use `prompt` instead for a short
         # inline instruction; the two settings are mutually exclusive.
+        # prompt: "You are a concise coding assistant."  # Remove prompt_file to use this.
         prompt_file: "prompts/examples/code-assistant.md"
         override: false
 
@@ -186,6 +321,10 @@ routes:
         max_images_policy: "strip_first"
         max_images_replacement_text: "[image omitted]"
         strip_all_images: false
+        # Opt in to strip PDF/file attachments from every message, including history.
+        # Real images and extracted plain text remain usable.
+        strip_all_files: false
+        files_replacement_text: "[File omitted: attachments are disabled]"
         strip_last_image_max_retries: 1
         strip_last_image_on_error: false
 
@@ -235,9 +374,10 @@ routes:
     filters:
       model_tool_loop_stopper:
         enabled: true
-        max_attempts: 3
-        max_repeats: 3
-        max_retries: 2
+        max_repeats: 3  # Detection threshold, independent of recovery budget.
+        max_retries: 2  # Recovery calls allowed per request; 0 means fallback immediately.
+        # max_attempts: 2  # Alias used only when max_retries is absent.
+        retry_timeout: 120  # Optional; omitted = inherit the selected route timeout.
         tls_message: "Choose a different action."
         nudge_message: "Continue with a different tool call."
         fallback_message: "Repeated tool call stopped."
@@ -258,12 +398,15 @@ routes:
     filters:
       reasoning_loop_stopper:
         enabled: true
-        max_attempts: 3
-        max_repeats: 3
+        max_repeats: 3  # Requires preceding matching reasoning in the request history.
         max_retries: 2
+        # max_attempts: 2  # Alias used only when max_retries is absent.
+        retry_timeout: 120  # Optional; omitted = inherit the selected route timeout.
+        intervention_message: "I notice I'm repeating myself. I will change approach."
         rls_message: "Use a different line of reasoning."
         fallback_message: "Repeated reasoning stopped."
         fallback_streaming_message: "Repeated reasoning stopped."
         send_user_message: false
+        detect_within_stream_loop: false  # Experimental streaming-only within-turn detection.
         upstream_url: "http://127.0.0.1:8080"
         api_key: "replace-me"

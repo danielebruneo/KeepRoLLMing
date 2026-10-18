@@ -1,49 +1,46 @@
 """E2E test: nudge filter su risposte lazy con pattern di produzione (code/red)."""
 
 import json
-import pytest
 
+import pytest
 
 # Pattern esatti dalla route code/red di produzione
 PROD_NUDGE_PATTERNS = [
     ":$",
-    r'(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$',
-    r'(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$',
-    r'(?<![.!?])(?:^|\.\s+|\n)\s*Ora\b[\s\S]*\.$',
-    r'(?<![.!?])(?:^|\.\s+|\n)\s*Devo\b[\s\S]*\.$',
-    r'(?<![.!?])(?:^|\.\s+|\n)\s*Basta\b.*\.$',
-    r'(?<![.!?])(?:^|\.\s+|\n)\s*((?:\S+\s+){0,4}\S+)\.$',
+    r"(?<![.!?])(?:^|\.\s+|\n)\s*Now\b[\s\S]*\.$",
+    r"(?<![.!?])(?:^|\.\s+|\n)\s*Let\b[\s\S]*\.$",
+    r"(?<![.!?])(?:^|\.\s+|\n)\s*Ora\b[\s\S]*\.$",
+    r"(?<![.!?])(?:^|\.\s+|\n)\s*Devo\b[\s\S]*\.$",
+    r"(?<![.!?])(?:^|\.\s+|\n)\s*Basta\b.*\.$",
+    r"(?<![.!?])(?:^|\.\s+|\n)\s*((?:\S+\s+){0,4}\S+)\.$",
 ]
 
 
 def test_nudge_lazy_streaming_let_pattern(
-    fake_backend_server,
-    orchestrator_server,
-    backend_client,
-    configure_fake_backend
+    fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
 ):
     """Test nudge su risposta lazy 'Let me...' in streaming con pattern di produzione."""
-    configure_fake_backend({
-        "models": {
-            "test-deep-model": {"context_length": 131072},
-        },
-        "chat": {
-            "content": "Let me check what format LibreChat expects for `allowedDomains`.",
-            "stream_pieces": [
-                "Let me check what format LibreChat expects for `allowedDomains`.\n",
-                "The format should be a CIDR range like '172.18.0.0/16' with quotes."
-            ],
-            "include_usage": True,
-        },
-    })
+    configure_fake_backend(
+        {
+            "models": {
+                "test-deep-model": {"context_length": 131072},
+            },
+            "chat": {
+                "content": "Let me check what format LibreChat expects for `allowedDomains`.",
+                "stream_pieces": [
+                    "Let me check what format LibreChat expects for `allowedDomains`.\n",
+                    "The format should be a CIDR range like '172.18.0.0/16' with quotes.",
+                ],
+                "include_usage": True,
+            },
+        }
+    )
 
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "code/red",
-            "messages": [
-                {"role": "user", "content": "Che formato aspetta LibreChat per allowedDomains?"}
-            ],
+            "messages": [{"role": "user", "content": "Che formato aspetta LibreChat per allowedDomains?"}],
             "stream": True,
         },
     )
@@ -64,31 +61,29 @@ def test_nudge_lazy_streaming_let_pattern(
     full_content = "".join(chunks)
     print(f"\nStreaming content: '{full_content}'")
 
-    assert "The format should be a CIDR range" in full_content, \
-        f"Nudge non ha triggerato! Content: '{full_content}'"
+    assert "The format should be a CIDR range" in full_content, f"Nudge non ha triggerato! Content: '{full_content}'"
     print("✓ Streaming test PASSED!")
 
 
 def test_nudge_lazy_streaming_now_pattern(
-    fake_backend_server,
-    orchestrator_server,
-    backend_client,
-    configure_fake_backend
+    fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
 ):
     """Test nudge su risposta lazy 'Now...' in streaming."""
-    configure_fake_backend({
-        "models": {
-            "test-deep-model": {"context_length": 131072},
-        },
-        "chat": {
-            "content": "Now restart the LibreChat container to pick up the new config.",
-            "stream_pieces": [
-                "Now restart the LibreChat container to pick up the new config.\n",
-                "The configuration has been applied and LibreChat should now use the MCP settings."
-            ],
-            "include_usage": True,
-        },
-    })
+    configure_fake_backend(
+        {
+            "models": {
+                "test-deep-model": {"context_length": 131072},
+            },
+            "chat": {
+                "content": "Now restart the LibreChat container to pick up the new config.",
+                "stream_pieces": [
+                    "Now restart the LibreChat container to pick up the new config.\n",
+                    "The configuration has been applied and LibreChat should now use the MCP settings.",
+                ],
+                "include_usage": True,
+            },
+        }
+    )
 
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -115,39 +110,35 @@ def test_nudge_lazy_streaming_now_pattern(
     full_content = "".join(chunks)
     print(f"\nStreaming content: '{full_content}'")
 
-    assert "The configuration has been applied" in full_content, \
-        f"Nudge non ha triggerato! Content: '{full_content}'"
+    assert "The configuration has been applied" in full_content, f"Nudge non ha triggerato! Content: '{full_content}'"
     print("✓ Streaming 'Now...' test PASSED!")
 
 
 def test_nudge_lazy_non_streaming_let_pattern(
-    fake_backend_server,
-    orchestrator_server,
-    backend_client,
-    configure_fake_backend
+    fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
 ):
     """Test nudge su risposta lazy 'Let me...' in non-streaming con pattern di produzione."""
-    configure_fake_backend({
-        "models": {
-            "test-deep-model": {"context_length": 131072},
-        },
-        "chat": {
-            "content": [
-                "Let me check what format LibreChat expects for `allowedDomains`.",
-                "The format should be a CIDR range like '172.18.0.0/16' with quotes."
-            ],
-            "stream_pieces": [],
-            "include_usage": True,
-        },
-    })
+    configure_fake_backend(
+        {
+            "models": {
+                "test-deep-model": {"context_length": 131072},
+            },
+            "chat": {
+                "content": [
+                    "Let me check what format LibreChat expects for `allowedDomains`.",
+                    "The format should be a CIDR range like '172.18.0.0/16' with quotes.",
+                ],
+                "stream_pieces": [],
+                "include_usage": True,
+            },
+        }
+    )
 
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "code/red",
-            "messages": [
-                {"role": "user", "content": "Che formato aspetta LibreChat per allowedDomains?"}
-            ],
+            "messages": [{"role": "user", "content": "Che formato aspetta LibreChat per allowedDomains?"}],
             "stream": False,
         },
     )
@@ -164,25 +155,24 @@ def test_nudge_lazy_non_streaming_let_pattern(
 
 
 def test_nudge_lazy_non_streaming_now_pattern(
-    fake_backend_server,
-    orchestrator_server,
-    backend_client,
-    configure_fake_backend
+    fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
 ):
     """Test nudge su risposta lazy 'Now...' in non-streaming."""
-    configure_fake_backend({
-        "models": {
-            "test-deep-model": {"context_length": 131072},
-        },
-        "chat": {
-            "content": [
-                "Now restart the LibreChat container to pick up the new config.",
-                "The configuration has been applied and LibreChat should now use the MCP settings."
-            ],
-            "stream_pieces": [],
-            "include_usage": True,
-        },
-    })
+    configure_fake_backend(
+        {
+            "models": {
+                "test-deep-model": {"context_length": 131072},
+            },
+            "chat": {
+                "content": [
+                    "Now restart the LibreChat container to pick up the new config.",
+                    "The configuration has been applied and LibreChat should now use the MCP settings.",
+                ],
+                "stream_pieces": [],
+                "include_usage": True,
+            },
+        }
+    )
 
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -205,33 +195,30 @@ def test_nudge_lazy_non_streaming_now_pattern(
 
 
 def test_nudge_lazy_with_newline_in_content(
-    fake_backend_server,
-    orchestrator_server,
-    backend_client,
-    configure_fake_backend
+    fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
 ):
     """Test nudge su risposta che contiene newline interno (simulando word wrap del modello)."""
-    configure_fake_backend({
-        "models": {
-            "test-deep-model": {"context_length": 131072},
-        },
-        "chat": {
-            "content": [
-                "The domain check is comparing\nagainst the full URL but I put the CIDR.\nLet me check what format LibreChat expects for `allowedDomains`.",
-                "The format should be a CIDR range like '172.18.0.0/16' with quotes."
-            ],
-            "stream_pieces": [],
-            "include_usage": True,
-        },
-    })
+    configure_fake_backend(
+        {
+            "models": {
+                "test-deep-model": {"context_length": 131072},
+            },
+            "chat": {
+                "content": [
+                    "The domain check is comparing\nagainst the full URL but I put the CIDR.\nLet me check what format LibreChat expects for `allowedDomains`.",
+                    "The format should be a CIDR range like '172.18.0.0/16' with quotes.",
+                ],
+                "stream_pieces": [],
+                "include_usage": True,
+            },
+        }
+    )
 
     response = backend_client.post(
         f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "code/red",
-            "messages": [
-                {"role": "user", "content": "Che formato aspetta LibreChat per allowedDomains?"}
-            ],
+            "messages": [{"role": "user", "content": "Che formato aspetta LibreChat per allowedDomains?"}],
             "stream": False,
         },
     )

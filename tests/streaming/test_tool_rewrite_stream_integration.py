@@ -16,21 +16,12 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
-
-from keeprollming.streaming.events import (
-    AssistantTextDelta,
-    Done,
-    Finish,
-    ToolCallDelta,
-    ToolCallComplete,
-)
-from keeprollming.streaming.finalizers import ToolCallFinalizer
-from keeprollming.streaming.parser import StreamParser
-from keeprollming.streaming.serializer import OpenAISSESerializer
 from keeprollming.filters.timestamp.stream import TimestampFinalizer
 from keeprollming.filters.tool_rewrite.stream import ToolRewriteFinalizer
+from keeprollming.streaming.finalizers import ToolCallFinalizer
+from keeprollming.streaming.parser import StreamParser
 from keeprollming.streaming.runner import run_stream
+from keeprollming.streaming.serializer import OpenAISSESerializer
 from tests.helpers.stream_client import (
     TestAssistantTextDelta,
     TestDone,
@@ -38,7 +29,6 @@ from tests.helpers.stream_client import (
     TestToolCallComplete,
     parse_sse_events,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -117,9 +107,7 @@ def test_v2_tool_rewrite_integration_valid_xml():
 
     # 1. Verify ToolCallComplete was emitted
     tcc_events = [e for e in events if isinstance(e, TestToolCallComplete)]
-    assert len(tcc_events) == 1, (
-        f"Expected exactly one ToolCallComplete, got {len(tcc_events)}."
-    )
+    assert len(tcc_events) == 1, f"Expected exactly one ToolCallComplete, got {len(tcc_events)}."
 
     # 2. Verify ToolCallComplete has correct tool name and arguments
     tcc = tcc_events[0]
@@ -129,20 +117,14 @@ def test_v2_tool_rewrite_integration_valid_xml():
     )
 
     # 3. Verify original XML is NOT downstream
-    xml_events = [
-        e for e in events
-        if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta
-    ]
+    xml_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta]
     assert len(xml_events) == 0, (
-        f"Original XML must be suppressed, but found {len(xml_events)} events "
-        f"with '<read>' content."
+        f"Original XML must be suppressed, but found {len(xml_events)} events with '<read>' content."
     )
 
     # 4. Verify Finish.reason is "tool_calls"
     finish_events = [e for e in events if isinstance(e, TestFinish)]
-    assert len(finish_events) == 1, (
-        f"Expected exactly one Finish event, got {len(finish_events)}."
-    )
+    assert len(finish_events) == 1, f"Expected exactly one Finish event, got {len(finish_events)}."
     assert finish_events[0].reason == "tool_calls", (
         f"Expected Finish.reason='tool_calls', got '{finish_events[0].reason}'."
     )
@@ -152,9 +134,7 @@ def test_v2_tool_rewrite_integration_valid_xml():
 
     # 6. Verify exactly one Done
     done_events = [e for e in events if isinstance(e, TestDone)]
-    assert len(done_events) == 1, (
-        f"Expected exactly one Done event, got {len(done_events)}."
-    )
+    assert len(done_events) == 1, f"Expected exactly one Done event, got {len(done_events)}."
 
 
 # ---------------------------------------------------------------------------
@@ -193,29 +173,21 @@ def test_v2_tool_rewrite_fail_open_malformed_xml():
 
     # 1. No ToolCallComplete should be emitted
     tcc_events = [e for e in events if isinstance(e, TestToolCallComplete)]
-    assert len(tcc_events) == 0, (
-        f"Malformed XML should NOT produce ToolCallComplete, but got "
-        f"{len(tcc_events)}."
-    )
+    assert len(tcc_events) == 0, f"Malformed XML should NOT produce ToolCallComplete, but got {len(tcc_events)}."
 
     # 2. Original text should pass through (fail-open)
-    text_events = [
-        e for e in events if isinstance(e, TestAssistantTextDelta)
-    ]
+    text_events = [e for e in events if isinstance(e, TestAssistantTextDelta)]
     assert len(text_events) > 0, "Expected at least one AssistantTextDelta."
 
     # The malformed XML should be present in the output (not rewritten)
     has_malformed = any("<read>" in e.delta for e in text_events)
-    assert has_malformed, (
-        "Malformed XML should pass through unchanged (fail-open)."
-    )
+    assert has_malformed, "Malformed XML should pass through unchanged (fail-open)."
 
     # 3. Finish.reason should be "stop" (no tool calls)
     finish_events = [e for e in events if isinstance(e, TestFinish)]
     assert len(finish_events) == 1
     assert finish_events[0].reason == "stop", (
-        f"Expected Finish.reason='stop' for malformed XML, "
-        f"got '{finish_events[0].reason}'."
+        f"Expected Finish.reason='stop' for malformed XML, got '{finish_events[0].reason}'."
     )
 
 
@@ -262,9 +234,7 @@ def test_v2_tool_rewrite_timestamp_coexistence():
 
     # 1. Verify ToolCallComplete was emitted
     tcc_events = [e for e in events if isinstance(e, TestToolCallComplete)]
-    assert len(tcc_events) == 1, (
-        f"Expected exactly one ToolCallComplete, got {len(tcc_events)}."
-    )
+    assert len(tcc_events) == 1, f"Expected exactly one ToolCallComplete, got {len(tcc_events)}."
 
     # 2. Verify Finish.reason is "tool_calls"
     finish_events = [e for e in events if isinstance(e, TestFinish)]
@@ -274,31 +244,20 @@ def test_v2_tool_rewrite_timestamp_coexistence():
     )
 
     # 3. Verify original XML is NOT downstream
-    xml_events = [
-        e for e in events
-        if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta
-    ]
-    assert len(xml_events) == 0, (
-        f"Original XML must be suppressed, but found {len(xml_events)} events."
-    )
+    xml_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta]
+    assert len(xml_events) == 0, f"Original XML must be suppressed, but found {len(xml_events)} events."
 
     # 4. A tool-call-only turn must not manufacture a timestamp-only
     # assistant message. TimestampFinalizer appends a footer only when there
     # is assistant text to preserve.
-    timestamp_text_events = [
-        e for e in events
-        if isinstance(e, TestAssistantTextDelta) and "Timestamp:" in e.delta
-    ]
+    timestamp_text_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and "Timestamp:" in e.delta]
     assert timestamp_text_events == []
 
     # 5. The terminal assistant turn carries only the tool call. In
     # particular, no text event may occur before the tool-call finish: clients
     # such as LibreChat treat mixed assistant content + tool calls as invalid.
     finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
-    assert not any(
-        isinstance(event, TestAssistantTextDelta)
-        for event in events[:finish_idx]
-    )
+    assert not any(isinstance(event, TestAssistantTextDelta) for event in events[:finish_idx])
 
     # 6. Verify Done is last
     assert isinstance(events[-1], TestDone), "Done must be the last event"

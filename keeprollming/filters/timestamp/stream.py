@@ -12,12 +12,11 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 from zoneinfo import ZoneInfo
 
 from keeprollming.streaming.events import AssistantTextDelta, StreamEvent
 from keeprollming.streaming.finalizers import StreamFinalizer
-
 
 # ---------------------------------------------------------------------------
 # Shared strip logic (mirrors TimestampFilter internals)
@@ -32,7 +31,7 @@ def _build_strip_regex(template: str) -> "re.Pattern[str] | None":
 
     Returns a compiled regex or ``None`` if the template has no static prefix.
     """
-    pct_idx = template.find('%')
+    pct_idx = template.find("%")
     if pct_idx < 0:
         return None
 
@@ -40,20 +39,20 @@ def _build_strip_regex(template: str) -> "re.Pattern[str] | None":
     if not prefix:
         return None
 
-    lines = prefix.split('\n')
+    lines = prefix.split("\n")
     escaped = [re.escape(p) for p in lines]
-    regex_str = r'\n*'.join(escaped)
+    regex_str = r"\n*".join(escaped)
     # Make opening bracket optional — model may echo without brackets
-    regex_str = regex_str.replace(r'\[', r'\[?')
+    regex_str = regex_str.replace(r"\[", r"\[?")
 
     # Suffix after the last strftime directive
     strftime_part = template[pct_idx:]
-    last_pct = strftime_part.rfind('%')
-    suffix = strftime_part[last_pct + 2:] if last_pct + 2 <= len(strftime_part) else ''
-    suffix_pattern = re.escape(suffix) if suffix else ''
+    last_pct = strftime_part.rfind("%")
+    suffix = strftime_part[last_pct + 2 :] if last_pct + 2 <= len(strftime_part) else ""
+    suffix_pattern = re.escape(suffix) if suffix else ""
 
     # Use \s*$ to tolerate trailing whitespace after the footer.
-    full_pattern = regex_str + r'.+' + suffix_pattern + r'\s*$'
+    full_pattern = regex_str + r".+" + suffix_pattern + r"\s*$"
     return re.compile(full_pattern, re.DOTALL)
 
 
@@ -78,7 +77,7 @@ def _strip_existing_timestamp_footer(content: str, template: str) -> str:
     str
         Content with all matching final footers stripped.
     """
-    pct_idx = template.find('%')
+    pct_idx = template.find("%")
     if not content or pct_idx < 0 or pct_idx == 0:
         return content
 
@@ -94,32 +93,32 @@ def _strip_existing_timestamp_footer(content: str, template: str) -> str:
         return content
 
     # Build prefix pattern for walk
-    lines = prefix.split('\n')
+    lines = prefix.split("\n")
     escaped = [re.escape(p) for p in lines]
-    prefix_pattern = r'\n*'.join(escaped)
-    prefix_pattern = prefix_pattern.replace(r'\[', r'\[?')
+    prefix_pattern = r"\n*".join(escaped)
+    prefix_pattern = prefix_pattern.replace(r"\[", r"\[?")
 
     matches = list(re.finditer(prefix_pattern, content))
     if not matches:
         return content
 
     strftime_part = template[pct_idx:]
-    last_pct = strftime_part.rfind('%')
-    suffix = strftime_part[last_pct + 2:] if last_pct + 2 <= len(strftime_part) else ''
+    last_pct = strftime_part.rfind("%")
+    strftime_part[last_pct + 2 :] if last_pct + 2 <= len(strftime_part) else ""
 
     strip_start = None
     for i in range(len(matches) - 1, -1, -1):
         m = matches[i]
         if i < len(matches) - 1:
             next_m = matches[i + 1]
-            next_tail = content[next_m.end():]
-            next_is_clean = '\n' not in next_tail.rstrip()
+            next_tail = content[next_m.end() :]
+            next_is_clean = "\n" not in next_tail.rstrip()
             if next_is_clean:
-                between = content[m.end():next_m.start()]
+                between = content[m.end() : next_m.start()]
                 between_stripped = between.strip()
                 if between_stripped:
                     if prefix not in between_stripped:
-                        lines_in_between = between_stripped.split('\n')
+                        lines_in_between = between_stripped.split("\n")
                         if len(lines_in_between) > 1:
                             last_line = lines_in_between[-1]
                             if re.match(prefix_pattern, last_line):
@@ -130,7 +129,7 @@ def _strip_existing_timestamp_footer(content: str, template: str) -> str:
                                 break
                         else:
                             strip_start = m.start()
-                    elif re.match(prefix_pattern + r'.+', between_stripped, re.DOTALL):
+                    elif re.match(prefix_pattern + r".+", between_stripped, re.DOTALL):
                         strip_start = m.start()
                     else:
                         if strip_start is None:
@@ -143,11 +142,11 @@ def _strip_existing_timestamp_footer(content: str, template: str) -> str:
                 # more matches after it (3+ consecutive footers).  Check if
                 # the between text is a single-line timestamp value to
                 # extend the consecutive block backward.
-                between = content[m.end():next_m.start()]
+                between = content[m.end() : next_m.start()]
                 between_stripped = between.strip()
                 if between_stripped:
                     if prefix not in between_stripped:
-                        lines_in_between = between_stripped.split('\n')
+                        lines_in_between = between_stripped.split("\n")
                         if len(lines_in_between) == 1:
                             # Single-line timestamp value — consecutive block.
                             strip_start = m.start()
@@ -159,7 +158,7 @@ def _strip_existing_timestamp_footer(content: str, template: str) -> str:
                                 if strip_start is None:
                                     strip_start = m.start()
                                 break
-                    elif re.match(prefix_pattern + r'.+', between_stripped, re.DOTALL):
+                    elif re.match(prefix_pattern + r".+", between_stripped, re.DOTALL):
                         strip_start = m.start()
                     else:
                         if strip_start is None:
@@ -168,8 +167,8 @@ def _strip_existing_timestamp_footer(content: str, template: str) -> str:
                 else:
                     strip_start = m.start()
         else:
-            tail_from_match = content[m.end():]
-            if '\n' not in tail_from_match.rstrip():
+            tail_from_match = content[m.end() :]
+            if "\n" not in tail_from_match.rstrip():
                 if strip_start is None:
                     strip_start = m.start()
 
@@ -306,9 +305,7 @@ class TimestampFinalizer(StreamFinalizer):
             raise RuntimeError("TimestampFinalizer.finalize() already called")
         self._finalized = True
 
-        stripped = _strip_existing_timestamp_footer(
-            self._tail_buffer, self.template
-        ).rstrip()
+        stripped = _strip_existing_timestamp_footer(self._tail_buffer, self.template).rstrip()
         # A tool-call turn can legitimately contain no assistant text.  Do
         # not manufacture a timestamp-only response in that case.
         if not stripped:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import keeprollming.config as config
-
 from keeprollming.routing import Route, get_route_settings, resolve_inherited_route
 from keeprollming.types import DefaultSettings
 

@@ -14,15 +14,12 @@ Tests:
 import json
 import os
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import patch
 
 import pytest
 
 from keeprollming.observability.body_capture_consumer import BodyCaptureConsumer
 from keeprollming.observability.events import EventSource, RuntimeEvent
-from keeprollming.observability.redactor import NoOpRedactor, Redactor
+from keeprollming.observability.redactor import NoOpRedactor
 
 
 class TestBodyCaptureConsumerErrorsOnly:

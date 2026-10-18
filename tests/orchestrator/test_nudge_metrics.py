@@ -6,12 +6,9 @@ be estimated from the accumulated content, not the original lazy response.
 """
 
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
-from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
-from keeprollming.filters.nudge.request import ModelNudgeFilter
 
 
 class TestNudgeMetricsTokenEstimation:
@@ -24,7 +21,6 @@ class TestNudgeMetricsTokenEstimation:
         """
         # Simulate what chat_completions.py does
         original_usage = {"completion_tokens": 3, "prompt_tokens": 34, "total_tokens": 37}
-        original_content = "OK:"  # 3 chars, ~1 token
         processed_content = "OK:\nOK:\nOK:\nOK:"  # 15 chars accumulated
 
         # Without nudge: use original usage
@@ -42,6 +38,7 @@ class TestNudgeMetricsTokenEstimation:
         processed_response.content = processed_content
 
         from keeprollming.token_counter import TokenCounter
+
         tc = TokenCounter()
         completion_tokens = tc.count_text(processed_content)
         total_tokens = prompt_tokens + completion_tokens
@@ -53,7 +50,6 @@ class TestNudgeMetricsTokenEstimation:
     def test_original_usage_used_when_no_filter(self):
         """When no filter processed the response, use original usage."""
         original_usage = {"completion_tokens": 50, "prompt_tokens": 100, "total_tokens": 150}
-        processed_response = None
 
         completion_tokens = original_usage.get("completion_tokens")
         assert completion_tokens == 50
@@ -68,14 +64,16 @@ class TestNudgeMetricsTokenEstimation:
         accumulated = "Now I will:\nI cannot continue that sentence as it implies an action I am unable to perform."
 
         from keeprollming.token_counter import TokenCounter
+
         tc = TokenCounter()
 
         lazy_tokens = tc.count_text(lazy_response)
         accumulated_tokens = tc.count_text(accumulated)
 
         # Accumulated content is much longer, should have more tokens
-        assert accumulated_tokens > lazy_tokens, \
+        assert accumulated_tokens > lazy_tokens, (
             f"Accumulated tokens ({accumulated_tokens}) should be > lazy tokens ({lazy_tokens})"
+        )
 
     def test_empty_processed_content_does_not_override(self):
         """If processed_response.content is empty, keep original usage."""
@@ -84,8 +82,9 @@ class TestNudgeMetricsTokenEstimation:
         processed_response.content = ""
 
         # Empty content should not trigger estimation
-        if processed_response and hasattr(processed_response, 'content') and processed_response.content:
+        if processed_response and hasattr(processed_response, "content") and processed_response.content:
             from keeprollming.token_counter import TokenCounter
+
             tc = TokenCounter()
             completion_tokens = tc.count_text(processed_response.content)
         else:

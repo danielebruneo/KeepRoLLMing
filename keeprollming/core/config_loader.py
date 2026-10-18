@@ -8,27 +8,17 @@ This module extracts configuration-related logic from app.py including:
 
 import asyncio
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..config import (
-    SAFETY_MARGIN_TOK,
-    SUMMARY_MODE,
-    SUMMARY_CACHE_ENABLED,
-    SUMMARY_CACHE_DIR,
-    SUMMARY_CACHE_FINGERPRINT_MSGS,
-    SUMMARY_FORCE_CONSOLIDATE,
-    SUMMARY_CONSOLIDATE_WHEN_NEEDED,
-    UPSTREAM_BASE_URL,
-    DEFAULT_MAX_COMPLETION_TOKENS,
-    resolve_route,
-    resolve_fallback_chain,
     get_route_settings,
-    CONFIG,
-    DEFAULTS,
-    resolve_route_settings,
+    resolve_fallback_chain,
+    resolve_route,
 )
 from ..routing import Route
 
+if TYPE_CHECKING:
+    from .config_types import RouteSettings
 
 # Logging and payload constants
 LOG_PAYLOAD_MAX_CHARS = int(os.getenv("LOG_PAYLOAD_MAX_CHARS", "20000000"))
@@ -39,19 +29,19 @@ ENABLE_OPENAI_STREAM_COMPAT = os.getenv("ENABLE_OPENAI_STREAM_COMPAT", "1") == "
 
 class ConfigLoader:
     """Handles configuration loading and hot-reload functionality.
-    
+
     This class provides a centralized interface for accessing configuration
     values and managing automatic reloads when config.yaml changes.
     """
-    
+
     def __init__(self):
         self._last_config_mtime: float = 0.0
         self._watch_task: Optional[asyncio.Task] = None
-    
+
     async def start_watcher(self) -> None:
         """Start the background config watcher task."""
         self._watch_task = asyncio.create_task(_config_watcher())
-    
+
     async def stop_watcher(self) -> None:
         """Stop the background config watcher task."""
         if self._watch_task:
@@ -60,12 +50,8 @@ class ConfigLoader:
                 await self._watch_task
             except asyncio.CancelledError:
                 pass
-    
-    def get_route_settings(
-        self,
-        route: Route,
-        model: str
-    ) -> "RouteSettings":
+
+    def get_route_settings(self, route: Route, model: str) -> "RouteSettings":
         """Get route settings for a specific model.
 
         Args:
@@ -80,12 +66,12 @@ class ConfigLoader:
 
 async def _config_watcher() -> None:
     """Background task to watch for config file changes.
-    
+
     Checks config.yaml every 2 seconds for modifications and triggers
     a reload when changes are detected.
     """
     from ..config import check_config_reload
-    
+
     interval = 2.0  # Check every 2 seconds
     while True:
         await asyncio.sleep(interval)
@@ -124,17 +110,15 @@ def create_route_settings(route: Route, model: str) -> Dict[str, Any]:
     }
 
 
-def resolve_route_with_settings(
-    client_model: str
-) -> Tuple[Optional[Route], str, Dict[str, Any]]:
+def resolve_route_with_settings(client_model: str) -> Tuple[Optional[Route], str, Dict[str, Any]]:
     """Resolve a client model request to a route with full settings.
-    
+
     This is a convenience function that combines route resolution with
     settings extraction into a single call.
-    
+
     Args:
         client_model: The model name specified by the client
-        
+
     Returns:
         Tuple of (route, upstream_model, settings_dict)
     """
@@ -143,18 +127,14 @@ def resolve_route_with_settings(
     return route, model, settings
 
 
-def get_fallback_chain(
-    route: Route, 
-    model: str, 
-    req_id: str
-) -> List[Tuple[Optional[Route], str]]:
+def get_fallback_chain(route: Route, model: str, req_id: str) -> List[Tuple[Optional[Route], str]]:
     """Get the fallback chain for a given route and model.
-    
+
     Args:
         route: The primary route object
         model: The primary model name
         req_id: Request ID for logging purposes
-        
+
     Returns:
         List of (route, model) tuples representing fallback options
     """

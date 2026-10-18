@@ -13,6 +13,7 @@ Request-phase only — no streaming chunk processing needed.
 import re
 from typing import Any, Dict, List, Optional, Pattern
 
+from keeprollming.logger import log
 from keeprollming.orchestrator.filter import (
     Filter,
     FilterConfig,
@@ -20,14 +21,15 @@ from keeprollming.orchestrator.filter import (
     Request,
     Response,
 )
-from keeprollming.logger import log
+from keeprollming.orchestrator.filters.events import emit_filter_event
 
+_FILE_PART_TYPES = {"file", "input_file", "document", "file_url", "document_url"}
 
 # Default marker patterns — cover llama.cpp (mtmd), Qwen, LLaVA, and common formats
 # llama.cpp's mtmd_tokenizer uses "<__media__>" as the media marker (hardcoded default).
 # Other patterns cover common image/vision tokens from various model tokenizers.
 _DEFAULT_MARKER_PATTERNS: List[str] = [
-    r"<__media__>",                          # llama.cpp mtmd default media marker
+    r"<__media__>",  # llama.cpp mtmd default media marker
     r"<image>",
     r"<img>",
     r"<\|image_pad\|>",
@@ -71,6 +73,12 @@ class MultimodalValidatorFilter(Filter):
             When true, ALL image_url items are replaced with the replacement
             text. Useful as a kill-switch when upstream can't handle any
             images in tool messages. Overrides max_images.
+        strip_all_files: bool (default: false)
+            Replace structured file/document parts across the entire history,
+            including PDFs incorrectly carried as image parts. Real images
+            and plain text are preserved.
+        files_replacement_text: str (default: "[File omitted: attachments are disabled]")
+            Placeholder replacing each removed file, preserving message shape.
     """
 
     _default_name = "multimodal_validator"
@@ -88,15 +96,14 @@ class MultimodalValidatorFilter(Filter):
             self._max_images = config.get("max_images", 0)
             self._max_images_policy = config.get("max_images_policy", "strip_first")
             if self._max_images_policy not in {"strip_first", "strip_latest"}:
-                raise ValueError(
-                    "multimodal_validator.max_images_policy must be "
-                    "'strip_first' or 'strip_latest'"
-                )
+                raise ValueError("multimodal_validator.max_images_policy must be 'strip_first' or 'strip_latest'")
             self._max_images_replacement = config.get(
                 "max_images_replacement_text",
                 "[Image omitted due to limit]",
             )
             self._strip_all = config.get("strip_all_images", False)
+            self._strip_all_files = config.get("strip_all_files", False)
+            self._files_replacement = config.get("files_replacement_text", "[File omitted: attachments are disabled]")
             base_config = FilterConfig(enabled=enabled, name="multimodal_validator")
             super().__init__(base_config)
         else:
@@ -108,6 +115,8 @@ class MultimodalValidatorFilter(Filter):
             self._max_images_policy = "strip_first"
             self._max_images_replacement = "[Image omitted due to limit]"
             self._strip_all = False
+            self._strip_all_files = False
+            self._files_replacement = "[File omitted: attachments are disabled]"
 
         self._patterns: List[Pattern] = [re.compile(p) for p in patterns_raw]
         # Always compile <__media__> pattern separately for unconditional stripping
@@ -115,15 +124,25 @@ class MultimodalValidatorFilter(Filter):
 
     # ── Public API ───────────────────────────────────────────────────
 
-    async def process_request(
-        self, request: Request, context: FilterExecutionContext
-    ) -> Request:
+    async def process_request(self, request: Request, context: FilterExecutionContext) -> Request:
         """Validate and repair multimodal content in request messages."""
         if not self.is_enabled:
             return request
 
         req_id = self._resolve_req_id(context)
         modified = False
+
+        if self._strip_all_files:
+            stripped = self._remove_files(request.messages)
+            if stripped:
+                modified = True
+                emit_filter_event(
+                    context,
+                    "multimodal_validator",
+                    "filter.multimodal_validator.files_stripped",
+                    level="BASIC",
+                    stripped=stripped,
+                )
 
         for idx, msg in enumerate(request.messages):
             result = self._validate_message(msg)
@@ -139,7 +158,8 @@ class MultimodalValidatorFilter(Filter):
                 if stripped > 0:
                     modified = True
                     log(
-                        "WARN", "multimodal_validator_max_images_exceeded",
+                        "WARN",
+                        "multimodal_validator_max_images_exceeded",
                         req_id=req_id,
                         total_images=total_images,
                         max_images=self._max_images,
@@ -159,14 +179,16 @@ class MultimodalValidatorFilter(Filter):
                 if stripped > 0:
                     modified = True
                     log(
-                        "WARN", "multimodal_validator_strip_all_images",
+                        "WARN",
+                        "multimodal_validator_strip_all_images",
                         req_id=req_id,
                         stripped=stripped,
                     )
 
         if modified:
             log(
-                "INFO", "multimodal_validator_applied",
+                "INFO",
+                "multimodal_validator_applied",
                 req_id=req_id,
                 message_count=len(request.messages),
                 strip_enabled=self._strip,
@@ -174,9 +196,7 @@ class MultimodalValidatorFilter(Filter):
 
         return request
 
-    async def process_response(
-        self, response: Response, context: FilterExecutionContext
-    ) -> Response:
+    async def process_response(self, response: Response, context: FilterExecutionContext) -> Response:
         """Pass through — this filter only modifies requests."""
         return response
 
@@ -184,6 +204,45 @@ class MultimodalValidatorFilter(Filter):
         pass
 
     # ── Helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_file_part(item: Any) -> bool:
+        if not isinstance(item, dict):
+            return False
+        kind = item.get("type")
+        if not isinstance(kind, str):
+            return False
+        if kind in _FILE_PART_TYPES:
+            return True
+        if kind in {"image", "image_url", "input_image"}:
+            source = item.get("source")
+            if isinstance(source, dict) and str(source.get("media_type", "")).lower() == "application/pdf":
+                return True
+            url = item.get("image_url", "")
+            if isinstance(url, dict):
+                url = url.get("url", "")
+            return isinstance(url, str) and re.match(r"data:application/pdf[;,]", url, re.IGNORECASE) is not None
+        return False
+
+    def _remove_files(self, messages: List[Dict[str, Any]]) -> int:
+        """Replace file parts without dropping messages, tool IDs or tool calls."""
+        stripped = 0
+        for index, message in enumerate(messages):
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            new_content = []
+            changed = False
+            for item in content:
+                if self._is_file_part(item):
+                    new_content.append({"type": "text", "text": self._files_replacement})
+                    stripped += 1
+                    changed = True
+                else:
+                    new_content.append(item)
+            if changed:
+                messages[index] = dict(message, content=new_content)
+        return stripped
 
     def _resolve_req_id(self, context: FilterExecutionContext) -> str:
         """Extract request ID from context."""
@@ -225,7 +284,7 @@ class MultimodalValidatorFilter(Filter):
         if self._max_images_policy == "strip_first":
             positions_to_strip = set(image_positions[:excess])
         else:
-            positions_to_strip = set(image_positions[self._max_images:])
+            positions_to_strip = set(image_positions[self._max_images :])
 
         for message_index, msg in enumerate(messages):
             content = msg.get("content")
@@ -238,10 +297,12 @@ class MultimodalValidatorFilter(Filter):
                     new_content.append(item)
                     continue
                 if (message_index, item_index) in positions_to_strip:
-                    new_content.append({
-                        "type": "text",
-                        "text": self._max_images_replacement,
-                    })
+                    new_content.append(
+                        {
+                            "type": "text",
+                            "text": self._max_images_replacement,
+                        }
+                    )
                 else:
                     new_content.append(item)
 
@@ -251,10 +312,7 @@ class MultimodalValidatorFilter(Filter):
 
     def _count_image_parts(self, content: List[Dict[str, Any]]) -> int:
         """Count image_url items in a list-type content field."""
-        return sum(
-            1 for item in content
-            if isinstance(item, dict) and item.get("type") == "image_url"
-        )
+        return sum(1 for item in content if isinstance(item, dict) and item.get("type") == "image_url")
 
     def _count_markers_in_text(self, text: str) -> int:
         """Count image markers found in a text string using configured patterns."""
@@ -271,9 +329,7 @@ class MultimodalValidatorFilter(Filter):
             result = pattern.sub("", result)
         return result.strip()
 
-    def _validate_message(
-        self, msg: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _validate_message(self, msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Check a single message for multimodal inconsistencies.
 
         Returns the repaired message dict if changes were made,
@@ -288,9 +344,7 @@ class MultimodalValidatorFilter(Filter):
 
         return None
 
-    def _validate_multimodal_list(
-        self, msg: Dict[str, Any], content: List[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+    def _validate_multimodal_list(self, msg: Dict[str, Any], content: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Validate a message with content as a list (structured multimodal).
 
         Counts image_url parts and checks text parts for orphaned markers.
@@ -319,7 +373,8 @@ class MultimodalValidatorFilter(Filter):
 
         # Phase 2: Check other markers (non-<__media__>) for count-based stripping
         text_parts = [
-            item.get("text", "") for item in content
+            item.get("text", "")
+            for item in content
             if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str)
         ]
         combined_text = " ".join(text_parts)
@@ -340,7 +395,8 @@ class MultimodalValidatorFilter(Filter):
                 return result
         elif marker_count < image_count and marker_count > 0:
             log(
-                "DEBUG", "multimodal_validator_extra_images",
+                "DEBUG",
+                "multimodal_validator_extra_images",
                 images=image_count,
                 markers=marker_count,
             )
@@ -401,9 +457,7 @@ class MultimodalValidatorFilter(Filter):
 
         return None
 
-    def _strip_media_from_list_content(
-        self, content: List[Dict[str, Any]]
-    ) -> Optional[List[Dict[str, Any]]]:
+    def _strip_media_from_list_content(self, content: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
         """Unconditionally strip <__media__> markers from ALL text parts in a list content.
 
         llama.cpp's mtmd_tokenizer auto-inserts <__media__> markers based on
@@ -466,9 +520,7 @@ class MultimodalValidatorFilter(Filter):
 
         return [item for item in new_content if self._has_content(item)]
 
-    def _validate_text_content(
-        self, msg: Dict[str, Any], content: str
-    ) -> Optional[Dict[str, Any]]:
+    def _validate_text_content(self, msg: Dict[str, Any], content: str) -> Optional[Dict[str, Any]]:
         """Validate a message with string content for orphaned image markers.
 
         Returns repaired message or None if no changes needed.
@@ -492,7 +544,8 @@ class MultimodalValidatorFilter(Filter):
     def _has_content(self, item: Any) -> bool:
         """Check if a content item has meaningful content."""
         if isinstance(item, dict):
-            if item.get("type") == "image_url":
+            kind = item.get("type")
+            if isinstance(kind, str) and (kind == "image_url" or kind in _FILE_PART_TYPES):
                 return True
             text = item.get("text", "")
             return bool(text and text.strip())

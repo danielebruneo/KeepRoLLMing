@@ -8,10 +8,9 @@ Comprehensive integration tests covering:
 4. Basic plain logging with proper formatting
 """
 
-import json
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi.testclient import TestClient
 
 
 class TestSummaryEnabledInheritance:
@@ -23,22 +22,22 @@ class TestSummaryEnabledInheritance:
         from keeprollming.routing import resolve_inherited_route
 
         config = {
-            'routes': {
-                'parent': {
-                    'name': 'parent',
-                    'pattern': 'p/*',
-                    'model': 'test-model',
-                    'summary_enabled': False,  # Parent explicitly sets to False
+            "routes": {
+                "parent": {
+                    "name": "parent",
+                    "pattern": "p/*",
+                    "model": "test-model",
+                    "summary_enabled": False,  # Parent explicitly sets to False
                 },
-                'child/1': {
-                    'extends': 'parent'
+                "child/1": {
+                    "extends": "parent"
                     # Does NOT set summary_enabled - should inherit False
                 },
-                'child/2': {
-                    'extends': 'parent',
-                    'some_other_setting': 'value'
+                "child/2": {
+                    "extends": "parent",
+                    "some_other_setting": "value",
                     # Still should inherit False (no override)
-                }
+                },
             }
         }
 
@@ -46,15 +45,15 @@ class TestSummaryEnabledInheritance:
         routes_by_name = {r.name: r for r in routes}
 
         # Verify child routes have _UNSET (will be resolved during routing)
-        assert routes_by_name['child/1'].summary_enabled is None
-        assert routes_by_name['child/2'].summary_enabled is None
+        assert routes_by_name["child/1"].summary_enabled is None
+        assert routes_by_name["child/2"].summary_enabled is None
 
         # After resolution, they should inherit False from parent
-        resolved_1 = resolve_inherited_route(routes_by_name['child/1'], routes_by_name)
-        resolved_2 = resolve_inherited_route(routes_by_name['child/2'], routes_by_name)
+        resolved_1 = resolve_inherited_route(routes_by_name["child/1"], routes_by_name)
+        resolved_2 = resolve_inherited_route(routes_by_name["child/2"], routes_by_name)
 
-        assert resolved_1.summary_enabled == False
-        assert resolved_2.summary_enabled == False
+        assert not resolved_1.summary_enabled
+        assert not resolved_2.summary_enabled
 
     def test_grandchild_inherits_through_multiple_levels(self):
         """Grandchild route inherits summary_enabled through multiple levels."""
@@ -62,22 +61,22 @@ class TestSummaryEnabledInheritance:
         from keeprollming.routing import resolve_inherited_route
 
         config = {
-            'routes': {
-                'grandparent': {
-                    'name': 'grandparent',
-                    'pattern': 'gp/*',
-                    'model': 'test-model',
-                    'summary_enabled': True,
+            "routes": {
+                "grandparent": {
+                    "name": "grandparent",
+                    "pattern": "gp/*",
+                    "model": "test-model",
+                    "summary_enabled": True,
                 },
-                'parent': {
-                    'extends': 'grandparent',
-                    'model': 'other-model',
-                    'summary_enabled': False,  # Override to False
+                "parent": {
+                    "extends": "grandparent",
+                    "model": "other-model",
+                    "summary_enabled": False,  # Override to False
                 },
-                'child': {
-                    'extends': 'parent'
+                "child": {
+                    "extends": "parent"
                     # Should inherit False from parent (not True from grandparent)
-                }
+                },
             }
         }
 
@@ -85,11 +84,11 @@ class TestSummaryEnabledInheritance:
         routes_by_name = {r.name: r for r in routes}
 
         # Verify child has _UNSET
-        assert routes_by_name['child'].summary_enabled is None
+        assert routes_by_name["child"].summary_enabled is None
 
         # After resolution, should inherit False from parent
-        resolved_child = resolve_inherited_route(routes_by_name['child'], routes_by_name)
-        assert resolved_child.summary_enabled == False
+        resolved_child = resolve_inherited_route(routes_by_name["child"], routes_by_name)
+        assert not resolved_child.summary_enabled
 
     def test_explicit_override_stops_inheritance(self):
         """Explicit summary_enabled value in child overrides inheritance."""
@@ -97,17 +96,17 @@ class TestSummaryEnabledInheritance:
         from keeprollming.routing import resolve_inherited_route
 
         config = {
-            'routes': {
-                'parent': {
-                    'name': 'parent',
-                    'pattern': 'p/*',
-                    'model': 'test-model',
-                    'summary_enabled': False,
+            "routes": {
+                "parent": {
+                    "name": "parent",
+                    "pattern": "p/*",
+                    "model": "test-model",
+                    "summary_enabled": False,
                 },
-                'child': {
-                    'extends': 'parent',
-                    'summary_enabled': True  # Explicitly override to True
-                }
+                "child": {
+                    "extends": "parent",
+                    "summary_enabled": True,  # Explicitly override to True
+                },
             }
         }
 
@@ -115,11 +114,11 @@ class TestSummaryEnabledInheritance:
         routes_by_name = {r.name: r for r in routes}
 
         # Child has explicit True (not _UNSET)
-        assert routes_by_name['child'].summary_enabled == True
+        assert routes_by_name["child"].summary_enabled
 
         # After resolution, should use explicit value
-        resolved_child = resolve_inherited_route(routes_by_name['child'], routes_by_name)
-        assert resolved_child.summary_enabled == True
+        resolved_child = resolve_inherited_route(routes_by_name["child"], routes_by_name)
+        assert resolved_child.summary_enabled
 
 
 class TestStreamingErrorHandling:
@@ -127,28 +126,30 @@ class TestStreamingErrorHandling:
 
     def test_streaming_error_handling_in_app(self):
         """Verify app.py has proper error handling for streaming errors."""
-        import keeprollming.app as app_mod
-        
         # Check that the stream() method has try/except error handling
         import inspect
+
+        import keeprollming.app as app_mod
+
         source = inspect.getsource(app_mod)
-        
+
         # Should have error handling around streaming
-        assert 'except Exception' in source or 'try:' in source, \
+        assert "except Exception" in source or "try:" in source, (
             "App should have try/except blocks for streaming error handling"
+        )
 
     def test_sse_parsing_handles_partial_responses(self):
         """Partial SSE responses are handled without crashing."""
         # This test verifies that the streaming response reconstruction
         # in app.py handles partial SSE streams gracefully
-        import keeprollming.app as app_mod
         import inspect
-        
+
+        import keeprollming.app as app_mod
+
         source = inspect.getsource(app_mod)
-        
+
         # Should have logic to handle missing [DONE] markers
-        assert 'choices' in source and 'delta' in source, \
-            "App should parse SSE choices and deltas"
+        assert "choices" in source and "delta" in source, "App should parse SSE choices and deltas"
 
 
 class TestSummarizationBypass:
@@ -156,11 +157,6 @@ class TestSummarizationBypass:
 
     def test_summary_not_triggered_when_disabled(self):
         """Verify summarization logic is skipped when summary_enabled=False."""
-        messages = [
-            {"role": "user", "content": "A" * 5000},
-            {"role": "assistant", "content": "B" * 5000},
-            {"role": "user", "content": "C" * 5000},
-        ]
 
         summary_called = False
 
@@ -176,24 +172,29 @@ class TestSummarizationBypass:
         # The endpoint owns this decision; this is a structural regression
         # check and does not need to patch a compatibility façade.
         import inspect
+
         from keeprollming.endpoints import chat_completions
+
         source = inspect.getsource(chat_completions)
 
         # The key check: the handler guards summarization by route settings.
-        assert 'summary_enabled' in source.lower() or 'not.*summary' in source.lower(), \
+        assert "summary_enabled" in source.lower() or "not.*summary" in source.lower(), (
             "Chat completions handler should check summary_enabled before calling summarization"
+        )
 
     def test_summary_triggered_when_enabled(self):
         """Verify summarization logic runs when summary_enabled=True."""
         # The logic was moved to endpoints.chat_completions module
-        from keeprollming.endpoints import chat_completions
-        
         import inspect
+
+        from keeprollming.endpoints import chat_completions
+
         source = inspect.getsource(chat_completions)
 
         # Should have calls to summarize_middle or summarize_incremental
-        assert 'summarize_middle' in source or 'summarize_incremental' in source, \
+        assert "summarize_middle" in source or "summarize_incremental" in source, (
             "Chat completions handler should call summarization functions"
+        )
 
 
 class TestHierarchicalRouteResolution:
@@ -205,28 +206,28 @@ class TestHierarchicalRouteResolution:
         from keeprollming.routing import resolve_inherited_route
 
         config = {
-            'routes': {
-                'base': {
-                    'name': 'base',
-                    'pattern': 'b/*',
-                    'model': 'base-model',
-                    'ctx_len': 8192,
-                    'summary_enabled': True,
+            "routes": {
+                "base": {
+                    "name": "base",
+                    "pattern": "b/*",
+                    "model": "base-model",
+                    "ctx_len": 8192,
+                    "summary_enabled": True,
                 },
-                'level1': {
-                    'extends': 'base',
-                    'model': 'level1-model',
-                    'summary_enabled': False,  # Override at level 1
+                "level1": {
+                    "extends": "base",
+                    "model": "level1-model",
+                    "summary_enabled": False,  # Override at level 1
                 },
-                'level2': {
-                    'extends': 'level1',
-                    'ctx_len': 32768,  # Override ctx_len only
+                "level2": {
+                    "extends": "level1",
+                    "ctx_len": 32768,  # Override ctx_len only
                     # summary_enabled should inherit False from level1
                 },
-                'level3': {
-                    'extends': 'level2',
+                "level3": {
+                    "extends": "level2",
                     # Inherits everything from level2 (which inherited from level1)
-                }
+                },
             }
         }
 
@@ -234,14 +235,14 @@ class TestHierarchicalRouteResolution:
         routes_by_name = {r.name: r for r in routes}
 
         # Resolve each level
-        l1 = resolve_inherited_route(routes_by_name['level1'], routes_by_name)
-        l2 = resolve_inherited_route(routes_by_name['level2'], routes_by_name)
-        l3 = resolve_inherited_route(routes_by_name['level3'], routes_by_name)
+        l1 = resolve_inherited_route(routes_by_name["level1"], routes_by_name)
+        l2 = resolve_inherited_route(routes_by_name["level2"], routes_by_name)
+        l3 = resolve_inherited_route(routes_by_name["level3"], routes_by_name)
 
         # Verify inheritance chain
-        assert l1.summary_enabled == False
-        assert l2.summary_enabled == False  # Inherited from level1
-        assert l3.summary_enabled == False  # Inherited through chain
+        assert not l1.summary_enabled
+        assert not l2.summary_enabled  # Inherited from level1
+        assert not l3.summary_enabled  # Inherited through chain
 
         # Verify ctx_len propagation
         assert l1.ctx_len == 8192  # From base (not overridden in level1)
@@ -254,36 +255,36 @@ class TestHierarchicalRouteResolution:
         from keeprollming.routing import resolve_inherited_route
 
         config = {
-            'routes': {
-                'parent': {
-                    'name': 'parent',
-                    'pattern': 'p/*',
-                    'model': 'parent-model',
-                    'ctx_len': 8192,
-                    'max_tokens': 4096,
-                    'summary_enabled': False,
-                    'tool_rewrite_enabled': True,
+            "routes": {
+                "parent": {
+                    "name": "parent",
+                    "pattern": "p/*",
+                    "model": "parent-model",
+                    "ctx_len": 8192,
+                    "max_tokens": 4096,
+                    "summary_enabled": False,
+                    "tool_rewrite_enabled": True,
                 },
-                'child': {
-                    'extends': 'parent',
-                    'ctx_len': 16384,  # Override ctx_len only
+                "child": {
+                    "extends": "parent",
+                    "ctx_len": 16384,  # Override ctx_len only
                     # max_tokens should inherit from parent (4096)
                     # summary_enabled should inherit from parent (False)
                     # tool_rewrite_enabled inherits default False (parent's True is not inherited)
-                }
+                },
             }
         }
 
         routes = load_user_routes(config)
         routes_by_name = {r.name: r for r in routes}
 
-        child = resolve_inherited_route(routes_by_name['child'], routes_by_name)
+        child = resolve_inherited_route(routes_by_name["child"], routes_by_name)
 
         # Verify only ctx_len is overridden
         assert child.ctx_len == 16384
         assert child.max_tokens == 4096  # Inherited from parent
-        assert child.summary_enabled == False  # Inherited from parent
-        
+        assert not child.summary_enabled  # Inherited from parent
+
         # Note: tool_rewrite_enabled uses _UNSET default, so it takes the route default (False)
         # The parent's True is not inherited because it was set explicitly in config
 

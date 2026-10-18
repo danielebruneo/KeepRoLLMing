@@ -4,15 +4,13 @@ Verifies that ``events_downstream`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_downstream import (
-    emit_downstream_event,
     emit_chunk_sent,
-    emit_delivery_completed,
     emit_delivery_closed,
+    emit_delivery_completed,
     emit_delivery_failed,
+    emit_downstream_event,
 )
 
 
@@ -31,9 +29,7 @@ class TestEmitDownstreamEvent:
         dispatcher = EventDispatcher()
         emitted_events: list[RuntimeEvent] = []
         dispatcher.subscribe("downstream", emitted_events.append)
-        event = emit_downstream_event(
-            "req-2", "downstream.delivery.chunk.sent", dispatcher=dispatcher
-        )
+        event = emit_downstream_event("req-2", "downstream.delivery.chunk.sent", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
 

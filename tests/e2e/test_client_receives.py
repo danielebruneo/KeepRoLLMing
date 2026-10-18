@@ -18,23 +18,27 @@ import pytest
 def _check_streaming_order(body: str, expect_timestamp: bool = False, expect_tool_calls: bool = False):
     """Verify SSE chunk ordering for streaming tests."""
     lines = body.split("\n")
-    data_lines = [l.strip() for l in lines if l.startswith("data: ")]
+    data_lines = [line.strip() for line in lines if line.startswith("data: ")]
     assert len(data_lines) >= 2, f"Too few SSE events: {len(data_lines)}"
 
     # 1. Last line must be [DONE]
     assert data_lines[-1] == "data: [DONE]", f"Last not DONE: {data_lines[-1]}"
 
     # 2. finish_reason (non-null) must appear exactly once, before [DONE]
-    fr_lines = [l for l in data_lines if '"finish_reason":' in l and '"finish_reason": null' not in l and '"finish_reason":null' not in l]
+    fr_lines = [
+        line
+        for line in data_lines
+        if '"finish_reason":' in line and '"finish_reason": null' not in line and '"finish_reason":null' not in line
+    ]
     assert len(fr_lines) == 1, f"Expected 1 finish_reason, got {len(fr_lines)}: {body[:500]}"
 
     # 3. No data after [DONE]
-    done_idx = next(i for i, l in enumerate(data_lines) if "[DONE]" in l)
-    assert done_idx == len(data_lines) - 1, f"Data after DONE: {data_lines[done_idx+1:]}"
+    done_idx = next(i for i, line in enumerate(data_lines) if "[DONE]" in line)
+    assert done_idx == len(data_lines) - 1, f"Data after DONE: {data_lines[done_idx + 1 :]}"
 
     # 4. Timestamp before finish_reason
     if expect_timestamp:
-        ts_lines = [l for l in data_lines if "Timestamp:" in l]
+        ts_lines = [line for line in data_lines if "Timestamp:" in line]
         assert len(ts_lines) >= 1, f"Expected timestamp, none found: {body[:500]}"
 
     # 5. If tool_calls expected, finish_reason must be "tool_calls"
@@ -52,13 +56,13 @@ def pytest_addoption(parser):
         "--degrade-lvls",
         action="store",
         default="0",
-        help="Comma-separated degradation levels to test (e.g., 0,1,2,3,4)"
+        help="Comma-separated degradation levels to test (e.g., 0,1,2,3,4)",
     )
 
 
 def get_degradation_levels(request):
     levels_str = request.config.getoption("--degrade-lvls")
-    return [int(l.strip()) for l in levels_str.split(",")]
+    return [int(level.strip()) for level in levels_str.split(",")]
 
 
 def _set_degradation(fake_url: str, level: int, seed: int = 42):
@@ -72,7 +76,7 @@ def pytest_generate_tests(metafunc):
     """Parametrize tests over degradation levels based on --degrade-lvls option."""
     if "degrade_level" in metafunc.fixturenames:
         levels_str = metafunc.config.getoption("--degrade-lvls", "0")
-        levels = [int(l.strip()) for l in levels_str.split(",")]
+        levels = [int(level.strip()) for level in levels_str.split(",")]
         metafunc.parametrize("degrade_level", levels, scope="function")
 
 
@@ -84,7 +88,6 @@ def set_level(servers, degrade_level):
 
 
 class TestClientReceivesCorrectContent:
-
     @pytest.fixture
     def servers(self, orchestrator_server, backend_target):
         """Expose the shared dynamically allocated E2E services."""
@@ -100,20 +103,33 @@ class TestClientReceivesCorrectContent:
         # Scenario: fake backend returns "Prova:" (ends with colon → triggers nudge)
         # Scenario: first call returns lazy, retry returns different content
         # Use array format for multi-call rotation (canonical fake_backend format)
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": ["Prova:", "Risposta completa dopo il retry."], "stream_pieces": [["Prova:"], ["Risposta completa dopo il retry."]]}}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": ["Prova:", "Risposta completa dopo il retry."],
+                        "stream_pieces": [["Prova:"], ["Risposta completa dopo il retry."]],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Rispondi con Prova:"}],
-            "stream": False,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Rispondi con Prova:"}],
+                "stream": False,
+            },
+            timeout=30,
+        )
 
         content = resp.json()["choices"][0]["message"]["content"]
         # Client MUST receive accumulated: lazy + "\n" + retry (different content)
         expected = "Prova:" + "\n" + "Risposta completa dopo il retry."
-        assert content == expected, \
-            f"Client got wrong content.\nExpected: {repr(expected)}\nGot:      {repr(content)}"
+        assert content == expected, f"Client got wrong content.\nExpected: {repr(expected)}\nGot:      {repr(content)}"
 
     # ── Streaming: client receives SSE with accumulated content ──
 
@@ -121,14 +137,31 @@ class TestClientReceivesCorrectContent:
         """After nudge, streaming client gets accumulated content in final delta."""
         # Scenario: first call returns lazy "I will say:", retry returns DIFFERENT content
         # Use array format for multi-call rotation (canonical fake_backend format)
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": ["I will say:", "The full continuation after retry."], "stream_pieces": [["I", " will", " say:"], ["The", " full", " continuation", " after", " retry."]]}}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": ["I will say:", "The full continuation after retry."],
+                        "stream_pieces": [
+                            ["I", " will", " say:"],
+                            ["The", " full", " continuation", " after", " retry."],
+                        ],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Tell me"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Tell me"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
 
@@ -143,16 +176,13 @@ class TestClientReceivesCorrectContent:
                     pass
 
         # 1. Client receives the lazy response via SSE
-        assert "say:" in all_delta_content, \
-            f"Missing lazy response in SSE stream. Got: {all_delta_content[:100]}"
+        assert "say:" in all_delta_content, f"Missing lazy response in SSE stream. Got: {all_delta_content[:100]}"
 
         # 2. Client receives [DONE] marker
-        assert "[DONE]" in body, \
-            f"Missing [DONE] marker in SSE stream: {body[:300]}"
+        assert "[DONE]" in body, f"Missing [DONE] marker in SSE stream: {body[:300]}"
 
         # 3. Client receives finish_reason
-        assert '"finish_reason": "stop"' in body, \
-            f"Missing finish_reason in SSE stream: {body[:300]}"
+        assert '"finish_reason": "stop"' in body, f"Missing finish_reason in SSE stream: {body[:300]}"
 
         # 4. [DONE] marker and finish_reason are present (critical — were missing before fix)
         assert "[DONE]" in body, f"Missing [DONE] marker: {body[:300]}"
@@ -175,21 +205,36 @@ class TestClientReceivesCorrectContent:
 
         # Client should see exactly: lazy (SSE) + "\n" + retry continuation (NOT lazy again)
         expected = "I will say:" + "\n" + "The full continuation after retry."
-        assert displayed == expected, \
+        assert displayed == expected, (
             f"Client received wrong content.\nExpected: {repr(expected)}\nGot:      {repr(displayed)}"
+        )
 
     # ── Streaming: client does NOT receive duplicate content ──
 
     def test_streaming_no_nudge_passes_unchanged(self, servers):
         """Without nudge, streaming client receives only upstream content."""
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": "Normal complete response.", "stream_pieces": ["Normal", " complete", " response."]}}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": "Normal complete response.",
+                        "stream_pieces": ["Normal", " complete", " response."],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         # SSE content is split across deltas — check for key words
@@ -200,14 +245,21 @@ class TestClientReceivesCorrectContent:
 
     def test_streaming_system_prompt_is_injected(self, servers):
         """System prompt is visible in BASIC_PLAIN during streaming."""
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": "OK", "stream_pieces": ["OK"]}}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={"scenario": {"chat": {"content": "OK", "stream_pieces": ["OK"]}}},
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         assert resp.status_code == 200
         assert "[DONE]" in resp.text
@@ -218,34 +270,73 @@ class TestClientReceivesCorrectContent:
         """First retry still lazy, second gives tool_call — client gets all accumulated."""
         # 3 rotating responses: lazy, still lazy, final (tool_call or full text)
         # Use array format for multi-call rotation (canonical fake_backend format)
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": ["Redis OK. Con:", "Still thinking:", "Controlliamo cosa sta leggendo firecrawl:"], "stream_pieces": [["Redis", " OK.", " Con:"], ["Still", " thinking:"], ["Controlliamo", " cosa", " sta", " leggendo", " firecrawl:"]]}}},
-                   timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": [
+                            "Redis OK. Con:",
+                            "Still thinking:",
+                            "Controlliamo cosa sta leggendo firecrawl:",
+                        ],
+                        "stream_pieces": [
+                            ["Redis", " OK.", " Con:"],
+                            ["Still", " thinking:"],
+                            ["Controlliamo", " cosa", " sta", " leggendo", " firecrawl:"],
+                        ],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/nudge-two-attempts",
-            "messages": [{"role": "user", "content": "Debug Redis"}],
-            "stream": False,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/nudge-two-attempts",
+                "messages": [{"role": "user", "content": "Debug Redis"}],
+                "stream": False,
+            },
+            timeout=30,
+        )
 
         content = resp.json()["choices"][0]["message"]["content"]
         # Accumulated: all 3 responses joined by newlines
         expected = "Redis OK. Con:\nStill thinking:\nControlliamo cosa sta leggendo firecrawl:"
-        assert content == expected, \
+        assert content == expected, (
             f"Multi-attempt content wrong.\nExpected: {repr(expected)}\nGot:      {repr(content)}"
+        )
 
     def test_nudge_two_attempts_streaming(self, servers, degrade_level, set_level):
         """Streaming multi-attempt: client receives accumulated via final delta."""
         # Use array format for multi-call rotation (canonical fake_backend format)
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": ["Parte 1:", "Ancora...:", "Risposta finale completa."], "stream_pieces": [["Parte", " 1:"], ["Ancora", "...:"], ["Risposta", " finale", " completa."]]}}},
-                   timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": ["Parte 1:", "Ancora...:", "Risposta finale completa."],
+                        "stream_pieces": [
+                            ["Parte", " 1:"],
+                            ["Ancora", "...:"],
+                            ["Risposta", " finale", " completa."],
+                        ],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Tell me"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Tell me"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         # Reconstruct displayed content
@@ -259,8 +350,9 @@ class TestClientReceivesCorrectContent:
                     pass
 
         expected = "Parte 1:\nAncora...:\nRisposta finale completa."
-        assert displayed == expected, \
+        assert displayed == expected, (
             f"Streaming multi-attempt wrong.\nExpected: {repr(expected)}\nGot:      {repr(displayed)}"
+        )
         assert "[DONE]" in body
 
     # ── Nudge + tool_call in streaming ──
@@ -268,41 +360,78 @@ class TestClientReceivesCorrectContent:
     def test_nudge_tool_call_streaming(self, servers, degrade_level, set_level):
         """Streaming: lazy response → nudge retry → model returns tool_call."""
         # Use array format for multi-call rotation (canonical fake_backend format)
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": ["I will run:", "<tool_call>run_shell(ls -la)</tool_call>"], "stream_pieces": [["I", " will", " run:"], ["<tool_call>run_shell(ls -la)</tool_call>"]]}}},
-                   timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": ["I will run:", "<tool_call>run_shell(ls -la)</tool_call>"],
+                        "stream_pieces": [
+                            ["I", " will", " run:"],
+                            ["<tool_call>run_shell(ls -la)</tool_call>"],
+                        ],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "List files"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "List files"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         assert "run:" in body  # SSE splits across chunks, check substring, f"Missing lazy response: {body[:200]}"
         assert "[DONE]" in body
         # Tool call content from retry should be in the accumulated output
-        assert "run_shell" in body or "ls -la" in body, \
+        assert "run_shell" in body or "ls -la" in body, (
             f"Tool call content missing from streaming response: {body[:500]}"
+        )
 
     # ── Nudge + structured tool_call (real OpenAI format)
 
     def test_nudge_structured_tool_call_streaming(self, servers, degrade_level, set_level):
         """Streaming: lazy → nudge retry → model returns structured tool_calls."""
         import json
+
         # Scenario: first call (streaming) returns lazy, second call (retry, non-streaming) returns tool_calls
         # Use array format for multi-call rotation (canonical fake_backend format)
-        tc = [{"id": "call_1", "type": "function",
-               "function": {"name": "run_shell_command", "arguments": '{"cmd":"docker ps"}'}}]
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": ["I will run:", None], "stream_pieces": [["I", " will", " run:"], []], "tool_calls": {"indexed": [None, tc]}}}},
-                   timeout=5)
+        tc = [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "run_shell_command", "arguments": '{"cmd":"docker ps"}'},
+            }
+        ]
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": ["I will run:", None],
+                        "stream_pieces": [["I", " will", " run:"], []],
+                        "tool_calls": {"indexed": [None, tc]},
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Check Docker"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Check Docker"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         # Verify [DONE] present
@@ -317,36 +446,49 @@ class TestClientReceivesCorrectContent:
                     tc_delta = d.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
                     if tc_delta:
                         found_tool_calls = True
-                        assert any(t.get("function", {}).get("name") == "run_shell_command"
-                                   for t in tc_delta)
+                        assert any(t.get("function", {}).get("name") == "run_shell_command" for t in tc_delta)
                 except Exception:
                     pass
         assert found_tool_calls, f"No structured tool_calls in final delta: {body[:800]}"
         # Also verify finish_reason is tool_calls (client needs this to process TC)
-        assert '"finish_reason": "tool_calls"' in body,             f"Missing finish_reason=tool_calls: {body[:800]}"
+        assert '"finish_reason": "tool_calls"' in body, f"Missing finish_reason=tool_calls: {body[:800]}"
 
     # ── Non-streaming: nudge + structured tool_calls via __TOOL_CALL__ marker
 
     def test_nudge_tool_call_nonstreaming(self, servers, degrade_level, set_level):
         """Non-streaming: lazy → nudge retry → structured tool_calls."""
-        import json
         tc = [{"id": "c1", "function": {"name": "run_shell", "arguments": '{"cmd":"ls"}'}}]
         # Use array format for multi-call rotation (canonical fake_backend format)
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": ["Prova:", "__TOOL_CALL__"], "stream_pieces": [["Prova:"], ["__TOOL_CALL__"]], "tool_calls": {"indexed": [None, tc]}}}},
-                   timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": ["Prova:", "__TOOL_CALL__"],
+                        "stream_pieces": [["Prova:"], ["__TOOL_CALL__"]],
+                        "tool_calls": {"indexed": [None, tc]},
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Run command"}],
-            "stream": False,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Run command"}],
+                "stream": False,
+            },
+            timeout=30,
+        )
 
         body = resp.json()
         msg = body["choices"][0]["message"]
         assert "Prova:" in msg.get("content", ""), f"Missing lazy: {msg}"
-        assert body["choices"][0]["finish_reason"] == "tool_calls", \
+        assert body["choices"][0]["finish_reason"] == "tool_calls", (
             f"Expected finish_reason=tool_calls, got: {body['choices'][0]['finish_reason']}"
+        )
         assert msg.get("tool_calls"), f"No tool_calls: {body}"
 
     # ── Both TLS + nudge in chain with long content
@@ -365,15 +507,28 @@ class TestClientReceivesCorrectContent:
             "</function>\n"
             "</tool_call>"
         )
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json={"scenario": {"chat": {"content": [long_lazy, tool_call_text], "stream_pieces": [[long_lazy], [tool_call_text]]}}},
-                   timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": [long_lazy, tool_call_text],
+                        "stream_pieces": [[long_lazy], [tool_call_text]],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/with-tool-rewrite",
-            "messages": [{"role": "user", "content": "Debug Express + Chromium"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/with-tool-rewrite",
+                "messages": [{"role": "user", "content": "Debug Express + Chromium"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         assert "[DONE]" in body, f"Missing [DONE]: {body[:500]}"
@@ -400,42 +555,49 @@ class TestClientReceivesCorrectContent:
     def test_nudge_xml_tool_call_becomes_structured(self, servers, degrade_level, set_level):
         """XML <tool_call> in retry text → structured tool_calls in final delta."""
         import json
+
         # Lazy response triggers nudge, retry has XML tool_call
         # Use array format for multi-call rotation (canonical fake_backend format)
         scenario_payload = {
             "scenario": {
                 "chat": {
-                    "content": ["I will run:", (
-                        "<tool_call>"
-                        "<function=run_shell_command>"
-                        "<parameter=command>ssh -o StrictHostKeyChecking=no test</parameter>"
-                        "<parameter=description>Check something</parameter>"
-                        "</function>"
-                        "</tool_call>"
-                    )],
+                    "content": [
+                        "I will run:",
+                        (
+                            "<tool_call>"
+                            "<function=run_shell_command>"
+                            "<parameter=command>ssh -o StrictHostKeyChecking=no test</parameter>"
+                            "<parameter=description>Check something</parameter>"
+                            "</function>"
+                            "</tool_call>"
+                        ),
+                    ],
                     "stream_pieces": [
                         ["I", " will", " run:"],
-                        ["<tool_call><function=run_shell_command>ssh -o StrictHostKeyChecking=no test</function></tool_call>"]
-                    ]
+                        [
+                            "<tool_call><function=run_shell_command>ssh -o StrictHostKeyChecking=no test</function></tool_call>"
+                        ],
+                    ],
                 }
             }
         }
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json=scenario_payload,
-                   timeout=5)
+        httpx.post(f"{servers['fake_url']}/__scenario", json=scenario_payload, timeout=5)
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/with-tool-rewrite",
-            "messages": [{"role": "user", "content": "Run SSH"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/with-tool-rewrite",
+                "messages": [{"role": "user", "content": "Run SSH"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         assert "[DONE]" in body
 
         # Should have finish_reason=tool_calls
-        assert '"finish_reason": "tool_calls"' in body, \
-            f"Missing finish_reason=tool_calls: {body[:800]}"
+        assert '"finish_reason": "tool_calls"' in body, f"Missing finish_reason=tool_calls: {body[:800]}"
 
         # Should have structured tool_calls in final delta
         found_tool_calls = False
@@ -456,40 +618,50 @@ class TestClientReceivesCorrectContent:
 
         # XML text should NOT appear in the delta content
         # (only the lazy "I will run:" should be in SSE, no <tool_call> text in final)
-        assert "<tool_call>" not in body, \
-            f"XML tool_call text leaked to client: {body[:500]}"
+        assert "<tool_call>" not in body, f"XML tool_call text leaked to client: {body[:500]}"
 
     # ── Safety: tool_call in middle of text → NOT parsed
 
     def test_xml_tc_in_middle_not_parsed(self, servers):
         """Tool call in middle of explanation text → stays as text, no structured TC."""
         import json
+
         # Use plain text without XML tags to avoid triggering XML buffering in streaming_handlers
         # The test verifies that content in the middle of text is NOT parsed as tool_calls
         scenario_payload = {
             "scenario": {
                 "chat": {
-                    "content": [
-                        "Here is the command: You should use run_shell_command(ls -la) "
-                        "for listing files."
-                    ],
+                    "content": ["Here is the command: You should use run_shell_command(ls -la) for listing files."],
                     "stream_pieces": [
-                        ["Here", " is", " the", " command:", " You", " should", " use",
-                         " run_shell_command(ls -la)", " for", " listing", " files."]
+                        [
+                            "Here",
+                            " is",
+                            " the",
+                            " command:",
+                            " You",
+                            " should",
+                            " use",
+                            " run_shell_command(ls -la)",
+                            " for",
+                            " listing",
+                            " files.",
+                        ]
                     ],
-                    "final_finish_reason": "stop"
+                    "final_finish_reason": "stop",
                 }
             }
         }
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json=scenario_payload,
-                   timeout=5)
+        httpx.post(f"{servers['fake_url']}/__scenario", json=scenario_payload, timeout=5)
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Test"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Test"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         assert "[DONE]" in body
@@ -512,31 +684,40 @@ class TestClientReceivesCorrectContent:
     def test_xml_tc_in_code_block_not_parsed(self, servers):
         """Tool call inside triple backticks → stays as text, no structured TC."""
         import json
+
         # Use plain text without XML tags to avoid triggering XML buffering
         # Also avoid "I will run:" prefix which triggers nudge filter
         scenario_payload = {
             "scenario": {
                 "chat": {
-                    "content": [
-                        "Here is the example code:\n```\nrun_shell_command(ls -la)\n```\n"
-                    ],
+                    "content": ["Here is the example code:\n```\nrun_shell_command(ls -la)\n```\n"],
                     "stream_pieces": [
-                        ["Here", " is", " the", " example", " code:", "\n```\n",
-                         "run_shell_command(ls -la)", "\n```\n"]
+                        [
+                            "Here",
+                            " is",
+                            " the",
+                            " example",
+                            " code:",
+                            "\n```\n",
+                            "run_shell_command(ls -la)",
+                            "\n```\n",
+                        ]
                     ],
-                    "final_finish_reason": "stop"
+                    "final_finish_reason": "stop",
                 }
             }
         }
-        httpx.post(f"{servers['fake_url']}/__scenario",
-                   json=scenario_payload,
-                   timeout=5)
+        httpx.post(f"{servers['fake_url']}/__scenario", json=scenario_payload, timeout=5)
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/full",
-            "messages": [{"role": "user", "content": "Test"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/full",
+                "messages": [{"role": "user", "content": "Test"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         assert "[DONE]" in body
@@ -566,17 +747,28 @@ class TestClientReceivesCorrectContent:
             "</function>\n"
             "</tool_call>"
         )
-        httpx.post(f"{servers['fake_url']}/__scenario",
-            json={"scenario": {"chat": {
-                "content": [long_lazy, tool_call_text],
-                "stream_pieces": [[long_lazy], [tool_call_text]],
-            }}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": [long_lazy, tool_call_text],
+                        "stream_pieces": [[long_lazy], [tool_call_text]],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/with-tool-rewrite",
-            "messages": [{"role": "user", "content": "Debug Express + Chromium"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/with-tool-rewrite",
+                "messages": [{"role": "user", "content": "Debug Express + Chromium"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         assert "[DONE]" in body, f"Missing [DONE]: {body[:500]}"
@@ -609,17 +801,28 @@ class TestClientReceivesCorrectContent:
         lazy1 = "Let me check the file first:"
         lazy2 = "I'm still looking, please wait:"
         final = "Found the issue: disk is full."
-        httpx.post(f"{servers['fake_url']}/__scenario",
-            json={"scenario": {"chat": {
-                "content": [lazy1, lazy2, final],
-                "stream_pieces": [[lazy1], [lazy2], [final]],
-            }}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": [lazy1, lazy2, final],
+                        "stream_pieces": [[lazy1], [lazy2], [final]],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/with-tool-rewrite",
-            "messages": [{"role": "user", "content": "Check disk"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/with-tool-rewrite",
+                "messages": [{"role": "user", "content": "Check disk"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         assert "[DONE]" in body, f"Missing [DONE]: {body[:500]}"
@@ -636,36 +839,56 @@ class TestClientReceivesCorrectContent:
         """Verify chunk order: retry → timestamp → finish_reason → [DONE]."""
         lazy = "Let me check:"
         continuation = "Here is the detailed answer."
-        httpx.post(f"{servers['fake_url']}/__scenario",
-            json={"scenario": {"chat": {
-                "content": [lazy, continuation],
-                "stream_pieces": [[lazy], [continuation]],
-            }}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": [lazy, continuation],
+                        "stream_pieces": [[lazy], [continuation]],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/with-tool-rewrite",
-            "messages": [{"role": "user", "content": "Check"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/with-tool-rewrite",
+                "messages": [{"role": "user", "content": "Check"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         body = resp.text
         _check_streaming_order(body, expect_timestamp=True)
         assert "detailed answer" in body, f"No retry content: {body[:500]}"
 
-
-
     def test_finish_reason_always_sent(self, servers, degrade_level, set_level):
         """Normal completion (no nudge) — Phase 4 must still yield finish_reason."""
-        httpx.post(f"{servers['fake_url']}/__scenario",
-            json={"scenario": {"chat": {
-                "content": ["Complete answer."],
-                "stream_pieces": [["Complete ", "answer."]],
-            }}}, timeout=5)
+        httpx.post(
+            f"{servers['fake_url']}/__scenario",
+            json={
+                "scenario": {
+                    "chat": {
+                        "content": ["Complete answer."],
+                        "stream_pieces": [["Complete ", "answer."]],
+                    }
+                }
+            },
+            timeout=5,
+        )
 
-        resp = httpx.post(f"{servers['orch_url']}/v1/chat/completions", json={
-            "model": "internal/with-tool-rewrite",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "stream": True,
-        }, timeout=30)
+        resp = httpx.post(
+            f"{servers['orch_url']}/v1/chat/completions",
+            json={
+                "model": "internal/with-tool-rewrite",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "stream": True,
+            },
+            timeout=30,
+        )
 
         assert "Complete " in resp.text and "answer." in resp.text, f"Missing content: {resp.text[:500]}"

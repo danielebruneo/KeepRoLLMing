@@ -1,7 +1,7 @@
 """Outgoing streaming requests ask providers to report final token usage."""
 
-from keeprollming.endpoints.chat_completions import _build_upstream_payload
 from keeprollming.core.config_types import RouteSettings
+from keeprollming.endpoints.chat_completions import _build_upstream_payload
 from keeprollming.routing import Route, RoutePlan
 
 
@@ -33,10 +33,12 @@ def test_streaming_requests_default_to_final_usage():
 
 
 def test_explicit_client_usage_choice_is_preserved():
-    result = _payload({
-        "model": "chat/main",
-        "stream": True,
-        "stream_options": {"include_usage": False, "foo": "bar"},
-        "messages": [],
-    })
+    result = _payload(
+        {
+            "model": "chat/main",
+            "stream": True,
+            "stream_options": {"include_usage": False, "foo": "bar"},
+            "messages": [],
+        }
+    )
     assert result["stream_options"] == {"include_usage": False, "foo": "bar"}

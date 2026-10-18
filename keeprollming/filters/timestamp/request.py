@@ -29,6 +29,7 @@ import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from keeprollming.logger import log
 from keeprollming.orchestrator.filter import (
     Filter,
     FilterConfig,
@@ -36,7 +37,6 @@ from keeprollming.orchestrator.filter import (
     Request,
     Response,
 )
-from keeprollming.logger import log
 
 
 class TimestampFilter(Filter):
@@ -67,7 +67,7 @@ class TimestampFilter(Filter):
 
         # Extract just the strftime format from the template for the request system message.
         # Find everything from the first % directive to end of string.
-        idx = self._template.find('%')
+        idx = self._template.find("%")
         self._bare_format = self._template[idx:] if idx >= 0 else "%Y-%m-%d %H:%M:%S UTC"
         self._static_prefix = self._template[:idx] if idx >= 0 else ""
 
@@ -104,18 +104,19 @@ class TimestampFilter(Filter):
         if not content or not self._static_prefix:
             return False
         import re as _re
+
         prefix = self._static_prefix
         # Split by actual newlines, escape each part, join with \n*
         # (\n* = flexible newlines between the static prefix segments).
-        lines = prefix.split('\n')
+        lines = prefix.split("\n")
         escaped_lines = [_re.escape(part) for part in lines]
-        regex_str = r'\n*'.join(escaped_lines)
+        regex_str = r"\n*".join(escaped_lines)
         # Make the opening bracket optional — the model may echo the
         # timestamp WITHOUT brackets even when the template has them.
-        regex_str = regex_str.replace(r'\[', r'\[?')
+        regex_str = regex_str.replace(r"\[", r"\[?")
         # Match: flexible-newline prefix + timestamp value + end
         # Use \s*$ to tolerate trailing whitespace after the footer.
-        return bool(_re.search(regex_str + r'[^\n]*\s*$', content))
+        return bool(_re.search(regex_str + r"[^\n]*\s*$", content))
 
     def _build_strip_regex(self) -> re.Pattern | None:
         """Build a regex that matches the LAST timestamp footer in content.
@@ -131,24 +132,24 @@ class TimestampFilter(Filter):
         if not prefix:
             return None
 
-        lines = prefix.split('\n')
+        lines = prefix.split("\n")
         escaped = [re.escape(p) for p in lines]
-        regex_str = r'\n*'.join(escaped)
+        regex_str = r"\n*".join(escaped)
         # Make the opening bracket optional — the model may echo the
         # timestamp WITHOUT brackets even when the template has them.
-        regex_str = regex_str.replace(r'\[', r'\[?')
+        regex_str = regex_str.replace(r"\[", r"\[?")
 
         # Extract the literal suffix after the last strftime directive.
         # strftime directives are always 2 chars (%X), so suffix starts at
         # last_pct + 2.
-        strftime_part = self._template[self._template.find('%'):]
-        last_pct = strftime_part.rfind('%')
-        suffix = strftime_part[last_pct + 2:] if last_pct + 2 <= len(strftime_part) else ''
-        suffix_pattern = re.escape(suffix) if suffix else ''
+        strftime_part = self._template[self._template.find("%") :]
+        last_pct = strftime_part.rfind("%")
+        suffix = strftime_part[last_pct + 2 :] if last_pct + 2 <= len(strftime_part) else ""
+        suffix_pattern = re.escape(suffix) if suffix else ""
 
         # Pattern: prefix + .+ (strftime value) + suffix + end-of-string
         # Use \s*$ to tolerate trailing whitespace after the footer.
-        full_pattern = regex_str + r'.+' + suffix_pattern + r'\s*$'
+        full_pattern = regex_str + r".+" + suffix_pattern + r"\s*$"
         return re.compile(full_pattern, re.DOTALL)
 
     def _strip_existing_timestamp_footer(self, content: str) -> str:
@@ -184,16 +185,16 @@ class TimestampFilter(Filter):
         # the last prefix match's tail is a single-line timestamp value
         # (no embedded newlines), ensuring it's a fresh footer rather than
         # a stale one with trailing text.
-        strftime_part = self._template[self._template.find('%'):]
-        last_pct = strftime_part.rfind('%')
-        suffix = strftime_part[last_pct + 2:] if last_pct + 2 <= len(strftime_part) else ''
+        strftime_part = self._template[self._template.find("%") :]
+        last_pct = strftime_part.rfind("%")
+        strftime_part[last_pct + 2 :] if last_pct + 2 <= len(strftime_part) else ""
 
         # Find all prefix matches.
         prefix = self._static_prefix
-        lines = prefix.split('\n')
+        lines = prefix.split("\n")
         escaped = [re.escape(p) for p in lines]
-        prefix_pattern = r'\n*'.join(escaped)
-        prefix_pattern = prefix_pattern.replace(r'\[', r'\[?')
+        prefix_pattern = r"\n*".join(escaped)
+        prefix_pattern = prefix_pattern.replace(r"\[", r"\[?")
 
         matches = list(re.finditer(prefix_pattern, content))
 
@@ -223,12 +224,12 @@ class TimestampFilter(Filter):
             # (no embedded newlines) but the between text has non-footer content.
             if i < len(matches) - 1:
                 next_m = matches[i + 1]
-                next_tail = content[next_m.end():]
-                next_is_clean = '\n' not in next_tail.rstrip()
+                next_tail = content[next_m.end() :]
+                next_is_clean = "\n" not in next_tail.rstrip()
                 if next_is_clean:
                     # Next match is clean. Check if between text is just
                     # timestamp value (consecutive) or has non-footer text.
-                    between = content[m.end():next_m.start()]
+                    between = content[m.end() : next_m.start()]
                     between_stripped = between.strip()
                     if between_stripped:
                         # Check if between text is just a timestamp value
@@ -243,7 +244,7 @@ class TimestampFilter(Filter):
                             # multiple lines, check if the last line starts
                             # with the prefix pattern (next footer) or is
                             # non-footer text.
-                            lines_in_between = between_stripped.split('\n')
+                            lines_in_between = between_stripped.split("\n")
                             if len(lines_in_between) > 1:
                                 # Multiple lines — check if the last line starts
                                 # with the prefix pattern (next footer) or is
@@ -263,7 +264,7 @@ class TimestampFilter(Filter):
                                 # Single line — just a timestamp value.
                                 # Consecutive block.
                                 strip_start = m.start()
-                        elif re.match(prefix_pattern + r'.+', between_stripped, re.DOTALL):
+                        elif re.match(prefix_pattern + r".+", between_stripped, re.DOTALL):
                             # Between text starts with prefix + value — consecutive
                             # block, continue to previous match.
                             strip_start = m.start()
@@ -282,11 +283,11 @@ class TimestampFilter(Filter):
                     # more matches after it (3+ consecutive footers).  Check if
                     # the between text is a single-line timestamp value to
                     # extend the consecutive block backward.
-                    between = content[m.end():next_m.start()]
+                    between = content[m.end() : next_m.start()]
                     between_stripped = between.strip()
                     if between_stripped:
                         if prefix not in between_stripped:
-                            lines_in_between = between_stripped.split('\n')
+                            lines_in_between = between_stripped.split("\n")
                             if len(lines_in_between) == 1:
                                 # Single-line timestamp value — consecutive
                                 # block, extend strip_start.
@@ -300,7 +301,7 @@ class TimestampFilter(Filter):
                                     if strip_start is None:
                                         strip_start = m.start()
                                     break
-                        elif re.match(prefix_pattern + r'.+', between_stripped, re.DOTALL):
+                        elif re.match(prefix_pattern + r".+", between_stripped, re.DOTALL):
                             strip_start = m.start()
                         else:
                             if strip_start is None:
@@ -314,8 +315,8 @@ class TimestampFilter(Filter):
                 # But verify the tail is clean (no embedded newlines after
                 # rstrip) — if not, the footer is in the middle of content
                 # and should not be stripped.
-                tail_from_match = content[m.end():]
-                if '\n' not in tail_from_match.rstrip():
+                tail_from_match = content[m.end() :]
+                if "\n" not in tail_from_match.rstrip():
                     if strip_start is None:
                         strip_start = m.start()
                 # Don't break — continue to check if an earlier match is also
@@ -348,22 +349,22 @@ class TimestampFilter(Filter):
 
         # For templates with no suffix (empty strftime_and_suffix tail),
         # verify the last prefix match's tail is short enough to be a fresh footer.
-        strftime_part = self._template[self._template.find('%'):]
-        last_pct = strftime_part.rfind('%')
-        suffix = strftime_part[last_pct + 2:] if last_pct + 2 <= len(strftime_part) else ''
+        strftime_part = self._template[self._template.find("%") :]
+        last_pct = strftime_part.rfind("%")
+        suffix = strftime_part[last_pct + 2 :] if last_pct + 2 <= len(strftime_part) else ""
 
         if not suffix:
             # No suffix — check that the last prefix match's tail is short.
             prefix = self._static_prefix
-            lines = prefix.split('\n')
+            lines = prefix.split("\n")
             escaped = [re.escape(p) for p in lines]
-            prefix_pattern = r'\n*'.join(escaped)
-            prefix_pattern = prefix_pattern.replace(r'\[', r'\[?')
+            prefix_pattern = r"\n*".join(escaped)
+            prefix_pattern = prefix_pattern.replace(r"\[", r"\[?")
 
             matches = list(re.finditer(prefix_pattern, content))
             if matches:
                 last_match = matches[-1]
-                tail = content[last_match.end():]
+                tail = content[last_match.end() :]
                 # Fresh footer timestamp values are typically < 100 chars.
                 return len(tail) < 100
 
@@ -392,23 +393,33 @@ class TimestampFilter(Filter):
         # Update existing timestamp system message if found, otherwise append
         found = False
         for msg in request.messages:
-            if (isinstance(msg, dict) and msg.get("role") == "system"
-                    and isinstance(msg.get("content"), str)
-                    and msg["content"].startswith("Current UTC time:")):
+            if (
+                isinstance(msg, dict)
+                and msg.get("role") == "system"
+                and isinstance(msg.get("content"), str)
+                and msg["content"].startswith("Current UTC time:")
+            ):
                 msg["content"] = f"Current UTC time: {timestamp_str}"
                 found = True
                 break
 
         if not found:
-            request.messages.append({
-                "role": "system",
-                "content": f"Current UTC time: {timestamp_str}",
-            })
+            request.messages.append(
+                {
+                    "role": "system",
+                    "content": f"Current UTC time: {timestamp_str}",
+                }
+            )
 
         context.state["timestamp_str"] = timestamp_str
 
-        log("INFO", "timestamp_injected", req_id=req_id, timestamp=timestamp_str,
-            updated_in_place=found)
+        log(
+            "INFO",
+            "timestamp_injected",
+            req_id=req_id,
+            timestamp=timestamp_str,
+            updated_in_place=found,
+        )
         return request
 
     # ── Response phase ──────────────────────────────────────────────
@@ -428,7 +439,7 @@ class TimestampFilter(Filter):
         footer = self._format_timestamp()
 
         content = response.content
-        has_tc = hasattr(response, 'tool_calls') and bool(response.tool_calls)
+        has_tc = hasattr(response, "tool_calls") and bool(response.tool_calls)
 
         if not content and not has_tc:
             return response
@@ -437,11 +448,9 @@ class TimestampFilter(Filter):
         # (the LLM may have echoed back conversation history with prior
         # timestamps, masking lazy patterns from the nudge filter).
         if isinstance(content, str) and self._is_content_ending_with_footer(content):
-            log("INFO", "timestamp_replacing_stale", req_id=req_id,
-                original_len=len(content))
+            log("INFO", "timestamp_replacing_stale", req_id=req_id, original_len=len(content))
             content = self._strip_existing_timestamp_footer(content)
-            log("INFO", "timestamp_stripped_stale", req_id=req_id,
-                stripped_len=len(content))
+            log("INFO", "timestamp_stripped_stale", req_id=req_id, stripped_len=len(content))
             # Fall through — fresh footer is appended below
 
         if not content and has_tc:
@@ -455,11 +464,16 @@ class TimestampFilter(Filter):
             finish_reason=response.finish_reason,
             tool_calls=response.tool_calls,
             usage=response.usage,
-            reasoning_content=getattr(response, 'reasoning_content', ''),
+            reasoning_content=getattr(response, "reasoning_content", ""),
         )
 
-        log("INFO", "timestamp_appended", req_id=req_id,
-            original_length=len(content), new_length=len(new_content))
+        log(
+            "INFO",
+            "timestamp_appended",
+            req_id=req_id,
+            original_length=len(content),
+            new_length=len(new_content),
+        )
 
         return new_response
 

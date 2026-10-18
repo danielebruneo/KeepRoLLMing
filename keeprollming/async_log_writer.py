@@ -24,7 +24,6 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
@@ -35,11 +34,12 @@ _MAX_SINK_FAILURES = 3
 
 # ── Per-sink metadata ──────────────────────────────────────────────
 
+
 class _Sink:
     __slots__ = ("path", "fh", "mode", "last_flush")
     path: str
-    fh: Any          # file object
-    mode: str        # "a" for append-only, "w" for writers that manage their own lifecycle
+    fh: Any  # file object
+    mode: str  # "a" for append-only, "w" for writers that manage their own lifecycle
     last_flush: float
 
     def __init__(self, path: str, mode: str = "a") -> None:
@@ -50,6 +50,7 @@ class _Sink:
 
 
 # ── Main writer ────────────────────────────────────────────────────
+
 
 class AsyncLogWriter:
     """Background writer that batches log records and flushes periodically.
@@ -62,10 +63,10 @@ class AsyncLogWriter:
         self._queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue(maxsize=10000)
         self._task: asyncio.Task[None] | None = None
         self._sinks: Dict[str, _Sink] = {}
-        self._flush_interval: float = 1.0     # seconds between forced flushes
+        self._flush_interval: float = 1.0  # seconds between forced flushes
         self._running: bool = False
         # ── Failure tracking (BUG 2 fix) ──
-        self._sink_failures: Dict[str, int] = {}   # sink_name → consecutive failures
+        self._sink_failures: Dict[str, int] = {}  # sink_name → consecutive failures
 
     # ── Sink management ────────────────────────────────────────
 
@@ -202,7 +203,8 @@ class AsyncLogWriter:
         while self._running:
             try:
                 item = await asyncio.wait_for(
-                    self._queue.get(), timeout=self._flush_interval,
+                    self._queue.get(),
+                    timeout=self._flush_interval,
                 )
                 batch.append(item)
 
@@ -263,13 +265,17 @@ class AsyncLogWriter:
                     logger.warning(
                         "AsyncLogWriter: sink '%s' write failed (%s) — "
                         "will retry, then fall back to sync after %d consecutive errors",
-                        sink_name, exc, _MAX_SINK_FAILURES,
+                        sink_name,
+                        exc,
+                        _MAX_SINK_FAILURES,
                     )
                 elif count >= _MAX_SINK_FAILURES:
                     logger.error(
                         "AsyncLogWriter: sink '%s' marked dead after %d consecutive "
                         "write failures. Last error: %s. Callers falling back to sync I/O.",
-                        sink_name, count, exc,
+                        sink_name,
+                        count,
+                        exc,
                     )
 
         # Optimistic recovery: a single success revives all dead sinks.
@@ -278,7 +284,8 @@ class AsyncLogWriter:
             self._sink_failures.clear()
             logger.info(
                 "AsyncLogWriter: revived %d previously dead sink(s): %s",
-                len(revived), revived,
+                len(revived),
+                revived,
             )
 
 
@@ -303,6 +310,7 @@ async def start_async_writer() -> None:
     writer = get_async_writer()
 
     import os as _os
+
     log_dir = _os.environ.get("LOG_PATH", ".")
     json_path = _os.path.join(log_dir, "keeprollming.log.json")
 

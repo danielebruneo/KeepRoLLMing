@@ -4,13 +4,11 @@ Verifies that ``events_execution_accounting`` creates correct RuntimeEvent envel
 and emits them through the EventDispatcher when available.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_execution_accounting import (
+    emit_attempt_recorded,
     emit_execution_accounting_event,
     emit_usage_captured,
-    emit_attempt_recorded,
     emit_usage_finalized,
 )
 
@@ -19,9 +17,7 @@ class TestEmitExecutionAccountingEvent:
     """Test the core emit_execution_accounting_event helper."""
 
     def test_emits_without_dispatcher(self):
-        event = emit_execution_accounting_event(
-            "req-1", "execution.accounting.usage.captured"
-        )
+        event = emit_execution_accounting_event("req-1", "execution.accounting.usage.captured")
         assert isinstance(event, RuntimeEvent)
         assert event.type == "execution.accounting.usage.captured"
         assert event.source == EventSource(domain="execution", component="accounting")
@@ -32,16 +28,12 @@ class TestEmitExecutionAccountingEvent:
         dispatcher = EventDispatcher()
         emitted_events: list[RuntimeEvent] = []
         dispatcher.subscribe("execution.accounting", emitted_events.append)
-        event = emit_execution_accounting_event(
-            "req-2", "execution.accounting.usage.captured", dispatcher=dispatcher
-        )
+        event = emit_execution_accounting_event("req-2", "execution.accounting.usage.captured", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
 
     def test_no_op_with_none_dispatcher(self):
-        event = emit_execution_accounting_event(
-            "req-3", "execution.accounting.usage.finalized", dispatcher=None
-        )
+        event = emit_execution_accounting_event("req-3", "execution.accounting.usage.finalized", dispatcher=None)
         assert isinstance(event, RuntimeEvent)
 
 

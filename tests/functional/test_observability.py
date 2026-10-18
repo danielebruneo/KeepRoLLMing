@@ -30,9 +30,7 @@ class TestObservability:
 
         events = harness.read_log_json()
         routed_filter_sets = [
-            event["data"].get("filters", [])
-            for event in events
-            if event["type"] == "execution.chat.request_route"
+            event["data"].get("filters", []) for event in events if event["type"] == "execution.chat.request_route"
         ]
         assert ["system_prompt", "model_nudge"] in routed_filter_sets, (
             f"No route event with the configured filters: {routed_filter_sets}"

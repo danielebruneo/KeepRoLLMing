@@ -5,10 +5,8 @@ These tests verify that filters are actually invoked when processing requests,
 not just that the classes work in isolation.
 """
 
-import asyncio
 import json
-from http import HTTPStatus
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,23 +40,20 @@ class TestFilterE2EIntegration:
     async def test_filter_chain_created_from_route_config(self):
         """Test that FilterChain is built from route configuration."""
         # This test verifies the filter chain creation logic exists and works
-        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
-        from keeprollming.filters.nudge.request import ModelNudgeFilter
-        from keeprollming.routing import Route
 
         # Create a mock route with filters config
         route = MagicMock()
         route.filters = {
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [":$"],
-                    "action": "nudge",
-                    "max_attempts": 3,
-                }
+            "model_nudge": {
+                "enabled": True,
+                "trigger_patterns": [":$"],
+                "action": "nudge",
+                "max_attempts": 3,
+            }
         }
 
         # Verify the route has filters attribute
-        assert hasattr(route, 'filters')
+        assert hasattr(route, "filters")
         assert route.filters is not None
 
     @pytest.mark.asyncio
@@ -73,6 +68,7 @@ class TestFilterE2EIntegration:
 
         # Add trigger pattern for testing
         import re
+
         filter_instance._trigger_patterns = [re.compile(r":$", re.IGNORECASE)]
 
         context = FilterExecutionContext()
@@ -94,8 +90,13 @@ class TestFilterE2EIntegration:
         """Test that FilterChain logs execution events."""
         import tempfile
         from pathlib import Path
+
         from keeprollming.filters.nudge.request import ModelNudgeFilter
-        from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext, FilterChain
+        from keeprollming.orchestrator.filter import (
+            FilterChain,
+            FilterConfig,
+            FilterExecutionContext,
+        )
 
         # Create temporary directory for logs
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -106,6 +107,7 @@ class TestFilterE2EIntegration:
             filter_instance = ModelNudgeFilter(config)
 
             import re
+
             filter_instance._trigger_patterns = [re.compile(r":$", re.IGNORECASE)]
 
             # Build chain
@@ -139,23 +141,25 @@ class TestFilterWithMockServer:
         import httpx
 
         # Response ending with colon (lazy pattern)
-        content = json.dumps({
-            "id": "chatcmpl-test",
-            "object": "chat.completion",
-            "created": 1234567890,
-            "model": "test-model",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": "Now I will create a tool call for you:"
-                    },
-                    "finish_reason": None,
-                }
-            ],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-        }).encode("utf-8")
+        content = json.dumps(
+            {
+                "id": "chatcmpl-test",
+                "object": "chat.completion",
+                "created": 1234567890,
+                "model": "test-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "Now I will create a tool call for you:",
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            }
+        ).encode("utf-8")
 
         response = httpx.Response(
             status_code=200,
@@ -175,6 +179,7 @@ class TestFilterWithMockServer:
 
         # Add pattern to match text ending with colon
         import re
+
         filter_instance._trigger_patterns = [re.compile(r":$", re.IGNORECASE)]
 
         context = FilterExecutionContext()
@@ -205,7 +210,7 @@ class TestFilterInheritanceWithExtends:
             pattern="parent/*",
             model="test-model",
             filters={  # Parent has filters
-                    "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
+                "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
             },
         )
 
@@ -218,8 +223,8 @@ class TestFilterInheritanceWithExtends:
         )
 
         # Verify both have filters attribute
-        assert hasattr(parent_route, 'filters')
-        assert hasattr(child_route, 'filters')
+        assert hasattr(parent_route, "filters")
+        assert hasattr(child_route, "filters")
         assert parent_route.filters is not None
 
 
@@ -229,7 +234,6 @@ class TestFilterConfigurationLoading:
     def test_filter_chain_from_yaml_config(self):
         """Verify filters can be loaded from configuration."""
         import yaml
-        from keeprollming.routing import Route
 
         # Simulate loading from YAML
         yaml_content = """
@@ -252,7 +256,6 @@ routes:
     def test_filter_chain_inheritance_yaml(self):
         """Test filters inheritance through extends in YAML."""
         import yaml
-        from keeprollming.routing import Route
 
         # Simulate complex inheritance
         yaml_content = """
@@ -286,7 +289,7 @@ class TestFilterLoggingIntegration:
 
     def test_filter_events_use_runtime_event(self):
         """Verify filter events are emitted as RuntimeEvents."""
-        from keeprollming.observability import EventDispatcher, RuntimeEvent, EventSource
+        from keeprollming.observability import EventDispatcher, RuntimeEvent
 
         dispatcher = EventDispatcher()
         captured_events = []
@@ -297,8 +300,9 @@ class TestFilterLoggingIntegration:
         dispatcher.subscribe("filter", capture)
 
         # Simulate filter event emission (as filters do via emit_filter_event)
-        from keeprollming.orchestrator.filters.events import emit_filter_event
         from unittest.mock import MagicMock
+
+        from keeprollming.orchestrator.filters.events import emit_filter_event
 
         context = MagicMock(spec="FilterExecutionContext")
         context.req_id = "test-req-123"
@@ -332,15 +336,17 @@ class TestRealRequestFlowWithMock:
         import httpx
 
         # Create response that matches lazy pattern
-        content = json.dumps({
-            "choices": [
-                {
-                    "message": {"content": "Here's the plan for today:"},
-                    "finish_reason": None,
-                }
-            ],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-        }).encode("utf-8")
+        content = json.dumps(
+            {
+                "choices": [
+                    {
+                        "message": {"content": "Here's the plan for today:"},
+                        "finish_reason": None,
+                    }
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            }
+        ).encode("utf-8")
 
         mock_response = httpx.Response(
             status_code=200,
@@ -353,7 +359,6 @@ class TestRealRequestFlowWithMock:
     @pytest.mark.asyncio
     async def test_complete_filter_flow(self):
         """Test complete flow from request to filter processing."""
-        import httpx
         from keeprollming.filters.nudge.request import ModelNudgeFilter
         from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
 
@@ -362,6 +367,7 @@ class TestRealRequestFlowWithMock:
         filter_instance = ModelNudgeFilter(config)
 
         import re
+
         filter_instance._trigger_patterns = [re.compile(r":$", re.IGNORECASE)]
 
         context = FilterExecutionContext()

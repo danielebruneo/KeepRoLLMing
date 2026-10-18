@@ -17,23 +17,17 @@ in isolation.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
+from keeprollming.filters.nudge.stream import RecoveryDecision
 from keeprollming.streaming.events import (
-    AssistantTextDelta,
-    Done,
-    Error,
-    Finish,
-    Keepalive,
-    ReasoningTextDelta,
     StreamEvent,
     ToolCallComplete,
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer
-from keeprollming.filters.nudge.stream import RecoveryDecision
 
+from .detection import repeats, signature
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -70,8 +64,8 @@ def _tool_call_signature(event: StreamEvent) -> Optional[str]:
         if event.arguments_obj is not None:
             return f"{event.name}::{_canonical_json(event.arguments_obj)}"
         elif event.arguments_json:
-            return f"{event.name}::{event.arguments_json}"
-        return event.name
+            return f"{event.name}::{signature(event.name, event.arguments_json)[1]}"
+        return f"{event.name}::{{}}"
     return None
 
 
@@ -88,6 +82,7 @@ def _fuzzy_match(sig1: str, sig2: str, threshold: float = 0.8) -> bool:
 
     # Use difflib for simplicity
     from difflib import SequenceMatcher
+
     ratio = SequenceMatcher(None, sig1, sig2).ratio()
     return ratio >= threshold
 
@@ -137,10 +132,7 @@ def _build_user_nudge_message(tool_name: str) -> Dict[str, Any]:
     """
     return {
         "role": "user",
-        "content": (
-            f"Do NOT call `{tool_name}()` again. Provide a direct answer "
-            "without invoking the tool."
-        ),
+        "content": (f"Do NOT call `{tool_name}()` again. Provide a direct answer without invoking the tool."),
     }
 
 
@@ -213,26 +205,29 @@ class TLSFinalizer(StreamFinalizer):
         fuzzy_threshold: Optional[float] = None,
         detect_ab_loop: bool = False,
         progressive_exact: bool = False,
-        tls_message: str = (
-            "Tool result: please provide a direct answer without "
-            "calling tools."
-        ),
-        nudge_message: str = (
-            "Do NOT call the tool again. Provide a direct answer."
-        ),
+        tls_message: str = ("Tool result: please provide a direct answer without calling tools."),
+        nudge_message: str = ("Do NOT call the tool again. Provide a direct answer."),
         fallback_message: str | None = None,
         conversation_tool_calls: Sequence[Mapping[str, Any]] | None = None,
+        max_repeats: int = 1,
+        fuzzy_max_repeats: int = 0,
+        fuzzy_look_back: int = 0,
+        send_user_message: bool = True,
+        retry_timeout: float | None = None,
     ) -> None:
         super().__init__()
         self.max_attempts = max_attempts
+        self.max_repeats = max_repeats
+        self.fuzzy_max_repeats = fuzzy_max_repeats
+        self.fuzzy_look_back = fuzzy_look_back
+        self.send_user_message = send_user_message
+        self.retry_timeout = retry_timeout
         self.fuzzy_threshold = fuzzy_threshold
         self.detect_ab_loop = detect_ab_loop
         # Prefix decisions are sound only for exact consecutive matching.
         # Fuzzy and AB policies need a separate proof over the full sequence.
         self.progressive_exact = (
-            progressive_exact
-            and fuzzy_threshold is None
-            and not detect_ab_loop
+            progressive_exact and fuzzy_threshold is None and not detect_ab_loop and not fuzzy_max_repeats
         )
         self.tls_message = tls_message
         self.nudge_message = nudge_message
@@ -247,10 +242,13 @@ class TLSFinalizer(StreamFinalizer):
         self._finalized = False
         self._attempt_index = 0
         self._history_tool_events = tuple(conversation_tool_calls or ())
+        self._current_slots: Dict[str, int] = {}
+        self._restoring_history = False
         self._restore_conversation_history()
         self._progressive_calls: Dict[int, Dict[str, Any]] = {}
         self._progressive_last_name = self._last_history_name()
         self._progressive_committed = False
+        self._progressive_duplicate = False
 
     # ── StreamFinalizer contract ──────────────────────────────────
 
@@ -270,6 +268,7 @@ class TLSFinalizer(StreamFinalizer):
         self._tool_signatures.clear()
         self._tool_call_ids.clear()
         self._tool_names.clear()
+        self._current_slots.clear()
         self._restore_conversation_history()
         self._reset_progressive_state()
         self._has_tool_call = False
@@ -280,6 +279,7 @@ class TLSFinalizer(StreamFinalizer):
 
     def _restore_conversation_history(self) -> None:
         """Seed loop detection from already-completed conversation turns."""
+        self._restoring_history = True
         for tool_call in self._history_tool_events:
             function = tool_call.get("function")
             if not isinstance(function, Mapping):
@@ -295,6 +295,8 @@ class TLSFinalizer(StreamFinalizer):
                 arguments_json=arguments,
             )
             self._buffer_tool_event(event)
+        self._history_count = len(self._tool_signatures)
+        self._restoring_history = False
 
     def _last_history_name(self) -> Optional[str]:
         """Return the latest usable conversation tool name."""
@@ -330,6 +332,7 @@ class TLSFinalizer(StreamFinalizer):
         self._progressive_calls.clear()
         self._progressive_last_name = self._last_history_name()
         self._progressive_committed = False
+        self._progressive_duplicate = False
 
     def process_event(self, event: StreamEvent) -> list[StreamEvent]:
         """Process a single StreamEvent.
@@ -412,9 +415,8 @@ class TLSFinalizer(StreamFinalizer):
     @property
     def recovery_exhausted(self) -> bool:
         """Whether a detected tool loop exhausted this finalizer's budget."""
-        return self._finalized and self._detect_loop() and (
-            self._attempt_index >= self.max_attempts
-        )
+        detected = self._progressive_duplicate if self.progressive_exact else self._detect_loop()
+        return self._finalized and detected and (self._attempt_index >= self.max_attempts)
 
     @property
     def tool_signatures(self) -> List[str]:
@@ -428,9 +430,7 @@ class TLSFinalizer(StreamFinalizer):
 
     # ── Internal helpers ──────────────────────────────────────────
 
-    def _process_progressive_delta(
-        self, event: ToolCallDelta
-    ) -> list[StreamEvent]:
+    def _process_progressive_delta(self, event: ToolCallDelta) -> list[StreamEvent]:
         """Gate one exact-mode call without delaying distinct function names."""
         self._has_tool_call = True
         call = self._progressive_calls.setdefault(
@@ -488,21 +488,23 @@ class TLSFinalizer(StreamFinalizer):
         return f"{name}::{_canonical_json(arguments_obj)}"
 
     def _finalize_progressive_exact(
-        self, global_attempt_index: int,
+        self,
+        global_attempt_index: int,
     ) -> list[StreamEvent]:
         """Resolve held same-name calls at the terminal barrier."""
         released: list[StreamEvent] = []
         duplicate: Mapping[str, Any] | None = None
-        prior_signature = self._last_history_signature()
+        prior = [signature(*sig.split("::", 1)) for sig in self._tool_signatures[: self._history_count]]
 
         for index in sorted(self._progressive_calls):
             call = self._progressive_calls[index]
-            signature = self._progressive_signature(call)
-            if signature is None:
+            call_signature = self._progressive_signature(call)
+            if call_signature is None:
                 call["state"] = "rejected"
                 continue
 
-            is_duplicate = prior_signature is not None and signature == prior_signature
+            current_signature = signature(*call_signature.split("::", 1))
+            is_duplicate = repeats(prior, current_signature, max_repeats=self.max_repeats)
             if is_duplicate:
                 call["state"] = "rejected"
                 duplicate = call
@@ -510,13 +512,14 @@ class TLSFinalizer(StreamFinalizer):
                 if call["state"] == "pending":
                     call["state"] = "accepted"
                     released.extend(call["events"])
-                prior_signature = signature
+                prior.append(current_signature)
 
         # Once a call has been sent, the former whole-attempt recovery would
         # contradict irreversible downstream output. Keep accepted calls and
         # drop only the pending duplicate; the next client tool turn resumes
         # normal TLS protection.
         if duplicate is not None and not self._progressive_committed:
+            self._progressive_duplicate = True
             if self._attempt_index < self.max_attempts:
                 self._decision = self._build_progressive_recovery_decision(
                     duplicate,
@@ -536,20 +539,15 @@ class TLSFinalizer(StreamFinalizer):
         tool_call_id = str(duplicate.get("id") or "unknown_tool_call_id")
         return RecoveryDecision(
             kind="intervention",
-            reason=(
-                f"Tool-loop detected: repeated call to '{name}'. "
-                "Injecting tool result to break the loop."
-            ),
+            reason=(f"Tool-loop detected: repeated call to '{name}'. Injecting tool result to break the loop."),
             priority=self.priority,
             origin_finalizer="TLSFinalizer",
+            request_timeout=self.retry_timeout,
             attempt_index=self._attempt_index,
             max_attempts=self.max_attempts,
             global_attempt_index=global_attempt_index,
             request_payload_patch={
-                "messages": [
-                    _build_tool_result_message(name, tool_call_id, self.tls_message),
-                    _build_user_nudge_message(name),
-                ],
+                "messages": self._intervention_messages(name, tool_call_id, "".join(duplicate.get("args", [])))
             },
             preserve_output_so_far=True,
             merge_strategy="inject_tool_result",
@@ -568,19 +566,17 @@ class TLSFinalizer(StreamFinalizer):
         them to the internal buffers.
         """
         sig = _tool_call_signature(event)
-        if sig is not None:
-            self._tool_signatures.append(sig)
-
-        if isinstance(event, ToolCallDelta):
-            if event.id:
-                self._tool_call_ids.append(event.id)
-            if event.name:
-                self._tool_names.append(event.name)
-        elif isinstance(event, ToolCallComplete):
-            if event.id:
-                self._tool_call_ids.append(event.id)
-            if event.name:
-                self._tool_names.append(event.name)
+        if sig is None:
+            return
+        key = f"{event.index}:{event.id or ''}"
+        if not self._restoring_history and key in self._current_slots:
+            self._tool_signatures[self._current_slots[key]] = sig
+            return
+        if not self._restoring_history:
+            self._current_slots[key] = len(self._tool_signatures)
+        self._tool_signatures.append(sig)
+        self._tool_call_ids.append(event.id or "")
+        self._tool_names.append(event.name or "")
 
     def _detect_loop(self) -> bool:
         """Detect if a tool-loop pattern exists in the buffer.
@@ -596,33 +592,41 @@ class TLSFinalizer(StreamFinalizer):
         bool
             True if a loop is detected, False otherwise.
         """
-        if len(self._tool_signatures) < 2:
-            return False
-
-        signatures = self._tool_signatures
-
-        # 1. Exact consecutive repeated signatures
-        for i in range(1, len(signatures)):
-            if signatures[i] == signatures[i - 1]:
+        prior = [signature(*sig.split("::", 1)) for sig in self._tool_signatures[: self._history_count]]
+        for offset, sig in enumerate(self._tool_signatures[self._history_count :]):
+            current = signature(*sig.split("::", 1))
+            if repeats(
+                prior,
+                current,
+                max_repeats=self.max_repeats,
+                fuzzy_max_repeats=self.fuzzy_max_repeats,
+                fuzzy_look_back=self.fuzzy_look_back,
+                fuzzy_threshold=self.fuzzy_threshold,
+                ab_loop_detection=self.detect_ab_loop,
+            ):
+                self._trigger_index = self._history_count + offset
                 return True
-
-        # 2. Fuzzy repeated signatures
-        if self.fuzzy_threshold is not None:
-            for i in range(1, len(signatures)):
-                if _fuzzy_match(signatures[i], signatures[i - 1],
-                                self.fuzzy_threshold):
-                    return True
-
-        # 3. AB-loop detection
-        if self.detect_ab_loop and len(signatures) >= 4:
-            # Check for pattern A B A B
-            for i in range(len(signatures) - 3):
-                if (signatures[i] == signatures[i + 2] and
-                        signatures[i + 1] == signatures[i + 3] and
-                        signatures[i] != signatures[i + 1]):
-                    return True
-
+            prior.append(current)
         return False
+
+    def _intervention_messages(self, name, call_id, arguments):
+        messages = [
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": call_id,
+                        "type": "function",
+                        "function": {"name": name, "arguments": arguments},
+                    }
+                ],
+            },
+            _build_tool_result_message(name, call_id, self.tls_message),
+        ]
+        if self.send_user_message:
+            messages.append({"role": "user", "content": self.nudge_message})
+        return messages
 
     def _build_recovery_decision(
         self,
@@ -641,38 +645,29 @@ class TLSFinalizer(StreamFinalizer):
             Intervention decision with tool-result injection.
         """
         # Get the repeated signature
-        last_sig = self._tool_signatures[-1]
-        prev_sig = self._tool_signatures[-2] if len(self._tool_signatures) >= 2 else ""
+        trigger = getattr(self, "_trigger_index", len(self._tool_signatures) - 1)
+        last_sig = self._tool_signatures[trigger]
+        self._tool_signatures[-2] if len(self._tool_signatures) >= 2 else ""
 
         # Extract tool name from signature
         tool_name = last_sig.split("::")[0] if "::" in last_sig else last_sig
 
         # Get the tool_call_id (use the last one if available)
-        tool_call_id = (
-            self._tool_call_ids[-1] if self._tool_call_ids else "unknown_tool_call_id"
-        )
+        tool_call_id = self._tool_call_ids[trigger] if self._tool_call_ids else "unknown_tool_call_id"
 
         # Build request_payload_patch
-        tool_result_msg = _build_tool_result_message(
-            tool_name=tool_name,
-            tool_call_id=tool_call_id,
-            tls_message=self.tls_message,
-        )
-        nudge_msg = _build_user_nudge_message(tool_name=tool_name)
 
         return RecoveryDecision(
             kind="intervention",
-            reason=(
-                f"Tool-loop detected: repeated call to '{tool_name}'. "
-                f"Injecting tool result to break the loop."
-            ),
+            reason=(f"Tool-loop detected: repeated call to '{tool_name}'. Injecting tool result to break the loop."),
             priority=self.priority,
             origin_finalizer="TLSFinalizer",
+            request_timeout=self.retry_timeout,
             attempt_index=self._attempt_index,
             max_attempts=self.max_attempts,
             global_attempt_index=global_attempt_index,
             request_payload_patch={
-                "messages": [tool_result_msg, nudge_msg],
+                "messages": self._intervention_messages(tool_name, tool_call_id, last_sig.split("::", 1)[-1]),
             },
             preserve_output_so_far=True,
             merge_strategy="inject_tool_result",
@@ -705,16 +700,17 @@ class TLSFinalizer(StreamFinalizer):
         # Check fuzzy
         if self.fuzzy_threshold is not None:
             for i in range(1, len(signatures)):
-                if _fuzzy_match(signatures[i], signatures[i - 1],
-                                self.fuzzy_threshold):
+                if _fuzzy_match(signatures[i], signatures[i - 1], self.fuzzy_threshold):
                     return "fuzzy"
 
         # Check AB-loop
         if self.detect_ab_loop and len(signatures) >= 4:
             for i in range(len(signatures) - 3):
-                if (signatures[i] == signatures[i + 2] and
-                        signatures[i + 1] == signatures[i + 3] and
-                        signatures[i] != signatures[i + 1]):
+                if (
+                    signatures[i] == signatures[i + 2]
+                    and signatures[i + 1] == signatures[i + 3]
+                    and signatures[i] != signatures[i + 1]
+                ):
                     return "ab_loop"
 
         return "unknown"

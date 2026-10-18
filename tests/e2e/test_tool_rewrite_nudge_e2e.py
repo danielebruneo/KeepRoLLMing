@@ -13,8 +13,8 @@ import json
 
 import pytest
 
-
 # ── Shared helpers ──────────────────────────────────────────────────
+
 
 def _parse_streaming_content(response) -> str:
     """Extract concatenated content from SSE streaming response."""
@@ -33,49 +33,44 @@ def _parse_streaming_content(response) -> str:
 
 def _configure_lazy_response(configure_fake_backend):
     """Configure fake backend to return a lazy 'Let me...' response.
-    
+
     Uses a 'script' to return different responses for each call.
     First call: lazy response ending with '.'
     Subsequent calls: completion response
     """
-    configure_fake_backend({
-        "models": {
-            "test-deep-model": {"context_length": 131072},
-        },
-        "chat": {
-            "content": "Let me check what format LibreChat expects for `allowedDomains`.",
-            "include_usage": True,
-            "script": [
-                # Stream pieces must be per-attempt. A section-level list is
-                # replayed on every recovery and keeps matching ``Let ... .``.
-                {
-                    "content": "Let me check what format LibreChat expects for `allowedDomains`.",
-                    "stream_pieces": [
-                        "Let me check what format LibreChat expects for `allowedDomains`."
-                    ],
-                },
-                {
-                    "content": "The format should be a CIDR range like '172.18.0.0/16' with quotes",
-                    "stream_pieces": [
-                        "The format should be a CIDR range like '172.18.0.0/16' with quotes"
-                    ],
-                },
-            ],
-        },
-    })
+    configure_fake_backend(
+        {
+            "models": {
+                "test-deep-model": {"context_length": 131072},
+            },
+            "chat": {
+                "content": "Let me check what format LibreChat expects for `allowedDomains`.",
+                "include_usage": True,
+                "script": [
+                    # Stream pieces must be per-attempt. A section-level list is
+                    # replayed on every recovery and keeps matching ``Let ... .``.
+                    {
+                        "content": "Let me check what format LibreChat expects for `allowedDomains`.",
+                        "stream_pieces": ["Let me check what format LibreChat expects for `allowedDomains`."],
+                    },
+                    {
+                        "content": "The format should be a CIDR range like '172.18.0.0/16' with quotes",
+                        "stream_pieces": ["The format should be a CIDR range like '172.18.0.0/16' with quotes"],
+                    },
+                ],
+            },
+        }
+    )
 
 
 # ── tool_rewrite + nudge chain ──────────────────────────────────────
+
 
 class TestToolRewriteWithNudge:
     """Verify nudge triggers when tool_rewrite is in the same filter chain."""
 
     def test_streaming_nudge_triggers_with_tool_rewrite(
-        self,
-        fake_backend_server,
-        orchestrator_server,
-        backend_client,
-        configure_fake_backend
+        self, fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
     ):
         """Streaming: tool_rewrite + nudge chain — nudge should trigger on lazy response."""
         _configure_lazy_response(configure_fake_backend)
@@ -85,7 +80,10 @@ class TestToolRewriteWithNudge:
             json={
                 "model": "chain/tr-nudge/test-model",
                 "messages": [
-                    {"role": "user", "content": "What format does LibreChat expect for allowedDomains?"}
+                    {
+                        "role": "user",
+                        "content": "What format does LibreChat expect for allowedDomains?",
+                    }
                 ],
                 "stream": True,
             },
@@ -95,16 +93,11 @@ class TestToolRewriteWithNudge:
         content = _parse_streaming_content(response)
         print(f"\nStreaming content: '{content}'")
 
-        assert "CIDR range" in content, \
-            f"Nudge did NOT trigger with tool_rewrite in chain. Content: '{content}'"
+        assert "CIDR range" in content, f"Nudge did NOT trigger with tool_rewrite in chain. Content: '{content}'"
         print("✓ Streaming with tool_rewrite PASSED!")
 
     def test_non_streaming_nudge_triggers_with_tool_rewrite(
-        self,
-        fake_backend_server,
-        orchestrator_server,
-        backend_client,
-        configure_fake_backend
+        self, fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
     ):
         """Non-streaming: tool_rewrite + nudge chain — nudge should trigger on lazy response."""
         _configure_lazy_response(configure_fake_backend)
@@ -114,7 +107,10 @@ class TestToolRewriteWithNudge:
             json={
                 "model": "chain/tr-nudge/test-model",
                 "messages": [
-                    {"role": "user", "content": "What format does LibreChat expect for allowedDomains?"}
+                    {
+                        "role": "user",
+                        "content": "What format does LibreChat expect for allowedDomains?",
+                    }
                 ],
                 "stream": False,
             },
@@ -127,22 +123,20 @@ class TestToolRewriteWithNudge:
         print(f"\nNon-streaming content: '{content}'")
 
         assert "Let me check" in content, f"Missing lazy pattern in: '{content}'"
-        assert "CIDR range" in content, \
+        assert "CIDR range" in content, (
             f"Nudge did NOT trigger with tool_rewrite in non-streaming chain. Content: '{content}'"
+        )
         print("✓ Non-streaming with tool_rewrite PASSED!")
 
 
 # ── Extends inheritance ─────────────────────────────────────────────
 
+
 class TestExtendsInheritance:
     """Verify child route inherits parent's filters via extends."""
 
     def test_streaming_child_inherits_chain(
-        self,
-        fake_backend_server,
-        orchestrator_server,
-        backend_client,
-        configure_fake_backend
+        self, fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
     ):
         """Streaming: child route (extends parent) — nudge should trigger."""
         _configure_lazy_response(configure_fake_backend)
@@ -152,7 +146,10 @@ class TestExtendsInheritance:
             json={
                 "model": "chain/tr-nudge/inherited/test-model",
                 "messages": [
-                    {"role": "user", "content": "What format does LibreChat expect for allowedDomains?"}
+                    {
+                        "role": "user",
+                        "content": "What format does LibreChat expect for allowedDomains?",
+                    }
                 ],
                 "stream": True,
             },
@@ -162,16 +159,11 @@ class TestExtendsInheritance:
         content = _parse_streaming_content(response)
         print(f"\nStreaming content (inherited): '{content}'")
 
-        assert "CIDR range" in content, \
-            f"Nudge did NOT trigger on inherited chain. Content: '{content}'"
+        assert "CIDR range" in content, f"Nudge did NOT trigger on inherited chain. Content: '{content}'"
         print("✓ Streaming with extends inheritance PASSED!")
 
     def test_non_streaming_child_inherits_chain(
-        self,
-        fake_backend_server,
-        orchestrator_server,
-        backend_client,
-        configure_fake_backend
+        self, fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
     ):
         """Non-streaming: child route (extends parent) — nudge should trigger."""
         _configure_lazy_response(configure_fake_backend)
@@ -181,7 +173,10 @@ class TestExtendsInheritance:
             json={
                 "model": "chain/tr-nudge/inherited/test-model",
                 "messages": [
-                    {"role": "user", "content": "What format does LibreChat expect for allowedDomains?"}
+                    {
+                        "role": "user",
+                        "content": "What format does LibreChat expect for allowedDomains?",
+                    }
                 ],
                 "stream": False,
             },
@@ -194,22 +189,20 @@ class TestExtendsInheritance:
         print(f"\nNon-streaming content (inherited): '{content}'")
 
         assert "Let me check" in content, f"Missing lazy pattern in: '{content}'"
-        assert "CIDR range" in content, \
+        assert "CIDR range" in content, (
             f"Nudge did NOT trigger on inherited chain (non-streaming). Content: '{content}'"
+        )
         print("✓ Non-streaming with extends inheritance PASSED!")
 
 
 # ── Full production chain: tool_rewrite + tls + nudge ───────────────
 
+
 class TestFullProductionChain:
     """Verify nudge triggers with full production chain (tr + tls + nudge)."""
 
     def test_streaming_full_chain(
-        self,
-        fake_backend_server,
-        orchestrator_server,
-        backend_client,
-        configure_fake_backend
+        self, fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
     ):
         """Streaming: tool_rewrite + tls + nudge chain — nudge should trigger."""
         _configure_lazy_response(configure_fake_backend)
@@ -219,7 +212,10 @@ class TestFullProductionChain:
             json={
                 "model": "chain/tr-tls-nudge/test-model",
                 "messages": [
-                    {"role": "user", "content": "What format does LibreChat expect for allowedDomains?"}
+                    {
+                        "role": "user",
+                        "content": "What format does LibreChat expect for allowedDomains?",
+                    }
                 ],
                 "stream": True,
             },
@@ -229,16 +225,11 @@ class TestFullProductionChain:
         content = _parse_streaming_content(response)
         print(f"\nStreaming content (full chain): '{content}'")
 
-        assert "CIDR range" in content, \
-            f"Nudge did NOT trigger with full production chain. Content: '{content}'"
+        assert "CIDR range" in content, f"Nudge did NOT trigger with full production chain. Content: '{content}'"
         print("✓ Streaming with full chain (tr + tls + nudge) PASSED!")
 
     def test_non_streaming_full_chain(
-        self,
-        fake_backend_server,
-        orchestrator_server,
-        backend_client,
-        configure_fake_backend
+        self, fake_backend_server, orchestrator_server, backend_client, configure_fake_backend
     ):
         """Non-streaming: tool_rewrite + tls + nudge chain — nudge should trigger."""
         _configure_lazy_response(configure_fake_backend)
@@ -248,7 +239,10 @@ class TestFullProductionChain:
             json={
                 "model": "chain/tr-tls-nudge/test-model",
                 "messages": [
-                    {"role": "user", "content": "What format does LibreChat expect for allowedDomains?"}
+                    {
+                        "role": "user",
+                        "content": "What format does LibreChat expect for allowedDomains?",
+                    }
                 ],
                 "stream": False,
             },
@@ -261,8 +255,9 @@ class TestFullProductionChain:
         print(f"\nNon-streaming content (full chain): '{content}'")
 
         assert "Let me check" in content, f"Missing lazy pattern in: '{content}'"
-        assert "CIDR range" in content, \
+        assert "CIDR range" in content, (
             f"Nudge did NOT trigger with full production chain (non-streaming). Content: '{content}'"
+        )
         print("✓ Non-streaming with full chain (tr + tls + nudge) PASSED!")
 
 

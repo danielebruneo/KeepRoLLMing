@@ -64,7 +64,10 @@ class _RedactingFormatter(Formatter):
 
 
 def create_default_projectors(
-    log_dir: str = ".", config: dict | None = None, *, privacy_mode: bool = False,
+    log_dir: str = ".",
+    config: dict | None = None,
+    *,
+    privacy_mode: bool = False,
 ) -> List[Projector]:
     """Create bounded JSON, PLAIN and server projections from configuration."""
     json_settings = _settings(config, "json")
@@ -78,26 +81,36 @@ def create_default_projectors(
         return _RedactingFormatter(formatter, redactor) if redactor is not None else formatter
 
     if json_settings["enabled"]:
-        projectors.append(Projector(
-            "structured", level=str(json_settings["level"]),
-            formatter=formatter_for(JsonFormatter()),
-            sinks=[_file_sink(log_dir, json_settings)],
-        ))
+        projectors.append(
+            Projector(
+                "structured",
+                level=str(json_settings["level"]),
+                formatter=formatter_for(JsonFormatter()),
+                sinks=[_file_sink(log_dir, json_settings)],
+            )
+        )
     if plain_settings["enabled"]:
         sinks = [_file_sink(log_dir, plain_settings)]
         if plain_settings["stdout"]:
             sinks.insert(0, StdoutSink())
-        projectors.append(Projector(
-            "main", level=str(plain_settings["level"]),
-            formatter=formatter_for(PlainTextFormatter()), sinks=sinks,
-        ))
+        projectors.append(
+            Projector(
+                "main",
+                level=str(plain_settings["level"]),
+                formatter=formatter_for(PlainTextFormatter()),
+                sinks=sinks,
+            )
+        )
     if server_settings["enabled"]:
-        projectors.append(Projector(
-            "server", selector="execution.performance.request_complete",
-            level=str(server_settings["level"]),
-            formatter=formatter_for(CompactFormatter()),
-            sinks=[_file_sink(log_dir, server_settings)],
-        ))
+        projectors.append(
+            Projector(
+                "server",
+                selector="execution.performance.request_complete",
+                level=str(server_settings["level"]),
+                formatter=formatter_for(CompactFormatter()),
+                sinks=[_file_sink(log_dir, server_settings)],
+            )
+        )
     return projectors
 
 
@@ -118,10 +131,7 @@ async def start_queued_default_projectors(
     max_queue_size: int = 2048,
 ) -> List[QueuedProjector]:
     """Start default PLAIN/JSON projections outside the request event loop."""
-    queued = [
-        QueuedProjector(projector, max_queue_size=max_queue_size)
-        for projector in projectors
-    ]
+    queued = [QueuedProjector(projector, max_queue_size=max_queue_size) for projector in projectors]
     for projector in queued:
         await projector.start(dispatcher)
     return queued

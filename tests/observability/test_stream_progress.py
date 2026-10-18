@@ -16,11 +16,7 @@ class _Dispatcher:
 
 
 def _content_chunk(content: str) -> bytes:
-    return (
-        "data: "
-        + json.dumps({"choices": [{"delta": {"content": content}}]})
-        + "\n\n"
-    ).encode()
+    return ("data: " + json.dumps({"choices": [{"delta": {"content": content}}]}) + "\n\n").encode()
 
 
 def _semantic_chunk(delta: dict) -> bytes:
@@ -66,10 +62,18 @@ def test_progress_counts_reasoning_and_tool_call_output(monkeypatch):
     dispatcher = _Dispatcher()
 
     progress.observe_upstream(_semantic_chunk({"reasoning_content": "r" * 16}))
-    progress.observe_upstream(_semantic_chunk({"tool_calls": [{
-        "index": 0,
-        "function": {"name": "date", "arguments": '{"tz":"UTC"}'},
-    }]}))
+    progress.observe_upstream(
+        _semantic_chunk(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "function": {"name": "date", "arguments": '{"tz":"UTC"}'},
+                    }
+                ]
+            }
+        )
+    )
     progress.emit_if_due("request-3", dispatcher=dispatcher, force=True)
 
     data = dispatcher.events[-1].data

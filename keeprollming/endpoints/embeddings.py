@@ -9,10 +9,15 @@ from typing import Any, Dict
 import httpx
 from fastapi.responses import JSONResponse
 
-from ..logger import log
+from ..auth import (
+    authentication_error_response,
+    bearer_token,
+    client_access_error_response,
+    is_authorized,
+    is_request_client_allowed,
+)
+from ..config import UPSTREAM_BASE_URL, get_route_settings, resolve_route
 from ..observability import events_embeddings as _emb
-from ..config import UPSTREAM_BASE_URL, resolve_route, get_route_settings
-from ..auth import bearer_token, authentication_error_response, is_authorized
 from ..observability import events_request as _request_events
 
 
@@ -20,6 +25,7 @@ async def embeddings_handler(
     payload: Dict[str, Any],
     headers: Dict[str, str],
     req_id: str,
+    client_ip: str | None = None,
 ) -> JSONResponse:
     """Handle /v1/embeddings endpoint requests.
 
@@ -44,8 +50,12 @@ async def embeddings_handler(
         base_url = UPSTREAM_BASE_URL.rstrip("/")
         request_timeout = 120.0
 
+    if route is not None and not is_request_client_allowed(client_ip, headers, mode=route.client_access):
+        return client_access_error_response()
+
     if route is None or not is_authorized(headers, route.api_keys or []):
         from ..app import get_event_dispatcher
+
         _request_events.emit_auth_rejected(
             req_id,
             route=route.name if route is not None else "unresolved",
@@ -67,6 +77,7 @@ async def embeddings_handler(
     # Projector level filtering controls visibility (structured@TRACE captures it,
     # main@BASIC filters it out).
     from ..logger import snip_json
+
     _emb.emit_request_debug(req_id=req_id, body_json=snip_json(payload))
 
     try:
@@ -83,28 +94,23 @@ async def embeddings_handler(
         _emb.emit_failed(req_id=req_id, error=str(e), upstream_url=base_url)
         return JSONResponse(
             {"error": {"message": f"Failed to connect to upstream {base_url}: {str(e)}"}},
-            status_code=502
+            status_code=502,
         )
     except httpx.TimeoutException:
         _emb.emit_timeout(req_id=req_id, upstream_url=base_url)
-        return JSONResponse(
-            {"error": {"message": f"Request timeout connecting to {base_url}"}},
-            status_code=504
-        )
+        return JSONResponse({"error": {"message": f"Request timeout connecting to {base_url}"}}, status_code=504)
     except Exception as e:
         import traceback
+
         tb = traceback.format_exc()
         _emb.emit_failed(req_id=req_id, error=str(e), traceback=tb, upstream_url=base_url)
         return JSONResponse(
             {"error": {"message": f"Failed to process embeddings request: {str(e)}"}},
-            status_code=500
+            status_code=500,
         )
 
 
-async def process_embedding_request(
-    payload: Dict[str, Any],
-    headers: Dict[str, str]
-) -> JSONResponse:
+async def process_embedding_request(payload: Dict[str, Any], headers: Dict[str, str]) -> JSONResponse:
     """Process an embeddings request.
 
     Args:
@@ -127,19 +133,17 @@ async def process_embedding_request(
         _emb.emit_failed(req_id=req_id, error=str(e), upstream_url=UPSTREAM_BASE_URL)
         return JSONResponse(
             {"error": {"message": f"Failed to connect to upstream {UPSTREAM_BASE_URL}: {str(e)}"}},
-            status_code=502
+            status_code=502,
         )
     except httpx.TimeoutException:
         _emb.emit_timeout(req_id=req_id)
-        return JSONResponse(
-            {"error": {"message": "Request timeout"}},
-            status_code=504
-        )
+        return JSONResponse({"error": {"message": "Request timeout"}}, status_code=504)
     except Exception as e:
         import traceback
+
         tb = traceback.format_exc()
         _emb.emit_failed(req_id=req_id, error=str(e), traceback=tb)
         return JSONResponse(
             {"error": {"message": f"Failed to process embeddings request: {str(e)}"}},
-            status_code=500
+            status_code=500,
         )

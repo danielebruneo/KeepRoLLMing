@@ -4,7 +4,6 @@ Verifies that ``events_request`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_request import (
     emit_cancelled,
@@ -34,9 +33,7 @@ class TestEmitRequestEvent:
         dispatcher = EventDispatcher()
         emitted_events: list[RuntimeEvent] = []
         dispatcher.subscribe("request", emitted_events.append)
-        event = emit_request_event(
-            "req-2", "request.lifecycle.received", dispatcher=dispatcher
-        )
+        event = emit_request_event("req-2", "request.lifecycle.received", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
         assert emitted_events[0].type == "request.lifecycle.received"

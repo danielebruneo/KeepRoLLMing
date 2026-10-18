@@ -4,7 +4,6 @@ Verifies that filters work together (SystemPrompt, Summarization,
 ToolRewrite, ToolLoopStopper, ModelNudge) through the streaming pipeline.
 """
 
-import httpx
 import pytest
 
 
@@ -40,7 +39,7 @@ class TestPipelineFullE2E:
             },
         )
         assert resp.status_code == 200, resp.text
-        lines = [l for l in resp.text.splitlines() if l.startswith("data:")]
+        lines = [line for line in resp.text.splitlines() if line.startswith("data:")]
         assert lines[-1] == "data: [DONE]", "Missing [DONE] marker"
         assert len(lines) > 1, "No content chunks"
 
@@ -62,14 +61,21 @@ class TestPipelineFullE2E:
         assert "Prova:" in content
         assert "Full response" in content
 
-    def test_nudge_streaming_in_pipeline(self, orchestrator_server, backend_target, backend_client, configure_fake_backend):
+    def test_nudge_streaming_in_pipeline(
+        self, orchestrator_server, backend_target, backend_client, configure_fake_backend
+    ):
         """Nudge accumulates content in streaming mode via pipeline."""
         # For streaming, set stream_pieces for rotating multi-attempt responses
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Prova:", " another chunk"], ["Streaming ", "retry ", "complete"]],
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [
+                        ["Prova:", " another chunk"],
+                        ["Streaming ", "retry ", "complete"],
+                    ],
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -100,6 +106,7 @@ class TestPipelineFullE2E:
         assert "error" not in body
         content = body["choices"][0]["message"]["content"]
         assert len(content) > 0
+
     # ToolRewrite and TLS tests require specific fake backend
     # configurations that the current config.yaml doesn't enable
     # for the 'internal/*' routes — deferred until config is updated

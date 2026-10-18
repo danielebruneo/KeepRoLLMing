@@ -20,21 +20,24 @@ from typing import Any, Dict, Optional, Tuple
 
 # Whitelist of parameters that can be overridden at route level.
 # These map directly to OpenAI chat-completions top-level fields.
-ALLOWED_OVERRIDE_KEYS = frozenset({
-    "temperature",
-    "top_p",
-    "max_tokens",
-    "frequency_penalty",
-    "presence_penalty",
-    "stop",
-    "seed",
-    "min_p",
-    "repetition_penalty",
-    # OpenAI-compatible reasoning control.  LibreChat sends this as a
-    # top-level request field, and Qwen-compatible gateways may use it to
-    # select the model's thinking intensity.
-    "reasoning_effort",
-})
+ALLOWED_OVERRIDE_KEYS = frozenset(
+    {
+        "temperature",
+        "top_p",
+        "top_k",
+        "max_tokens",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed",
+        "min_p",
+        "repetition_penalty",
+        # OpenAI-compatible reasoning control.  LibreChat sends this as a
+        # top-level request field, and Qwen-compatible gateways may use it to
+        # select the model's thinking intensity.
+        "reasoning_effort",
+    }
+)
 
 
 def apply_overrides(

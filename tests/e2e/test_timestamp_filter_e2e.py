@@ -9,7 +9,6 @@ Verifies that the timestamp filter:
 
 import re
 
-import httpx
 import pytest
 
 
@@ -27,7 +26,9 @@ class TestTimestampFilterE2E:
             content,
         ), f"Timestamp format mismatch in: {repr(content[:200])}"
 
-    def test_nonstreaming_timestamp_in_response(self, orchestrator_server, backend_target, backend_client, configure_fake_backend):
+    def test_nonstreaming_timestamp_in_response(
+        self, orchestrator_server, backend_target, backend_client, configure_fake_backend
+    ):
         """Non-streaming: response content has timestamp appended."""
         configure_fake_backend({"chat": {"content": "Hello from backend"}})
 
@@ -49,13 +50,17 @@ class TestTimestampFilterE2E:
         # Should have timestamp appended
         self._assert_timestamp_in_content(content)
 
-    def test_streaming_timestamp_in_response(self, orchestrator_server, backend_target, backend_client, configure_fake_backend):
+    def test_streaming_timestamp_in_response(
+        self, orchestrator_server, backend_target, backend_client, configure_fake_backend
+    ):
         """Streaming: response content has timestamp appended."""
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Hello", " from", " backend"]],
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Hello", " from", " backend"]],
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -79,24 +84,28 @@ class TestTimestampFilterE2E:
         # Should have [DONE] marker
         assert "[DONE]" in body
 
-    def test_tool_calls_only_response_unchanged(self, orchestrator_server, backend_target, backend_client, configure_fake_backend):
+    def test_tool_calls_only_response_unchanged(
+        self, orchestrator_server, backend_target, backend_client, configure_fake_backend
+    ):
         """Tool_calls-only response: no timestamp appended to content."""
         # The fake backend always returns "chat ok" as fallback content even with tool_calls,
         # but the key assertion is that tool_calls are preserved and not corrupted.
-        configure_fake_backend({
-            "chat": {
-                "tool_calls": [
-                    {
-                        "id": "call_1",
-                        "type": "function",
-                        "function": {
-                            "name": "test_tool",
-                            "arguments": '{"arg": "value"}',
-                        },
-                    }
-                ],
+        configure_fake_backend(
+            {
+                "chat": {
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "test_tool",
+                                "arguments": '{"arg": "value"}',
+                            },
+                        }
+                    ],
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -116,7 +125,14 @@ class TestTimestampFilterE2E:
         assert len(tc) >= 1
         assert tc[0]["function"]["name"] == "test_tool"
 
-    def test_system_message_injected_upstream(self, orchestrator_server, backend_target, backend_client, configure_fake_backend, get_fake_stats):
+    def test_system_message_injected_upstream(
+        self,
+        orchestrator_server,
+        backend_target,
+        backend_client,
+        configure_fake_backend,
+        get_fake_stats,
+    ):
         """Verify the upstream receives the system message with timestamp."""
         configure_fake_backend({"chat": {"content": "Response"}})
 
@@ -146,7 +162,14 @@ class TestTimestampFilterE2E:
             f"This means the timestamp system message was NOT injected into the upstream payload."
         )
 
-    def test_timestamp_consistency_request_response(self, orchestrator_server, backend_target, backend_client, configure_fake_backend, get_fake_stats):
+    def test_timestamp_consistency_request_response(
+        self,
+        orchestrator_server,
+        backend_target,
+        backend_client,
+        configure_fake_backend,
+        get_fake_stats,
+    ):
         """Timestamp in request system message matches timestamp in response."""
         configure_fake_backend({"chat": {"content": "Response"}})
 
@@ -165,7 +188,14 @@ class TestTimestampFilterE2E:
         # Verify timestamp is in the response
         self._assert_timestamp_in_content(content)
 
-    def test_multiple_messages_timestamp_at_end(self, orchestrator_server, backend_target, backend_client, configure_fake_backend, get_fake_stats):
+    def test_multiple_messages_timestamp_at_end(
+        self,
+        orchestrator_server,
+        backend_target,
+        backend_client,
+        configure_fake_backend,
+        get_fake_stats,
+    ):
         """Timestamp system message is appended after all existing messages."""
         configure_fake_backend({"chat": {"content": "Response"}})
 
@@ -192,7 +222,9 @@ class TestTimestampFilterE2E:
             f"Expected 4 messages (user, assistant, user, system), got {last_request['messages_count']}"
         )
 
-    def test_disabled_filter_no_timestamp(self, orchestrator_server, backend_target, backend_client, configure_fake_backend):
+    def test_disabled_filter_no_timestamp(
+        self, orchestrator_server, backend_target, backend_client, configure_fake_backend
+    ):
         """Non-timestamp route: no timestamp in response."""
         configure_fake_backend({"chat": {"content": "Response"}})
 

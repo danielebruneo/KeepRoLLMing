@@ -8,7 +8,6 @@ from typing import Any, AsyncIterator, Dict, Optional
 import pytest
 from fastapi.testclient import TestClient
 
-
 # Markers are registered in pytest.ini:
 # - e2e_fake: E2E tests with fake backend
 # - e2e_live: E2E tests requiring live API calls (skipped if no API key)
@@ -59,35 +58,44 @@ class OpenAIToolCallClient:
     async def post(self, url: str, json: Dict[str, Any] = None, headers: Dict[str, Any] = None) -> "_FakeResponse":
         """Handle non-streaming POST requests with OpenAI tool call format."""
         self.last_request = json
-        return _FakeResponse({
-            "id": "chatcmpl-123",
-            "object": "chat.completion",
-            "created": 1700000000,
-            "model": "gpt-4o",
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": "call_abc123",
-                                "type": "function",
-                                "function": {
-                                    "name": "get_weather",
-                                    "arguments": '{"location": "Milan", "unit": "celsius"}'
+        return _FakeResponse(
+            {
+                "id": "chatcmpl-123",
+                "object": "chat.completion",
+                "created": 1700000000,
+                "model": "gpt-4o",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_abc123",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "get_weather",
+                                        "arguments": '{"location": "Milan", "unit": "celsius"}',
+                                    },
                                 }
-                            }
-                        ]
-                    },
-                    "finish_reason": "stop"
-                }
-            ],
-            "usage": {"prompt_tokens": 50, "completion_tokens": 20, "total_tokens": 70}
-        })
+                            ],
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 20, "total_tokens": 70},
+            }
+        )
 
-    def stream(self, method: str = None, url: str = None, json: Dict[str, Any] = None, headers: Dict[str, Any] = None, **kwargs):
+    def stream(
+        self,
+        method: str = None,
+        url: str = None,
+        json: Dict[str, Any] = None,
+        headers: Dict[str, Any] = None,
+        **kwargs,
+    ):
         """Mock streaming for tool call responses."""
         body = json or kwargs.get("payload") or {}
 
@@ -102,7 +110,6 @@ class OpenAIToolCallClient:
                 pass
 
             def __aiter__(self):
-                import json as json_module
                 # Stream a tool call in OpenAI format
                 chunks = [
                     b'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}\n\n',
@@ -110,11 +117,13 @@ class OpenAIToolCallClient:
                     b'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"location\\\\": \\\\"Milan\\"}"}}],"type":"function"}],"finish_reason":null}]}\n\n',
                     b'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\", \\"unit\\\\": \\\\"celsius\\"}"}}],"type":"function"}],"finish_reason":null}]}\n\n',
                     b'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}],"type":"function"}],"finish_reason":"stop"}]}\n\n',
-                    b'data: [DONE]\n\n'
+                    b"data: [DONE]\n\n",
                 ]
+
                 async def gen():
                     for chunk in chunks:
                         yield chunk
+
                 return gen()
 
         return OpenAIToolStream(body or {})
@@ -143,10 +152,11 @@ class _FakeResponse:
 
     def __init__(self, data: Dict[str, Any]):
         import json
+
         self.status_code = 200
         self._data = data
         self._json_data = json.dumps(data)
-        self.content = self._json_data.encode('utf-8')  # aiohttp uses bytes for .content
+        self.content = self._json_data.encode("utf-8")  # aiohttp uses bytes for .content
 
     async def text(self):
         return self._json_data
@@ -154,6 +164,7 @@ class _FakeResponse:
     def json(self):
         """Synchronous json() method for compatibility."""
         import json
+
         return json.loads(self._json_data)
 
     def raise_for_status(self):
@@ -169,43 +180,48 @@ class _FakeClientSession:
         self._fake_client = fake_client
 
     async def post(self, url: str, **kwargs) -> "_FakeResponse":
-        data = kwargs.get('json') or kwargs.get('data')
+        data = kwargs.get("json") or kwargs.get("data")
 
         if isinstance(data, dict):
             self._fake_client.last_request = data.copy()
             self._fake_client.last_post_json = data.copy()
 
-        return _FakeResponse({
-            "choices": [{"message": {"content": "mock_response"}, "finish_reason": "stop"}],
-            "usage": {"total_tokens": 10}
-        })
+        return _FakeResponse(
+            {
+                "choices": [{"message": {"content": "mock_response"}, "finish_reason": "stop"}],
+                "usage": {"total_tokens": 10},
+            }
+        )
 
     async def get(self, url: str, **kwargs) -> "_FakeResponse":
         return _FakeResponse({"status": "ok"})
 
     def stream(self, method: str, url: str, **kwargs):
         """Mock stream context manager for streaming requests."""
+
         # Return a mock context manager that yields mock chunks
         class MockStream:
             def __init__(self):
                 self._closed = False
                 self.status_code = 200
-            
+
             async def __aenter__(self):
                 return self
-            
+
             async def __aexit__(self, *args):
                 self._closed = True
-            
+
             def __aiter__(self):
                 # Return empty iterator for now - tests may override this
                 async def gen():
                     if False:  # Never yields
                         yield b""
+
                 return gen()
 
             async def aiter_bytes(self):
                 import json
+
                 evt = {
                     "id": "x",
                     "object": "chat.completion.chunk",
@@ -215,7 +231,7 @@ class _FakeClientSession:
                 }
                 yield b"data: " + json.dumps(evt).encode("utf-8") + b"\n\n"
                 yield b"data: [DONE]\n\n"
-        
+
         return MockStream()
 
     async def __aenter__(self):
@@ -228,9 +244,9 @@ class _FakeClientSession:
 # Set up patches BEFORE any test imports happen
 def _setup_patches():
     """Set up all necessary patches at module import time."""
+    import keeprollming.summary as summary_mod
     import keeprollming.upstream as upstream_mod
     from keeprollming.endpoints import chat_completions
-    import keeprollming.summary as summary_mod
 
     fake_client = _FakeAsyncClient()
 
@@ -239,7 +255,7 @@ def _setup_patches():
 
     # Patch http_client where it's used in summary package (imports from upstream)
     summary_mod.http_client = _fake_http_client
-    
+
     # Also patch in endpoints.chat_completions module
     chat_completions.http_client = _fake_http_client
 
@@ -248,6 +264,7 @@ def _setup_patches():
 
     # Store fake client for tests to access
     import keeprollming.app as app_mod
+
     app_mod._TEST_FAKE_UPSTREAM = fake_client
 
     return fake_client
@@ -260,10 +277,8 @@ _fake_upstream = _setup_patches()
 @pytest.fixture(autouse=True)
 def setup_keeprollming_modules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Setup keeprollming modules with proper initialization and patching."""
-    from tests.orchestrator.test_module_patches import patch_app_mod_functions
-    
     # Import the package fresh to get clean state
-    import keeprollming.app as app_mod
+    from tests.orchestrator.test_module_patches import patch_app_mod_functions
 
     # Apply modular patching helper to ensure patches propagate correctly
     # This ensures that when tests mock functions, they work with the modular code
@@ -272,7 +287,7 @@ def setup_keeprollming_modules(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         patch_app_mod_functions(monkeypatch, func_patches)
 
     yield
-    
+
     # Cleanup if needed
 
 
@@ -292,6 +307,7 @@ async def _fake_summarize_middle(middle, req_id, summary_model, **kwargs):
         return _FAKE_SUMMARY_RETURN_VALUE
     # Fall through to real implementation
     from keeprollming.summary import summarize_middle as original_summarize_middle
+
     return await original_summarize_middle(middle, req_id, summary_model, **kwargs)
 
 
@@ -323,10 +339,10 @@ def client(monkeypatch):
     the application's HTTP endpoints in isolation.
     """
     from keeprollming import app as app_mod
-    
+
     # Set up mock upstream before creating client
     _setup_fake_upstream(monkeypatch)
-    
+
     return TestClient(app_mod.app, raise_server_exceptions=False)
 
 
@@ -348,25 +364,22 @@ def _setup_fake_upstream(monkeypatch):
     of making real requests, while capturing what was sent.
     """
     import httpx
-    
+
     global _FAKE_UPSTREAM_CLIENT
-    
+
     class FakeHTTPClient:
         def __init__(self):
             self.last_post_json = None
-        
+
         def post(self, *args, **kwargs):
             # Capture the request body
-            if 'json' in kwargs:
-                self.last_post_json = kwargs['json']
-            
-            return httpx.Response(
-                status_code=200,
-                json={"choices": [{"message": {"content": "mock_response"}}]}
-            )
-    
+            if "json" in kwargs:
+                self.last_post_json = kwargs["json"]
+
+            return httpx.Response(status_code=200, json={"choices": [{"message": {"content": "mock_response"}}]})
+
     _FAKE_UPSTREAM_CLIENT = FakeHTTPClient()
-    
+
     # Store original __init__ and call it with all arguments
     original_init = httpx.Client.__init__
     monkeypatch.setattr(httpx.Client, "__init__", lambda self, *args, **kwargs: original_init(self, *args, **kwargs))

@@ -17,6 +17,7 @@ def test_pipeline_uses_runner_unconditionally(monkeypatch):
         return [chunk async for chunk in pipeline.run_stream({}, "r1", "model")]
 
     import asyncio
+
     assert asyncio.run(consume()) == [b"data: [DONE]\\n\\n"]
     assert len(called) == 1
 
@@ -27,11 +28,13 @@ def test_pipeline_has_no_legacy_raw_chunk_runner():
 
 
 def test_enabled_filter_names_uses_effective_priority_order():
-    assert Pipeline.enabled_filter_names({
-        "timestamp": {"enabled": True},
-        "system_prompt": {"enabled": True},
-        "model_nudge": {"enabled": False},
-    }) == ["system_prompt", "timestamp"]
+    assert Pipeline.enabled_filter_names(
+        {
+            "timestamp": {"enabled": True},
+            "system_prompt": {"enabled": True},
+            "model_nudge": {"enabled": False},
+        }
+    ) == ["system_prompt", "timestamp"]
 
 
 def test_empty_config_does_not_create_a_configured_pipeline():

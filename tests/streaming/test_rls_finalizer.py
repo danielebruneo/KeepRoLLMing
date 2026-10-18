@@ -18,21 +18,17 @@ unit contract only.
 
 from __future__ import annotations
 
-from typing import List
-
 import pytest
 
+from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
 from keeprollming.streaming.events import (
     AssistantTextDelta,
     Finish,
     ReasoningTextDelta,
     StreamEvent,
-    ToolCallComplete,
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer
-from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -87,7 +83,7 @@ def test_rls_observer_does_not_consume_reasoning_events():
         index=0,
         id="call_1",
         name="echo",
-        arguments_delta='{}',
+        arguments_delta="{}",
     )
     result = rls.process_event(tc)
     assert result == [tc], "ToolCallDelta must pass through"
@@ -111,11 +107,14 @@ def test_rls_no_loop_passthrough():
     Expected: no recovery decision, events pass through.
     """
     rls = _make_rls()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think the answer is A"),
-        ReasoningTextDelta(delta="Then I will check B"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think the answer is A"),
+            ReasoningTextDelta(delta="Then I will check B"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is None, "No loop should be detected"
 
@@ -128,10 +127,13 @@ def test_rls_first_reasoning_no_loop():
     Expected: no recovery decision (no previous reasoning to compare).
     """
     rls = _make_rls()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="Let me think..."),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="Let me think..."),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is None
     assert rls.reasoning_buffer == "Let me think..."
@@ -154,10 +156,13 @@ def test_rls_exact_match_loop():
     rls = RLSFinalizer(conversation_reasoning="I think the answer is")
 
     # Same reasoning as the preceding assistant turn → loop detected.
-    events = _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think the answer is"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think the answer is"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is not None, "Loop should be detected"
     assert rls.decision.kind == "intervention"
@@ -170,9 +175,10 @@ def test_rls_exact_match_loop():
     patch = rls.decision.request_payload_patch
     assert "messages" in patch
     messages = patch["messages"]
-    assert len(messages) == 1
-    assert messages[0]["role"] == "user"
-    assert "Your reasoning is repeating" in messages[0]["content"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "assistant"
+    assert messages[1]["role"] == "user"
+    assert "Your reasoning is repeating" in messages[1]["content"]
 
     # Check diagnostics
     diag = rls.decision.diagnostics
@@ -194,27 +200,28 @@ def test_rls_tool_call_disambiguation():
     Expected: no recovery decision (different tools disambiguate).
     """
     rls = _make_rls()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think the answer is"),
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{}',
-        ),
-        ReasoningTextDelta(delta=" I think the answer is"),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="search",
-            arguments_delta='{}',
-        ),
-        Finish(reason="stop"),
-    ])
-
-    assert rls.decision is None, (
-        "Same reasoning with different tool calls should not trigger loop"
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think the answer is"),
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta="{}",
+            ),
+            ReasoningTextDelta(delta=" I think the answer is"),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="search",
+                arguments_delta="{}",
+            ),
+            Finish(reason="stop"),
+        ],
     )
+
+    assert rls.decision is None, "Same reasoning with different tool calls should not trigger loop"
     assert rls.has_tool_call is True
 
 
@@ -232,10 +239,13 @@ def test_rls_intervention_payload():
     rls = RLSFinalizer(conversation_reasoning="I think")
 
     # Same reasoning as the preceding assistant turn → loop detected.
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is not None
     patch = rls.decision.request_payload_patch
@@ -243,10 +253,10 @@ def test_rls_intervention_payload():
     assert "messages" in patch
 
     messages = patch["messages"]
-    assert len(messages) == 1
+    assert len(messages) == 2
 
     # User nudge message
-    nudge_msg = messages[0]
+    nudge_msg = messages[1]
     assert nudge_msg["role"] == "user"
     assert "Your reasoning is repeating" in nudge_msg["content"]
 
@@ -269,10 +279,13 @@ def test_rls_max_attempts_exceeded_no_decision():
     """
     rls = RLSFinalizer(max_attempts=2, conversation_reasoning="I think")
     rls.reset()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think"),
+            Finish(reason="stop"),
+        ],
+    )
 
     # First attempt should produce a decision (attempt_index=1 after reset, but finalize hasn't incremented yet)
     assert rls.decision is not None
@@ -280,10 +293,13 @@ def test_rls_max_attempts_exceeded_no_decision():
 
     # Reset for second attempt (attempt_index becomes 2)
     rls.reset()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think"),
+            Finish(reason="stop"),
+        ],
+    )
 
     # Second attempt should produce a decision (attempt_index=2, but max_attempts=2, so... wait)
     # Actually, the check is attempt_index >= max_attempts, so attempt_index=2 >= 2 should NOT produce a decision
@@ -305,10 +321,13 @@ def test_rls_reset_clears_buffer():
     """
     rls = RLSFinalizer(conversation_reasoning="I think")
     rls.reset()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is not None
     assert rls.reasoning_buffer == "I think"
@@ -320,10 +339,13 @@ def test_rls_reset_clears_buffer():
     assert rls.reasoning_buffer == ""
 
     # New processing with single reasoning should not trigger loop
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="New reasoning"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="New reasoning"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is None
 
@@ -336,16 +358,22 @@ def test_rls_reset_clears_buffer():
 def test_rls_does_not_compare_unrelated_requests_without_history():
     """Matching reasoning in another finalizer instance is not a loop."""
     first = _make_rls()
-    _process_then_finalize(first, [
-        ReasoningTextDelta(delta="First reasoning"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        first,
+        [
+            ReasoningTextDelta(delta="First reasoning"),
+            Finish(reason="stop"),
+        ],
+    )
 
     unrelated = _make_rls()
-    _process_then_finalize(unrelated, [
-        ReasoningTextDelta(delta="First reasoning"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        unrelated,
+        [
+            ReasoningTextDelta(delta="First reasoning"),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert unrelated.decision is None
 
@@ -354,10 +382,13 @@ def test_rls_restores_conversation_reasoning_on_reset():
     """Recovery attempts retain the original request's reasoning history."""
     rls = RLSFinalizer(conversation_reasoning="First reasoning")
     rls.reset()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="First reasoning"),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="First reasoning"),
+            Finish(reason="stop"),
+        ],
+    )
     assert rls.decision is not None
 
 
@@ -402,15 +433,16 @@ def test_rls_within_stream_loop_disabled_by_default():
     Expected: no recovery decision (within-stream detection disabled).
     """
     rls = _make_rls()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think the answer is"),
-        ReasoningTextDelta(delta=" I think the answer is"),
-        Finish(reason="stop"),
-    ])
-
-    assert rls.decision is None, (
-        "Within-stream detection should be disabled by default"
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think the answer is"),
+            ReasoningTextDelta(delta=" I think the answer is"),
+            Finish(reason="stop"),
+        ],
     )
+
+    assert rls.decision is None, "Within-stream detection should be disabled by default"
 
 
 def test_rls_within_stream_loop_enabled():
@@ -422,15 +454,16 @@ def test_rls_within_stream_loop_enabled():
     Expected: RecoveryDecision with kind="intervention".
     """
     rls = RLSFinalizer(detect_within_stream_loop=True)
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think the answer is"),
-        ReasoningTextDelta(delta=" I think the answer is"),
-        Finish(reason="stop"),
-    ])
-
-    assert rls.decision is not None, (
-        "Within-stream loop should be detected when enabled"
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think the answer is"),
+            ReasoningTextDelta(delta=" I think the answer is"),
+            Finish(reason="stop"),
+        ],
     )
+
+    assert rls.decision is not None, "Within-stream loop should be detected when enabled"
     assert rls.decision.kind == "intervention"
     assert rls.decision.merge_strategy == "intervention_specific"
 
@@ -444,27 +477,28 @@ def test_rls_within_stream_loop_with_tool_disambiguation():
     Expected: no recovery decision (tool calls differ).
     """
     rls = RLSFinalizer(detect_within_stream_loop=True)
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta="I think the answer is"),
-        ToolCallDelta(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_delta='{}',
-        ),
-        ReasoningTextDelta(delta=" I think the answer is"),
-        ToolCallDelta(
-            index=1,
-            id="call_2",
-            name="search",
-            arguments_delta='{}',
-        ),
-        Finish(reason="stop"),
-    ])
-
-    assert rls.decision is None, (
-        "Same reasoning with different tool calls should not trigger loop"
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta="I think the answer is"),
+            ToolCallDelta(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_delta="{}",
+            ),
+            ReasoningTextDelta(delta=" I think the answer is"),
+            ToolCallDelta(
+                index=1,
+                id="call_2",
+                name="search",
+                arguments_delta="{}",
+            ),
+            Finish(reason="stop"),
+        ],
     )
+
+    assert rls.decision is None, "Same reasoning with different tool calls should not trigger loop"
 
 
 # ---------------------------------------------------------------------------
@@ -478,10 +512,13 @@ def test_rls_empty_reasoning_no_crash():
     Expected: no recovery decision.
     """
     rls = _make_rls()
-    _process_then_finalize(rls, [
-        ReasoningTextDelta(delta=""),
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            ReasoningTextDelta(delta=""),
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is None
     assert rls.reasoning_buffer == ""
@@ -493,8 +530,11 @@ def test_rls_finish_only_no_crash():
     Expected: no recovery decision.
     """
     rls = _make_rls()
-    _process_then_finalize(rls, [
-        Finish(reason="stop"),
-    ])
+    _process_then_finalize(
+        rls,
+        [
+            Finish(reason="stop"),
+        ],
+    )
 
     assert rls.decision is None

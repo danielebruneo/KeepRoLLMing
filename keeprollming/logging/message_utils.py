@@ -125,7 +125,7 @@ def _snip_text_active(s: str | None, limit: int) -> str:
         return ""
     if limit <= 0:
         return s
-    return s if len(s) <= limit else (s[:limit] + f"... <snip {len(s)-limit} chars>")
+    return s if len(s) <= limit else (s[:limit] + f"... <snip {len(s) - limit} chars>")
 
 
 def _snip_obj_active(obj: Any, limit: int) -> Any:

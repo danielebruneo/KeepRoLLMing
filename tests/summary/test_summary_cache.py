@@ -1,21 +1,20 @@
 """Extended cache interaction tests - append mode, partitioning, and edge cases."""
 
 import json
-import pytest
 
 
 def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(monkeypatch, tmp_path):
     """Test that cache append mode clamps max_tokens and skips incremental summary when tail fits.
-    
+
     Scenario: Cache entry exists with fingerprint match. The remaining messages (tail) fit
     within the threshold without needing incremental summarization.
-    
+
     Expected behavior:
     - Max tokens should be clamped based on context length
     - Incremental summary should NOT be called (cache hit + tail fits)
     """
-    from keeprollming import app as app_mod
     import keeprollming.config as config_mod
+    from keeprollming import app as app_mod
     from keeprollming.config import DefaultSettings
     from keeprollming.summary_cache import (
         conversation_fingerprint,
@@ -74,7 +73,7 @@ def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(mon
             return {
                 "choices": [{"message": {"content": "ok"}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-                "model": "main-model"
+                "model": "main-model",
             }
 
     class _Client:
@@ -84,11 +83,13 @@ def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(mon
 
     # Patch the http_client in chat_completions module (where it's imported from upstream)
     import keeprollming.endpoints.chat_completions as chat_mod
+
     monkeypatch.setattr(chat_mod, "http_client", _make_async_client(_Client()))
 
     payload = {"model": "local/deep", "messages": messages, "stream": False, "max_tokens": 2000}
 
     import asyncio
+
     from starlette.requests import Request
 
     async def _call():
@@ -96,7 +97,7 @@ def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(mon
             "type": "http",
             "method": "POST",
             "path": "/v1/chat/completions",
-            "headers": [(b"content-type", b"application/json")]
+            "headers": [(b"content-type", b"application/json")],
         }
         body = json.dumps(payload).encode()
 
@@ -117,6 +118,7 @@ def test_cache_append_clamps_max_tokens_and_skips_incremental_when_tail_fits(mon
 
 def _make_async_client(client_instance):
     """Create an async http_client mock that returns a client instance."""
+
     async def mock_http_client(timeout):
         return client_instance
 
@@ -132,15 +134,16 @@ def test_cache_append_preserves_first_user_raw(client, monkeypatch, tmp_path):
     Expected behavior: First user message stays raw (not summarized) and appears
     before any archived system messages.
     """
+
     async def _fake_summary(_middle, **kwargs):
         import sys
-        print(f"DEBUG: FAKE SUMMARY CALLED", file=sys.stderr)
+
+        print("DEBUG: FAKE SUMMARY CALLED", file=sys.stderr)
         return "COMPACT"
 
     # Patch where the function is used (in app module)
-    from keeprollming import app
     monkeypatch.setattr("keeprollming.summary.summarize_middle", _fake_summary)
-    monkeypatch.setattr("keeprollming.config.SUMMARY_CACHE_DIR", str(tmp_path / 'summary_cache2'))
+    monkeypatch.setattr("keeprollming.config.SUMMARY_CACHE_DIR", str(tmp_path / "summary_cache2"))
 
     messages = [
         {"role": "system", "content": "SYSTEM RULES"},
@@ -150,13 +153,13 @@ def test_cache_append_preserves_first_user_raw(client, monkeypatch, tmp_path):
         {"role": "assistant", "content": "c" * 3000},
         {"role": "user", "content": "latest question"},
     ]
-    resp = client.post('/v1/chat/completions', json={"model": "local/main", "messages": messages})
+    resp = client.post("/v1/chat/completions", json={"model": "local/main", "messages": messages})
     assert resp.status_code == 200, resp.text
     fake = _get_fake_upstream()
-    sent = fake.last_post_json['messages']
-    assert sent[0]['role'] == 'system'
+    sent = fake.last_post_json["messages"]
+    assert sent[0]["role"] == "system"
     joined = json.dumps(sent, ensure_ascii=False)
-    assert 'FOUNDATIONAL USER PROMPT' in joined
+    assert "FOUNDATIONAL USER PROMPT" in joined
 
     # Enhanced position validation with StopIteration handling
     def find_first_matching_index(iterator, default_value=-1):
@@ -169,20 +172,23 @@ def test_cache_append_preserves_first_user_raw(client, monkeypatch, tmp_path):
     try:
         # Find archived context marker
         archived_idx = find_first_matching_index(
-            i for i, m in enumerate(sent)
-            if m['role'] == 'system' and '[ARCHIVED_COMPACT_CONTEXT]' in str(m.get('content', ''))
+            i
+            for i, m in enumerate(sent)
+            if m["role"] == "system" and "[ARCHIVED_COMPACT_CONTEXT]" in str(m.get("content", ""))
         )
 
         # Find first user message with foundational prompt
         first_user_idx = find_first_matching_index(
-            i for i, m in enumerate(sent)
-            if m['role'] == 'user' and 'FOUNDATIONAL USER PROMPT' in str(m.get('content', ''))
+            i
+            for i, m in enumerate(sent)
+            if m["role"] == "user" and "FOUNDATIONAL USER PROMPT" in str(m.get("content", ""))
         )
 
         # Foundational user should come before archived context (if present)
         if archived_idx >= 0:
-            assert first_user_idx < archived_idx, \
+            assert first_user_idx < archived_idx, (
                 f"Foundational user at {first_user_idx} should come before archived context at {archived_idx}"
+            )
 
     except AssertionError:
         raise
@@ -191,6 +197,7 @@ def test_cache_append_preserves_first_user_raw(client, monkeypatch, tmp_path):
 def _get_fake_upstream():
     """Helper to get the global fake upstream client."""
     from tests.conftest import get_fake_upstream as _fake_upstream
+
     return _fake_upstream()
 
 
@@ -200,7 +207,7 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
     Scenario: Save multiple cache entries with different user/conversation IDs.
     Expected behavior: Each entry is only retrievable with matching credentials.
     """
-    from keeprollming.summary_cache import make_cache_entry, save_cache_entry, load_cache_entries
+    from keeprollming.summary_cache import load_cache_entries, make_cache_entry, save_cache_entry
 
     messages = [
         {"role": "system", "content": "sys"},
@@ -216,7 +223,7 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         summary_text="summary 1",
         summary_model="sum-model",
         token_estimate=10,
-        source_mode="test"
+        source_mode="test",
     )
 
     entry2 = make_cache_entry(
@@ -227,7 +234,7 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         summary_text="summary 2",
         summary_model="sum-model",
         token_estimate=10,
-        source_mode="test"
+        source_mode="test",
     )
 
     # Save entries with different user and conversation IDs
@@ -239,7 +246,7 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         str(tmp_path / "summary_cache"),
         fingerprint="fingerprint-1",
         user_id="user1",
-        conv_id="conv1"
+        conv_id="conv1",
     )
     assert len(loaded1) == 1
     assert loaded1[0].summary_text == "summary 1"
@@ -248,7 +255,7 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         str(tmp_path / "summary_cache"),
         fingerprint="fingerprint-2",
         user_id="user2",
-        conv_id="conv2"
+        conv_id="conv2",
     )
     assert len(loaded2) == 1
     assert loaded2[0].summary_text == "summary 2"
@@ -258,7 +265,7 @@ def test_cache_storage_is_partitioned_by_user_and_conversation(tmp_path):
         str(tmp_path / "summary_cache"),
         fingerprint="fingerprint-1",
         user_id="user2",  # Wrong user
-        conv_id="conv2"
+        conv_id="conv2",
     )
     assert len(loaded_wrong) == 0
 
@@ -270,7 +277,7 @@ def test_failed_placeholder_summary_is_not_cacheable():
     Expected behavior: Placeholder entries should be marked as non-cacheable
     and excluded from future cache lookups.
     """
-    from keeprollming.summary_cache import make_cache_entry, save_cache_entry
+    from keeprollming.summary_cache import make_cache_entry
 
     messages = [
         {"role": "system", "content": "sys"},
@@ -287,10 +294,10 @@ def test_failed_placeholder_summary_is_not_cacheable():
         summary_text="[PLACEHOLDER]",
         summary_model="sum-model",
         token_estimate=10,
-        source_mode="test"
+        source_mode="test",
     )
 
     # Placeholder summaries should be marked as non-cacheable
     from keeprollming.summary import is_summary_cacheable
-    assert not is_summary_cacheable(entry.summary_text), \
-        "Placeholder summaries should not be cacheable"
+
+    assert not is_summary_cacheable(entry.summary_text), "Placeholder summaries should not be cacheable"

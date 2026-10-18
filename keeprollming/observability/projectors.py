@@ -196,6 +196,7 @@ def _colorize_stdout_plain(text: str) -> str:
             ANSI_YELLOW,
             LOG_PLAIN_COLORS,
         )
+
         if not LOG_PLAIN_COLORS or text.lstrip().startswith("{"):
             return text
         colors = {
@@ -221,10 +222,7 @@ def _colorize_stdout_plain(text: str) -> str:
             if event_match:
                 rest = re.sub(
                     r"\b([\w_]+)=([^\s]+)",
-                    lambda match: (
-                        f"{ANSI_YELLOW}{match.group(1)}{ANSI_RESET}="
-                        f"{ANSI_GREEN}{match.group(2)}{ANSI_RESET}"
-                    ),
+                    lambda match: f"{ANSI_YELLOW}{match.group(1)}{ANSI_RESET}={ANSI_GREEN}{match.group(2)}{ANSI_RESET}",
                     event_match.group("rest"),
                 )
                 line = (
@@ -237,8 +235,8 @@ def _colorize_stdout_plain(text: str) -> str:
                 continue
             for label, color in colors.items():
                 if stripped.startswith(label):
-                    indent = line[:len(line) - len(line.lstrip())]
-                    rest = stripped[len(label):]
+                    indent = line[: len(line) - len(line.lstrip())]
+                    rest = stripped[len(label) :]
                     line = f"{indent}{color}{ANSI_BOLD}{label}{ANSI_RESET}{rest}"
                     if label == "TOOL_RESULT:":
                         tool_result_payload_color = None
@@ -247,33 +245,29 @@ def _colorize_stdout_plain(text: str) -> str:
             # distinguished from tool arguments/results without coloring the
             # payload itself.
             if stripped.startswith(("id=", "tool_call_id=")):
-                indent = line[:len(line) - len(line.lstrip())]
+                indent = line[: len(line) - len(line.lstrip())]
                 line = indent + re.sub(
                     r"\b([\w_]+)=([^\s]+)",
                     lambda match: (
-                        f"{ANSI_YELLOW}{match.group(1)}{ANSI_RESET}="
-                        f"{ANSI_MAGENTA}{match.group(2)}{ANSI_RESET}"
+                        f"{ANSI_YELLOW}{match.group(1)}{ANSI_RESET}={ANSI_MAGENTA}{match.group(2)}{ANSI_RESET}"
                     ),
                     stripped,
                 )
             if stripped.startswith("stdout:"):
-                indent = line[:len(line) - len(line.lstrip())]
-                payload = line.lstrip()[len("stdout:"):]
+                indent = line[: len(line) - len(line.lstrip())]
+                payload = line.lstrip()[len("stdout:") :]
                 line = (
                     f"{indent}{ANSI_BRIGHT_YELLOW}{ANSI_BOLD}stdout:{ANSI_RESET}"
                     f"{ANSI_BRIGHT_YELLOW}{payload}{ANSI_RESET}"
                 )
                 tool_result_payload_color = ANSI_BRIGHT_YELLOW
             elif stripped.startswith("stderr:"):
-                indent = line[:len(line) - len(line.lstrip())]
-                payload = line.lstrip()[len("stderr:"):]
-                line = (
-                    f"{indent}{ANSI_BRIGHT_RED}{ANSI_BOLD}stderr:{ANSI_RESET}"
-                    f"{ANSI_BRIGHT_RED}{payload}{ANSI_RESET}"
-                )
+                indent = line[: len(line) - len(line.lstrip())]
+                payload = line.lstrip()[len("stderr:") :]
+                line = f"{indent}{ANSI_BRIGHT_RED}{ANSI_BOLD}stderr:{ANSI_RESET}{ANSI_BRIGHT_RED}{payload}{ANSI_RESET}"
                 tool_result_payload_color = ANSI_BRIGHT_RED
             elif tool_result_payload_color and stripped:
-                indent = line[:len(line) - len(line.lstrip())]
+                indent = line[: len(line) - len(line.lstrip())]
                 line = f"{indent}{tool_result_payload_color}{line.lstrip()}{ANSI_RESET}"
             lines.append(line)
         return "\n".join(lines)
@@ -330,12 +324,8 @@ class Projector:
 
     # Internal state
     active: bool = False
-    _dispatcher: Optional[EventDispatcher] = field(
-        default=None, repr=False, compare=False
-    )
-    _handler_ref: Callable[[RuntimeEvent], None] = field(
-        default=None, repr=False, compare=False
-    )
+    _dispatcher: Optional[EventDispatcher] = field(default=None, repr=False, compare=False)
+    _handler_ref: Callable[[RuntimeEvent], None] = field(default=None, repr=False, compare=False)
     _ROOT_NAMESPACES = (
         "execution",
         "request",
@@ -352,10 +342,7 @@ class Projector:
         from .events import LEVEL_ORDER
 
         if self.level not in LEVEL_ORDER:
-            raise ValueError(
-                f"Projector.level must be one of {LEVEL_ORDER}, "
-                f"got: {self.level!r}"
-            )
+            raise ValueError(f"Projector.level must be one of {LEVEL_ORDER}, got: {self.level!r}")
 
         # Default formatter
         if self.formatter is None:
@@ -471,10 +458,7 @@ class Projector:
         """
         if self.active and self._dispatcher is not None:
             if self._dispatcher is not dispatcher:
-                raise RuntimeError(
-                    f"Projector {self.name!r} is already active on a "
-                    f"different dispatcher"
-                )
+                raise RuntimeError(f"Projector {self.name!r} is already active on a different dispatcher")
             return
 
         # Subscribe to all root namespaces so we can apply our own filtering.
@@ -504,10 +488,7 @@ class Projector:
         handler = self._handler_ref
         for ns in self._subscription_namespaces():
             if ns in self._dispatcher._consumers:
-                self._dispatcher._consumers[ns] = [
-                    fn for fn in self._dispatcher._consumers[ns]
-                    if fn is not handler
-                ]
+                self._dispatcher._consumers[ns] = [fn for fn in self._dispatcher._consumers[ns] if fn is not handler]
                 # Clean up empty lists
                 if not self._dispatcher._consumers[ns]:
                     del self._dispatcher._consumers[ns]
@@ -557,8 +538,7 @@ class QueuedProjector:
         if self._active:
             if self._dispatcher is not dispatcher:
                 raise RuntimeError(
-                    f"Queued projector {self.projector.name!r} is already active "
-                    "on a different dispatcher"
+                    f"Queued projector {self.projector.name!r} is already active on a different dispatcher"
                 )
             return
 
@@ -648,9 +628,7 @@ class QueuedProjector:
                 consumers = dispatcher._consumers.get(namespace)
                 if consumers is None:
                     continue
-                dispatcher._consumers[namespace] = [
-                    fn for fn in consumers if fn is not self._handler_ref
-                ]
+                dispatcher._consumers[namespace] = [fn for fn in consumers if fn is not self._handler_ref]
                 if not dispatcher._consumers[namespace]:
                     del dispatcher._consumers[namespace]
         self._active = False

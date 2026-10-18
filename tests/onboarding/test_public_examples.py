@@ -50,9 +50,7 @@ def test_public_config_validator_honors_config_before_or_after_subcommand(
 
 def test_file_backed_system_prompt_is_loaded_relative_to_config_file(tmp_path: Path) -> None:
     (tmp_path / "prompts").mkdir()
-    (tmp_path / "prompts" / "architect.md").write_text(
-        "You are the architecture reviewer.", encoding="utf-8"
-    )
+    (tmp_path / "prompts" / "architect.md").write_text("You are the architecture reviewer.", encoding="utf-8")
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """

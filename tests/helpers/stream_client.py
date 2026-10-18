@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
 # ---------------------------------------------------------------------------
 # Data classes – canonical test events
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TestStreamEvent:
     """Base class for all parsed SSE events."""
+
     __test__ = False
     pass
 
@@ -25,6 +27,7 @@ class TestStreamEvent:
 @dataclass
 class TestAssistantTextDelta(TestStreamEvent):
     """Incremental assistant text content."""
+
     delta: str
     _source_chunk_index: int = -1
     __test__ = False
@@ -33,6 +36,7 @@ class TestAssistantTextDelta(TestStreamEvent):
 @dataclass
 class TestReasoningTextDelta(TestStreamEvent):
     """Incremental reasoning content."""
+
     delta: str
     _source_chunk_index: int = -1
     __test__ = False
@@ -41,6 +45,7 @@ class TestReasoningTextDelta(TestStreamEvent):
 @dataclass
 class TestToolCallDelta(TestStreamEvent):
     """Incremental tool call update."""
+
     index: int
     id: Optional[str] = None
     name: Optional[str] = None
@@ -53,6 +58,7 @@ class TestToolCallDelta(TestStreamEvent):
 @dataclass
 class TestToolCallComplete(TestStreamEvent):
     """Tool call fully assembled and validated."""
+
     index: int
     id: str
     name: str
@@ -65,6 +71,7 @@ class TestToolCallComplete(TestStreamEvent):
 @dataclass
 class TestFinish(TestStreamEvent):
     """Stream finished."""
+
     reason: str  # stop | length | tool_calls | content_filter | error
     usage: Optional[Dict[str, int]] = None
     _source_chunk_index: int = -1
@@ -74,6 +81,7 @@ class TestFinish(TestStreamEvent):
 @dataclass
 class TestDone(TestStreamEvent):
     """SSE stream terminated. MUST be the last event."""
+
     _source_chunk_index: int = -1
     __test__ = False
 
@@ -81,6 +89,7 @@ class TestDone(TestStreamEvent):
 @dataclass
 class TestKeepalive(TestStreamEvent):
     """Keepalive marker during long gaps."""
+
     _source_chunk_index: int = -1
     __test__ = False
 
@@ -88,6 +97,7 @@ class TestKeepalive(TestStreamEvent):
 @dataclass
 class TestError(TestStreamEvent):
     """Fatal streaming error."""
+
     code: str
     message: str
     _source_chunk_index: int = -1
@@ -97,6 +107,7 @@ class TestError(TestStreamEvent):
 @dataclass
 class TestUnknown(TestStreamEvent):
     """Unrecognised event type."""
+
     raw: str
     _source_chunk_index: int = -1
     __test__ = False
@@ -106,6 +117,7 @@ class TestUnknown(TestStreamEvent):
 # Internal helper for tool-call accumulation
 # ---------------------------------------------------------------------------
 
+
 class _ToolCallAccumulator:
     """Accumulates tool_call deltas into a complete tool call dict."""
 
@@ -114,11 +126,14 @@ class _ToolCallAccumulator:
 
     def update(self, delta: Dict[str, Any]) -> None:
         idx = delta.get("index", 0)
-        call = self._calls.setdefault(idx, {
-            "id": delta.get("id"),
-            "type": delta.get("type", "function"),
-            "function": {"name": "", "arguments": ""},
-        })
+        call = self._calls.setdefault(
+            idx,
+            {
+                "id": delta.get("id"),
+                "type": delta.get("type", "function"),
+                "function": {"name": "", "arguments": ""},
+            },
+        )
 
         if "id" in delta and not call["id"]:
             call["id"] = delta["id"]
@@ -144,23 +159,27 @@ class _ToolCallAccumulator:
             args_json = call["function"]["arguments"]
             try:
                 args_obj = json.loads(args_json)
-                result.append(TestToolCallComplete(
-                    index=idx,
-                    id=call["id"] or "",
-                    name=call["function"]["name"],
-                    arguments_json=args_json,
-                    arguments_obj=args_obj,
-                    _source_chunk_index=chunk_index,
-                ))
+                result.append(
+                    TestToolCallComplete(
+                        index=idx,
+                        id=call["id"] or "",
+                        name=call["function"]["name"],
+                        arguments_json=args_json,
+                        arguments_obj=args_obj,
+                        _source_chunk_index=chunk_index,
+                    )
+                )
             except (json.JSONDecodeError, ValueError):
-                result.append(TestToolCallComplete(
-                    index=idx,
-                    id=call["id"] or "",
-                    name=call["function"]["name"],
-                    arguments_json=args_json,
-                    arguments_obj=None,
-                    _source_chunk_index=chunk_index,
-                ))
+                result.append(
+                    TestToolCallComplete(
+                        index=idx,
+                        id=call["id"] or "",
+                        name=call["function"]["name"],
+                        arguments_json=args_json,
+                        arguments_obj=None,
+                        _source_chunk_index=chunk_index,
+                    )
+                )
         return result
 
 
@@ -181,6 +200,7 @@ def _count_timestamp_footers(text: str) -> int:
 # ---------------------------------------------------------------------------
 # Tool call flush helper
 # ---------------------------------------------------------------------------
+
 
 def _flush_tool_calls_at_finish(
     accumulator: _ToolCallAccumulator,
@@ -216,6 +236,7 @@ def _maybe_flush_tool_calls(
 # ---------------------------------------------------------------------------
 # SSE frame accumulator
 # ---------------------------------------------------------------------------
+
 
 def _split_sse_frames(raw: str) -> List[str]:
     """Split raw text into complete SSE frames.
@@ -254,7 +275,7 @@ def _parse_single_frame(frame: str, accumulator: _ToolCallAccumulator, chunk_ind
 
             # SSE data: line
             if line.startswith("data:"):
-                payload = line[len("data:"):].strip()
+                payload = line[len("data:") :].strip()
                 if payload == "[DONE]":
                     events.append(TestDone(_source_chunk_index=chunk_index))
                     continue
@@ -278,6 +299,7 @@ def _parse_single_frame(frame: str, accumulator: _ToolCallAccumulator, chunk_ind
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def parse_sse_events(
     chunks: Sequence[bytes | str],
@@ -361,16 +383,12 @@ def _parse_json_chunk(
             # content
             content = delta.get("content")
             if content is not None and isinstance(content, str):
-                events.append(
-                    TestAssistantTextDelta(delta=content, _source_chunk_index=chunk_index)
-                )
+                events.append(TestAssistantTextDelta(delta=content, _source_chunk_index=chunk_index))
 
             # reasoning_content
             reasoning = delta.get("reasoning_content")
             if reasoning is not None and isinstance(reasoning, str):
-                events.append(
-                    TestReasoningTextDelta(delta=reasoning, _source_chunk_index=chunk_index)
-                )
+                events.append(TestReasoningTextDelta(delta=reasoning, _source_chunk_index=chunk_index))
 
             # tool_calls
             tc_list = delta.get("tool_calls")
@@ -397,9 +415,7 @@ def _parse_json_chunk(
         if finish_reason is not None:
             # Flush accumulated tool calls BEFORE the Finish event.
             _flush_tool_calls_at_finish(accumulator, events, chunk_index)
-            events.append(
-                TestFinish(reason=str(finish_reason), usage=usage, _source_chunk_index=chunk_index)
-            )
+            events.append(TestFinish(reason=str(finish_reason), usage=usage, _source_chunk_index=chunk_index))
 
     return events
 
@@ -407,6 +423,7 @@ def _parse_json_chunk(
 # ---------------------------------------------------------------------------
 # Collectors
 # ---------------------------------------------------------------------------
+
 
 def collect_assistant_text(events: Sequence[TestStreamEvent]) -> str:
     """Concatenate all assistant text delta values."""
@@ -430,10 +447,7 @@ def collect_tool_calls(
     events: Sequence[TestStreamEvent],
 ) -> List[TestToolCallComplete]:
     """Return all complete (valid-json) tool calls."""
-    return [
-        e for e in events
-        if isinstance(e, TestToolCallComplete) and e.arguments_obj is not None
-    ]
+    return [e for e in events if isinstance(e, TestToolCallComplete) and e.arguments_obj is not None]
 
 
 def collect_finish_events(
@@ -446,6 +460,7 @@ def collect_finish_events(
 # ---------------------------------------------------------------------------
 # Protocol validator
 # ---------------------------------------------------------------------------
+
 
 def assert_stream_protocol_valid(
     events: Sequence[TestStreamEvent],
@@ -468,20 +483,14 @@ def assert_stream_protocol_valid(
     if events and isinstance(events[-1], TestDone):
         pass  # OK
     elif events and not isinstance(events[-1], TestDone):
-        raise AssertionError(
-            "I2: [DONE] is not the last event"
-        )
+        raise AssertionError("I2: [DONE] is not the last event")
 
     # --- I1: Exactly one Finish ---
     finishes = collect_finish_events(events)
     if len(finishes) != 1:
-        raise AssertionError(
-            f"I1: Expected 1 Finish, got {len(finishes)}"
-        )
+        raise AssertionError(f"I1: Expected 1 Finish, got {len(finishes)}")
 
-    finish_idx = next(
-        i for i, e in enumerate(events) if isinstance(e, TestFinish)
-    )
+    finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
 
     # --- I3: Done last (already checked above, but also verify no events after) ---
     # We already verified events[-1] is TestDone, so this is covered.
@@ -489,31 +498,23 @@ def assert_stream_protocol_valid(
     # --- I4: No assistant text after finish_reason ---
     for i, e in enumerate(events):
         if i > finish_idx and isinstance(e, TestAssistantTextDelta):
-            raise AssertionError(
-                f"I4: Assistant text after finish at index {i}"
-            )
+            raise AssertionError(f"I4: Assistant text after finish at index {i}")
 
     # --- I5: No reasoning after finish_reason ---
     for i, e in enumerate(events):
         if i > finish_idx and isinstance(e, TestReasoningTextDelta):
-            raise AssertionError(
-                f"I5: Reasoning text after finish at index {i}"
-            )
+            raise AssertionError(f"I5: Reasoning text after finish at index {i}")
 
     # --- I5b: No tool_call delta after finish_reason ---
     for i, e in enumerate(events):
         if i > finish_idx and isinstance(e, TestToolCallDelta):
-            raise AssertionError(
-                f"I5b: Tool call delta after finish at index {i}"
-            )
+            raise AssertionError(f"I5b: Tool call delta after finish at index {i}")
 
     # --- I6: Timestamp appears at most once ---
     text = collect_assistant_text(events)
     ts_count = _count_timestamp_footers(text)
     if ts_count > 1:
-        raise AssertionError(
-            f"I6: Expected <=1 timestamp footer, got {ts_count}"
-        )
+        raise AssertionError(f"I6: Expected <=1 timestamp footer, got {ts_count}")
 
     # --- I7: Timestamp before Finish ---
     if ts_count == 1:
@@ -524,30 +525,20 @@ def assert_stream_protocol_valid(
             if isinstance(e, TestAssistantTextDelta):
                 last_content_idx = i
         if last_content_idx > finish_idx:
-            raise AssertionError(
-                "I7: Timestamp footer appears after finish"
-            )
+            raise AssertionError("I7: Timestamp footer appears after finish")
 
     # --- I8: Tool call arguments are valid JSON when complete ---
     for e in events:
         if isinstance(e, TestToolCallComplete) and e.arguments_obj is None:
-            raise AssertionError(
-                f"I8: Tool call at index {e.index} has invalid JSON arguments"
-            )
+            raise AssertionError(f"I8: Tool call at index {e.index} has invalid JSON arguments")
 
     # --- I9: ToolCallComplete ↔ Finish.reason alignment ---
-    has_tool_call_complete = any(
-        isinstance(e, TestToolCallComplete) for e in events
-    )
+    has_tool_call_complete = any(isinstance(e, TestToolCallComplete) for e in events)
     finish_reason = finishes[0].reason if finishes else None
     if has_tool_call_complete and finish_reason != "tool_calls":
-        raise AssertionError(
-            "I9: Tool call present but finish_reason is not 'tool_calls'"
-        )
+        raise AssertionError("I9: Tool call present but finish_reason is not 'tool_calls'")
     if finish_reason == "tool_calls" and not has_tool_call_complete:
-        raise AssertionError(
-            "I9: finish_reason=tool_calls but no complete tool calls emitted"
-        )
+        raise AssertionError("I9: finish_reason=tool_calls but no complete tool calls emitted")
 
     # --- I10: Content and tool_call in same assistant delta (strict) ---
     if profile == "strict":
@@ -561,23 +552,17 @@ def assert_stream_protocol_valid(
 
         for ci, types in chunk_types.items():
             if "TestAssistantTextDelta" in types and "TestToolCallDelta" in types:
-                raise AssertionError(
-                    "I10: Content and tool_call emitted from same SSE delta"
-                )
+                raise AssertionError("I10: Content and tool_call emitted from same SSE delta")
 
     # --- I15: No TestToolCallComplete after Finish ---
     for i, e in enumerate(events):
         if i > finish_idx and isinstance(e, TestToolCallComplete):
-            raise AssertionError(
-                f"I15: TestToolCallComplete after finish at index {i}"
-            )
+            raise AssertionError(f"I15: TestToolCallComplete after finish at index {i}")
 
     # --- I12: [DONE] not duplicated ---
     done_count = sum(1 for e in events if isinstance(e, TestDone))
     if done_count > 1:
-        raise AssertionError(
-            "I12: Multiple [DONE] events"
-        )
+        raise AssertionError("I12: Multiple [DONE] events")
 
     # --- I11: No events after [DONE] ---
     done_idx = next(
@@ -585,9 +570,7 @@ def assert_stream_protocol_valid(
         -1,
     )
     if done_idx >= 0 and done_idx != len(events) - 1:
-        raise AssertionError(
-            "I11: Events found after [DONE]"
-        )
+        raise AssertionError("I11: Events found after [DONE]")
 
     # --- I13: Duplicate timestamp footer already checked at I6 ---
 

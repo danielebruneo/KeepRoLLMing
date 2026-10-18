@@ -72,47 +72,65 @@ def emit_streaming_parser_event(
 
 
 def emit_frame_received(
-    req_id: str, frame_len: int = 0,
+    req_id: str,
+    frame_len: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_parser_event(req_id, "streaming.parser.frame.received",
-                         frame_len=frame_len or None,
-                         dispatcher=dispatcher)
+    return emit_streaming_parser_event(
+        req_id,
+        "streaming.parser.frame.received",
+        frame_len=frame_len or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_events_generated(
-    req_id: str, event_count: int = 0,
+    req_id: str,
+    event_count: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_parser_event(req_id, "streaming.parser.events_generated",
-                         event_count=event_count or None,
-                         dispatcher=dispatcher)
+    return emit_streaming_parser_event(
+        req_id,
+        "streaming.parser.events_generated",
+        event_count=event_count or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_usage_buffered(
-    req_id: str, usage: Any = None,
+    req_id: str,
+    usage: Any = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_parser_event(req_id, "streaming.parser.usage_buffered",
-                         usage=usage, dispatcher=dispatcher)
+    return emit_streaming_parser_event(req_id, "streaming.parser.usage_buffered", usage=usage, dispatcher=dispatcher)
 
 
 def emit_flushed(
-    req_id: str, channel: str = "assistant", delta_len: int = 0,
+    req_id: str,
+    channel: str = "assistant",
+    delta_len: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_parser_event(req_id, "streaming.parser.flushed",
-                         channel=channel or None,
-                         delta_len=delta_len or None,
-                         dispatcher=dispatcher)
+    return emit_streaming_parser_event(
+        req_id,
+        "streaming.parser.flushed",
+        channel=channel or None,
+        delta_len=delta_len or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_invalid_frame(
-    req_id: str, reason: str = "", frame_snippet: str = "",
+    req_id: str,
+    reason: str = "",
+    frame_snippet: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_parser_event(req_id, "streaming.parser.invalid_frame",
-                         level="WARN",
-                         reason=reason or None,
-                         frame_snippet=frame_snippet or None,
-                         dispatcher=dispatcher)
+    return emit_streaming_parser_event(
+        req_id,
+        "streaming.parser.invalid_frame",
+        level="WARN",
+        reason=reason or None,
+        frame_snippet=frame_snippet or None,
+        dispatcher=dispatcher,
+    )

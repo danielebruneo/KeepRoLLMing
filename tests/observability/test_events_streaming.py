@@ -4,7 +4,6 @@ Verifies that ``events_streaming`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_streaming import (
     emit_downstream_closed,
@@ -45,9 +44,7 @@ class TestEmitStreamingEvent:
             emitted_events.append(event)
 
         dispatcher.subscribe("execution", capture)
-        event = emit_streaming_event(
-            "req-2", "execution.streaming.handler_entry", dispatcher=dispatcher
-        )
+        event = emit_streaming_event("req-2", "execution.streaming.handler_entry", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
         assert emitted_events[0].type == "execution.streaming.handler_entry"
@@ -60,9 +57,7 @@ class TestEmitStreamingEvent:
 
     def test_custom_level(self):
         """Events can be emitted with non-default levels."""
-        event = emit_streaming_event(
-            "req-4", "execution.streaming.handler_error", level="ERROR"
-        )
+        event = emit_streaming_event("req-4", "execution.streaming.handler_error", level="ERROR")
         assert event.level == "ERROR"
 
 
@@ -70,8 +65,7 @@ class TestConvenienceWrappers:
     """Test each convenience wrapper produces correct RuntimeEvent."""
 
     def test_emit_pipeline_build(self):
-        event = emit_pipeline_build("r1", route_name="default", built=True,
-                                    filter_keys=["TLS"])
+        event = emit_pipeline_build("r1", route_name="default", built=True, filter_keys=["TLS"])
         assert event.type == "execution.streaming.pipeline_build"
         assert event.data["route_name"] == "default"
         assert event.data["built"] is True
@@ -152,12 +146,8 @@ class TestConvenienceWrappers:
         from keeprollming.observability.formatters import PlainTextFormatter
 
         formatter = PlainTextFormatter()
-        downstream = formatter.format(
-            emit_downstream_closed("r1", reason="cancelled", chunks_yielded=5)
-        )
-        upstream = formatter.format(
-            emit_upstream_closed("r1", reason="cancelled", total_chunks=7)
-        )
+        downstream = formatter.format(emit_downstream_closed("r1", reason="cancelled", chunks_yielded=5))
+        upstream = formatter.format(emit_upstream_closed("r1", reason="cancelled", total_chunks=7))
 
         assert "execution.streaming.downstream_closed" in downstream
         assert 'reason="cancelled"' in downstream

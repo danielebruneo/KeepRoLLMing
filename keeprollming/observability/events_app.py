@@ -80,9 +80,7 @@ def emit_perf_logs_dir(
     message: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_app_event("", "execution.app.perf_logs_dir",
-                         message=message or None,
-                         dispatcher=dispatcher)
+    return emit_app_event("", "execution.app.perf_logs_dir", message=message or None, dispatcher=dispatcher)
 
 
 def emit_config_reloaded(
@@ -90,9 +88,13 @@ def emit_config_reloaded(
     config_mtime: float | None = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_app_event("", "execution.app.config_reloaded",
-                         message=message or None, config_mtime=config_mtime,
-                         dispatcher=dispatcher)
+    return emit_app_event(
+        "",
+        "execution.app.config_reloaded",
+        message=message or None,
+        config_mtime=config_mtime,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_config_reload_failed(
@@ -100,8 +102,11 @@ def emit_config_reload_failed(
     dispatcher: Optional[Any] = None,
 ) -> None:
     return emit_app_event(
-        "", "execution.app.config_reload_failed", level="ERROR",
-        error=error, dispatcher=dispatcher,
+        "",
+        "execution.app.config_reload_failed",
+        level="ERROR",
+        error=error,
+        dispatcher=dispatcher,
     )
 
 
@@ -109,25 +114,18 @@ def emit_starting(
     message: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_app_event("", "execution.app.starting",
-                         message=message or None,
-                         dispatcher=dispatcher)
+    return emit_app_event("", "execution.app.starting", message=message or None, dispatcher=dispatcher)
 
 
 def emit_stopping(
     message: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_app_event("", "execution.app.stopping",
-                         message=message or None,
-                         dispatcher=dispatcher)
+    return emit_app_event("", "execution.app.stopping", message=message or None, dispatcher=dispatcher)
 
 
 def emit_not_found(
     path: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_app_event("", "execution.app.not_found",
-                         level="WARN",
-                         path=path or None,
-                         dispatcher=dispatcher)
+    return emit_app_event("", "execution.app.not_found", level="WARN", path=path or None, dispatcher=dispatcher)

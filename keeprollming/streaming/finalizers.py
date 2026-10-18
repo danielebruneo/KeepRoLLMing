@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .events import (
     Finish,
@@ -24,6 +24,7 @@ from .events import (
 # Lazy import to avoid circular dependency
 try:
     from ..observability.events import EventSource, RuntimeEvent
+
     _OBSERVABILITY_AVAILABLE = True
 except ImportError:
     _OBSERVABILITY_AVAILABLE = False
@@ -227,10 +228,13 @@ class ToolCallFinalizer(StreamFinalizer):
         if isinstance(event, ToolCallDelta):
             self._buffer_delta(event)
             # O2: emit buffer event
-            self._emit_finalizer_event("buffer", {
-                "tool_call_index": event.index,
-                "tool_call_name": event.name or "",
-            })
+            self._emit_finalizer_event(
+                "buffer",
+                {
+                    "tool_call_index": event.index,
+                    "tool_call_name": event.name or "",
+                },
+            )
             return [event] if self.stream_deltas else []
 
         if isinstance(event, Finish) and event.reason == "tool_calls":
@@ -279,9 +283,12 @@ class ToolCallFinalizer(StreamFinalizer):
         self._flushed = True
 
         # O2: emit finalize event
-        self._emit_finalizer_event("finalize", {
-            "pending_buffers": len(self._buffers),
-        })
+        self._emit_finalizer_event(
+            "finalize",
+            {
+                "pending_buffers": len(self._buffers),
+            },
+        )
 
         if not self._buffers or self.stream_deltas:
             return []
@@ -295,13 +302,16 @@ class ToolCallFinalizer(StreamFinalizer):
     def _buffer_delta(self, delta: ToolCallDelta) -> None:
         """Accumulate a ToolCallDelta into the per-index buffer."""
         idx = delta.index
-        buf = self._buffers.setdefault(idx, {
-            "id": delta.id,
-            "name": delta.name,
-            "args": [],
-            "event_id": delta.event_id,
-            "metadata": dict(delta.metadata),
-        })
+        buf = self._buffers.setdefault(
+            idx,
+            {
+                "id": delta.id,
+                "name": delta.name,
+                "args": [],
+                "event_id": delta.event_id,
+                "metadata": dict(delta.metadata),
+            },
+        )
         if delta.id and not buf["id"]:
             buf["id"] = delta.id
         if delta.name and not buf["name"]:
@@ -349,15 +359,17 @@ class ToolCallFinalizer(StreamFinalizer):
                 pass
             if self.flush_valid_only and args_obj is None:
                 continue
-            result.append(ToolCallComplete(
-                index=idx,
-                id=buf["id"] or "",
-                name=buf["name"] or "",
-                arguments_json=args_json,
-                arguments_obj=args_obj,
-                event_id=buf.get("event_id"),
-                metadata=dict(buf.get("metadata", {})),
-            ))
+            result.append(
+                ToolCallComplete(
+                    index=idx,
+                    id=buf["id"] or "",
+                    name=buf["name"] or "",
+                    arguments_json=args_json,
+                    arguments_obj=args_obj,
+                    event_id=buf.get("event_id"),
+                    metadata=dict(buf.get("metadata", {})),
+                )
+            )
             flushed_keys.append(idx)
         for key in flushed_keys:
             del self._buffers[key]
@@ -372,15 +384,17 @@ class ToolCallFinalizer(StreamFinalizer):
             args_json = "".join(buf["args"])
             try:
                 args_obj = json.loads(args_json)
-                result.append(ToolCallComplete(
-                    index=idx,
-                    id=buf["id"] or "",
-                    name=buf["name"] or "",
-                    arguments_json=args_json,
-                    arguments_obj=args_obj,
-                    event_id=buf.get("event_id"),
-                    metadata=dict(buf.get("metadata", {})),
-                ))
+                result.append(
+                    ToolCallComplete(
+                        index=idx,
+                        id=buf["id"] or "",
+                        name=buf["name"] or "",
+                        arguments_json=args_json,
+                        arguments_obj=args_obj,
+                        event_id=buf.get("event_id"),
+                        metadata=dict(buf.get("metadata", {})),
+                    )
+                )
                 flushed_keys.append(idx)
             except (json.JSONDecodeError, ValueError):
                 pass
@@ -399,14 +413,16 @@ class ToolCallFinalizer(StreamFinalizer):
                 args_obj = json.loads(args_json)
             except (json.JSONDecodeError, ValueError):
                 pass
-            result.append(ToolCallComplete(
-                index=idx,
-                id=buf["id"] or "",
-                name=buf["name"] or "",
-                arguments_json=args_json,
-                arguments_obj=args_obj,
-                event_id=buf.get("event_id"),
-                metadata=dict(buf.get("metadata", {})),
-            ))
+            result.append(
+                ToolCallComplete(
+                    index=idx,
+                    id=buf["id"] or "",
+                    name=buf["name"] or "",
+                    arguments_json=args_json,
+                    arguments_obj=args_obj,
+                    event_id=buf.get("event_id"),
+                    metadata=dict(buf.get("metadata", {})),
+                )
+            )
         self._buffers.clear()
         return result

@@ -527,7 +527,9 @@ class TestC4_DispatcherNoFormatting:
         from keeprollming.observability.routing import RoutingEngine
 
         received: list = []
-        consumer = lambda event: received.append(event)
+
+        def consumer(event):
+            received.append(event)
 
         dispatcher = EventDispatcher(
             routing=RoutingEngine(),  # routing configured
@@ -544,11 +546,14 @@ class TestC4_DispatcherNoFormatting:
     def test_emit_async_delivers_runtime_event_not_str(self):
         """emit_async delivers RuntimeEvent, not str (C4 fix)."""
         import asyncio
+
         from keeprollming.observability.dispatcher import EventDispatcher
         from keeprollming.observability.routing import RoutingEngine
 
         received: list = []
-        async_consumer = lambda event: received.append(event)
+
+        def async_consumer(event):
+            received.append(event)
 
         dispatcher = EventDispatcher(
             routing=RoutingEngine(),  # routing configured
@@ -567,7 +572,9 @@ class TestC4_DispatcherNoFormatting:
         from keeprollming.observability.dispatcher import EventDispatcher
 
         received: list = []
-        consumer = lambda event: received.append(event)
+
+        def consumer(event):
+            received.append(event)
 
         dispatcher = EventDispatcher()  # no routing
         dispatcher.subscribe("streaming", consumer)
@@ -639,7 +646,7 @@ class TestLoggerConsumerFormatting:
 
     def test_consumer_formats_with_routing(self):
         """LoggerConsumer uses RoutingEngine when configured."""
-        from keeprollming.observability.routing import Route, RoutingEngine
+        from keeprollming.observability.routing import RoutingEngine
 
         consumer = LoggerConsumer(
             capture=True,
@@ -680,6 +687,7 @@ class TestO5_AsyncConsumerPath:
     async def test_emit_async_consumer_receives_runtime_event(self):
         """emit() schedules async consumers with RuntimeEvent (not undefined `formatted`)."""
         received: list = []
+
         async def async_consumer(event: RuntimeEvent) -> None:
             received.append(event)
 
@@ -703,6 +711,7 @@ class TestO5_AsyncConsumerPath:
         from keeprollming.observability.routing import RoutingEngine
 
         received: list = []
+
         async def async_consumer(event: RuntimeEvent) -> None:
             received.append(event)
 
@@ -754,6 +763,7 @@ class TestO5_AsyncConsumerPath:
     async def test_emit_async_consumer_receives_event_not_str(self):
         """Async consumers in emit() receive RuntimeEvent, not str (C4 parity)."""
         received_types: list = []
+
         async def async_consumer(event: RuntimeEvent) -> None:
             received_types.append(type(event))
 
@@ -773,6 +783,7 @@ class TestO5_AsyncConsumerPath:
     async def test_emit_async_consumer_with_trace_all(self):
         """Async consumers receive events even with trace_all=True."""
         received: list = []
+
         async def async_consumer(event: RuntimeEvent) -> None:
             received.append(event)
 

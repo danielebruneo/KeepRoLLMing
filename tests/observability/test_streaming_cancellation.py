@@ -176,16 +176,14 @@ async def test_sse_response_cancels_body_on_disconnect_for_asgi_24(monkeypatch) 
 
     response = DisconnectAwareStreamingResponse(body(), media_type="text/event-stream")
     await response(
-        {"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send,
+        {"type": "http", "asgi": {"spec_version": "2.4"}},
+        receive,
+        send,
     )
 
     assert any(message.get("type") == "http.response.body" for message in sent)
     assert body_closed.is_set()
-    peer_events = [
-        event
-        for event in received
-        if event.type == "execution.streaming.peer_disconnected"
-    ]
+    peer_events = [event for event in received if event.type == "execution.streaming.peer_disconnected"]
     assert len(peer_events) == 1
     assert peer_events[0].data["asgi_spec"] == "2.4"
     cancelled = [event for event in received if event.type == "request.lifecycle.cancelled"]
@@ -233,11 +231,7 @@ async def test_sse_response_records_send_failure_as_downstream_abort(monkeypatch
     assert len(cancelled) == 1
     assert cancelled[0].level == "BASIC"
     assert cancelled[0].data["reason"] == "downstream_send_error"
-    peer_events = [
-        event
-        for event in received
-        if event.type == "execution.streaming.peer_disconnected"
-    ]
+    peer_events = [event for event in received if event.type == "execution.streaming.peer_disconnected"]
     assert len(peer_events) == 1
     assert peer_events[0].data == {
         "reason": "downstream_send_error",

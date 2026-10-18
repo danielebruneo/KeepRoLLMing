@@ -12,13 +12,11 @@ from __future__ import annotations
 import asyncio
 from typing import List
 
-import pytest
-
-from keeprollming.streaming.events import AssistantTextDelta, Done, Finish, StreamEvent
+from keeprollming.streaming.events import AssistantTextDelta, StreamEvent
 from keeprollming.streaming.finalizers import StreamFinalizer
 from keeprollming.streaming.parser import StreamParser
-from keeprollming.streaming.serializer import OpenAISSESerializer
 from keeprollming.streaming.runner import run_stream
+from keeprollming.streaming.serializer import OpenAISSESerializer
 from tests.helpers.stream_client import (
     TestAssistantTextDelta,
     TestDone,
@@ -41,6 +39,7 @@ def _make_chunks(*frames) -> list:
 def _make_text_chunk(text: str) -> bytes:
     """Build a single SSE chunk with assistant text."""
     import json
+
     payload = json.dumps({"choices": [{"delta": {"content": text}}]})
     return f"data: {payload}\n\n".encode("utf-8")
 
@@ -48,6 +47,7 @@ def _make_text_chunk(text: str) -> bytes:
 def _make_finish_chunk(reason: str = "stop") -> bytes:
     """Build a single SSE chunk with finish_reason."""
     import json
+
     payload = json.dumps({"choices": [{"delta": {}, "finish_reason": reason}]})
     return f"data: {payload}\n\n".encode("utf-8")
 
@@ -80,8 +80,10 @@ def test_runner_chaining_suppressed_event_still_visible_to_later_finalizer():
     5. Expected: "hello" is NOT in the output (suppressed), but both finalizers
        observed it during processing.
     """
+
     class FakeSuppressingFinalizer(StreamFinalizer):
         """Finalizer that suppresses AssistantTextDelta for output."""
+
         priority: int = 20
 
         def process_event(self, event: StreamEvent) -> list:
@@ -94,6 +96,7 @@ def test_runner_chaining_suppressed_event_still_visible_to_later_finalizer():
 
     class FakeObserverFinalizer(StreamFinalizer):
         """Finalizer that observes events and records them."""
+
         priority: int = 30
 
         def __init__(self):
@@ -131,22 +134,15 @@ def test_runner_chaining_suppressed_event_still_visible_to_later_finalizer():
     events = parse_sse_events(frames)
 
     # Verify "hello" is NOT in the output (suppressed)
-    hello_events = [
-        e for e in events
-        if isinstance(e, TestAssistantTextDelta) and e.delta == "hello"
-    ]
-    assert len(hello_events) == 0, (
-        f"Suppressed event must NOT be in output, but found {len(hello_events)}."
-    )
+    hello_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and e.delta == "hello"]
+    assert len(hello_events) == 0, f"Suppressed event must NOT be in output, but found {len(hello_events)}."
 
     # Verify both finalizers observed the event
     assert len(observer_fin.observed_events) == 1, (
-        f"Observer finalizer must have observed the event, "
-        f"but observed {len(observer_fin.observed_events)} events."
+        f"Observer finalizer must have observed the event, but observed {len(observer_fin.observed_events)} events."
     )
     assert observer_fin.observed_events[0].delta == "hello", (
-        f"Observer must have observed 'hello', "
-        f"but observed '{observer_fin.observed_events[0].delta}'."
+        f"Observer must have observed 'hello', but observed '{observer_fin.observed_events[0].delta}'."
     )
 
     # Verify Finish and Done are present

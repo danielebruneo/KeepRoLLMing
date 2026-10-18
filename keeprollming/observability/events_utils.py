@@ -73,10 +73,14 @@ def emit_utils_event(
 
 
 def emit_dump_failed(
-    req_id: str, error: str = "",
+    req_id: str,
+    error: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_utils_event(req_id, "execution.utils.dump_failed",
-                         level="WARN",
-                         error=error or None,
-                         dispatcher=dispatcher)
+    return emit_utils_event(
+        req_id,
+        "execution.utils.dump_failed",
+        level="WARN",
+        error=error or None,
+        dispatcher=dispatcher,
+    )

@@ -77,7 +77,9 @@ class ToolRewriteFinalizer(StreamFinalizer):
         supported_patterns: Optional[List[str]] = None,
     ) -> None:
         self.supported_patterns = supported_patterns or [
-            "nested", "separate", "function",
+            "nested",
+            "separate",
+            "function",
         ]
         self._parser = PseudoToolCallParser(
             supported_patterns=self.supported_patterns,
@@ -150,7 +152,8 @@ class ToolRewriteFinalizer(StreamFinalizer):
     # ── Internal helpers ──────────────────────────────────────────
 
     def _process_assistant_text(
-        self, event: AssistantTextDelta,
+        self,
+        event: AssistantTextDelta,
     ) -> list[StreamEvent]:
         """Process an AssistantTextDelta event.
 
@@ -214,9 +217,10 @@ class ToolRewriteFinalizer(StreamFinalizer):
 
         # Check for known patterns
         return bool(
-            "<name>" in content or
-            "<function=" in content or
-            PseudoToolCallParser.TAG_PATTERN.search(content) or
+            "<name>" in content
+            or "<function=" in content
+            or PseudoToolCallParser.TAG_PATTERN.search(content)
+            or
             # Detect incomplete XML: open tag without closing tag
             bool(re.search(r"<[a-zA-Z_][a-zA-Z0-9_-]*>", content))
         )
@@ -251,7 +255,8 @@ class ToolRewriteFinalizer(StreamFinalizer):
         return True
 
     def _rewrite_and_emit(
-        self, content: str,
+        self,
+        content: str,
     ) -> list[StreamEvent]:
         """Rewrite accumulated XML buffer to structured tool_calls.
 
@@ -281,12 +286,14 @@ class ToolRewriteFinalizer(StreamFinalizer):
         events: List[StreamEvent] = []
         if cleaned.strip():
             events.append(AssistantTextDelta(delta=cleaned))
-        events.append(ToolCallDelta(
-            index=0,
-            id=tool_call_id,
-            name=pseudo_call.name,
-            arguments_delta=arguments_json,
-        ))
+        events.append(
+            ToolCallDelta(
+                index=0,
+                id=tool_call_id,
+                name=pseudo_call.name,
+                arguments_delta=arguments_json,
+            )
+        )
 
         self._rewritten_tool_call_id = tool_call_id
         return events
@@ -299,12 +306,13 @@ class ToolRewriteFinalizer(StreamFinalizer):
         # Try to find XML pattern in content
         # Look for <name>...</name> pattern (separate pattern)
         name_match = re.search(
-            r'<name>([^<]*)</name>',
-            content, re.IGNORECASE | re.DOTALL,
+            r"<name>([^<]*)</name>",
+            content,
+            re.IGNORECASE | re.DOTALL,
         )
         if name_match:
             # Extract everything from <name> to the end of the XML
-            start = content.find('<name>')
+            start = content.find("<name>")
             # Find the end of the XML (after the last argument tag)
             # For now, extract everything from <name> to the end of content
             # Separate-pattern parsing consumes the remaining XML structure.
@@ -320,11 +328,11 @@ class ToolRewriteFinalizer(StreamFinalizer):
         # Look for nested pattern: <tool_name>...</tool_name>
         # For nested XML, we need to extract the entire XML, not just inner tags
         # Find the first < and the last > in the content
-        first_lt = content.find('<')
-        last_gt = content.rfind('>')
+        first_lt = content.find("<")
+        last_gt = content.rfind(">")
         if first_lt >= 0 and last_gt > first_lt:
             # Extract everything from the first < to the last >
-            return content[first_lt:last_gt + 1]
+            return content[first_lt : last_gt + 1]
 
         # If no XML pattern found, return original content
         return content
@@ -356,18 +364,24 @@ class ToolRewriteFinalizer(StreamFinalizer):
             prev = cleaned
             cleaned = re.sub(
                 nested_pattern,
-                '', cleaned, flags=re.DOTALL,
+                "",
+                cleaned,
+                flags=re.DOTALL,
             )
 
         # Remove separate pattern: <name>...</name>
         cleaned = re.sub(
-            r'<name>[^<]*</name>',
-            '', cleaned, flags=re.IGNORECASE | re.DOTALL,
+            r"<name>[^<]*</name>",
+            "",
+            cleaned,
+            flags=re.IGNORECASE | re.DOTALL,
         )
         # Remove function-param pattern: <function=...>...</function>
         cleaned = re.sub(
-            r'<function=[^>]*>[\s\S]*?</function>',
-            '', cleaned, flags=re.IGNORECASE | re.DOTALL,
+            r"<function=[^>]*>[\s\S]*?</function>",
+            "",
+            cleaned,
+            flags=re.IGNORECASE | re.DOTALL,
         )
         return cleaned.strip()
 

@@ -2,7 +2,12 @@
 
 from keeprollming.filters.contracts import FilterSettingsSchema
 
-SCHEMA = FilterSettingsSchema({
-    "template": str, "timezone": str, "tail_buffer_size": int,
-    "always": bool, "format": str,
-})
+SCHEMA = FilterSettingsSchema(
+    {
+        "template": str,
+        "timezone": str,
+        "tail_buffer_size": int,
+        "always": bool,
+        "format": str,
+    }
+)

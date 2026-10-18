@@ -7,15 +7,13 @@ import pytest
 
 from keeprollming.orchestrator.filter import (
     Filter,
+    FilterChain,
     FilterConfig,
     FilterExecutionContext,
-    FilterChain,
     Request,
-    StreamingResponse,
     Response,
+    StreamingResponse,
 )
-from keeprollming.filters.tool_loop_stopper.request import ToolLoopStopperFilter
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -123,4 +121,3 @@ class TestSSEKeepalive:
         assert len(keepalive_chunks) >= 2
         for chunk in keepalive_chunks:
             assert b'"keepalive":true' in chunk, f"Expected keepalive JSON in chunk, got: {chunk}"
-        assert expected == keepalive_chunks[0] if hasattr(self, 'keepalive_chunks') else True

@@ -10,12 +10,18 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from tests.e2e.conftest import fake_backend_server  # noqa: F401
-
+from tests.e2e.conftest import fake_backend_server as _fake_backend_server_fixture  # noqa: F401
 from tests.e2e.streaming_harness import (
     collect_streaming_chunks as _collect_streaming_chunks,
+)
+from tests.e2e.streaming_harness import (
     configure_scenario as _step_scenario,
 )
+
+
+@pytest.fixture
+def fake_backend_server(request):
+    return request.getfixturevalue("_fake_backend_server_fixture")
 
 
 _fake_backend_url: str | None = None
@@ -71,9 +77,9 @@ def _route() -> _Route:
 
 # ── Non-streaming tests ──────────────────────────────────────────────
 
+
 class _MockResponse:
-    def __init__(self, content="", model="test-model", finish_reason="stop",
-                 tool_calls=None, usage=None):
+    def __init__(self, content="", model="test-model", finish_reason="stop", tool_calls=None, usage=None):
         self.content = content or ""
         self.model = model
         self.finish_reason = finish_reason
@@ -82,11 +88,10 @@ class _MockResponse:
 
 
 class TestToolRewriteNonStreaming:
-
     def test_rewrites_xml_to_tool_calls(self, fake_backend):
         """XML tool call in content → riscritto come tool_calls strutturati."""
-        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
         from keeprollming.filters.tool_rewrite.request import ToolRewriteFilter
+        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
 
         f = ToolRewriteFilter({"enabled": True})
         chain = FilterChain(filters=[f], execution_order=["tool_rewrite"])
@@ -106,8 +111,8 @@ class TestToolRewriteNonStreaming:
 
     def test_passthrough_non_xml_content(self, fake_backend):
         """Content senza XML → passa inalterato."""
-        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
         from keeprollming.filters.tool_rewrite.request import ToolRewriteFilter
+        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
 
         f = ToolRewriteFilter({"enabled": True})
         chain = FilterChain(filters=[f], execution_order=["tool_rewrite"])
@@ -122,25 +127,32 @@ class TestToolRewriteNonStreaming:
 
 
 class TestToolRewriteStreaming:
-
     def test_xml_buffered_then_rewritten(self, fake_backend):
         """XML tool call in streaming → bufferizzato, non yieldato, riscritto in Phase 3."""
         # Split XML into streaming pieces to simulate chunked delivery
         xml_parts = _XML_CONTENT.split("\n\n")
-        _step_scenario(fake_backend, {
-            "chat": {
-                "stream_pieces": [xml_parts],
-                "include_usage": False,
+        _step_scenario(
+            fake_backend,
+            {
+                "chat": {
+                    "stream_pieces": [xml_parts],
+                    "include_usage": False,
+                },
             },
-        })
+        )
 
         payload = {
-            "model": "test-model", "stream": True,
+            "model": "test-model",
+            "stream": True,
             "messages": [{"role": "user", "content": "Check server"}],
         }
-        chunks = asyncio.run(_collect_streaming_chunks(
-            _route(), fake_backend, payload,
-        ))
+        chunks = asyncio.run(
+            _collect_streaming_chunks(
+                _route(),
+                fake_backend,
+                payload,
+            )
+        )
 
         # Collect all content deltas
         content_parts = []
@@ -152,28 +164,32 @@ class TestToolRewriteStreaming:
         full_content = "".join(content_parts)
 
         # XML should NOT appear in the streamed content
-        assert "<tool_call>" not in full_content, \
-            f"Raw XML leaked to client! Got: {full_content[:200]}"
+        assert "<tool_call>" not in full_content, f"Raw XML leaked to client! Got: {full_content[:200]}"
 
     def test_non_xml_content_streamed_immediately(self, fake_backend):
         """Content senza XML → streamato subito, nessun buffer."""
-        _step_scenario(fake_backend, {
-            "chat": {
-                "stream_pieces": [["Hello ", "world"]],
-                "include_usage": False,
+        _step_scenario(
+            fake_backend,
+            {
+                "chat": {
+                    "stream_pieces": [["Hello ", "world"]],
+                    "include_usage": False,
+                },
             },
-        })
+        )
         payload = {
-            "model": "test-model", "stream": True,
+            "model": "test-model",
+            "stream": True,
             "messages": [{"role": "user", "content": "Say hi"}],
         }
-        chunks = asyncio.run(_collect_streaming_chunks(
-            _route(), fake_backend, payload,
-        ))
-        content = "".join(
-            c.get("choices", [{}])[0].get("delta", {}).get("content", "")
-            for c in chunks
+        chunks = asyncio.run(
+            _collect_streaming_chunks(
+                _route(),
+                fake_backend,
+                payload,
+            )
         )
+        content = "".join(c.get("choices", [{}])[0].get("delta", {}).get("content", "") for c in chunks)
         assert content == "Hello world"
 
 

@@ -2,8 +2,8 @@
 
 import pytest
 
-from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
 from keeprollming.filters.tool_rewrite.request import ToolRewriteFilter
+from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
 
 
 class TestToolRewriteFilterBasics:
@@ -31,6 +31,7 @@ class TestToolRewriteFilterPriority:
     def test_priority_is_20(self):
         from keeprollming.filters.summarization.request import SummarizationFilter
         from keeprollming.filters.tool_loop_stopper.request import ToolLoopStopperFilter
+
         sf = SummarizationFilter()
         tr = ToolRewriteFilter()
         tls = ToolLoopStopperFilter()
@@ -120,21 +121,18 @@ class TestToolRewriteFilterProcessResponse:
         result = await f.process_response(resp, ctx)
 
         # Content should be different after rewriting (tool call extracted)
-        assert result.content != content_with_tool or \
-            result.content == content_with_tool  # If rewriting fails, passes through
+        assert (
+            result.content != content_with_tool or result.content == content_with_tool
+        )  # If rewriting fails, passes through
         # Should have at least one tool_call added or content stripped
-        assert hasattr(result, 'tool_calls')
+        assert hasattr(result, "tool_calls")
 
     @pytest.mark.asyncio
     async def test_separate_tool_call_is_rewritten(self):
         """Separate <tool>...</tool> tags should be rewritten."""
         f = ToolRewriteFilter(FilterConfig(enabled=True, name="tool_rewrite"))
 
-        content_with_tool = (
-            "<tool>\n"
-            '{"name": "search", "arguments": {"query": "test"}}\n'
-            "</tool>\n"
-        )
+        content_with_tool = '<tool>\n{"name": "search", "arguments": {"query": "test"}}\n</tool>\n'
 
         class MockResponse:
             def __init__(self):
@@ -148,11 +146,12 @@ class TestToolRewriteFilterProcessResponse:
         result = await f.process_response(resp, ctx)
 
         # Content should be processed
-        assert hasattr(result, 'content')
-        assert hasattr(result, 'tool_calls')
+        assert hasattr(result, "content")
+        assert hasattr(result, "tool_calls")
 
 
 # ── Integration: Pipeline.from_route_config() with dict configs ────
+
 
 class TestPipelineFromRouteConfig:
     """Verify Pipeline.from_route_config() creates filters that don't crash on is_enabled."""
@@ -180,10 +179,12 @@ class TestPipelineFromRouteConfig:
         """Disabled modules are retained in config but not instantiated."""
         from keeprollming.orchestrator.pipeline import Pipeline
 
-        pipeline = Pipeline.from_route_config({
-            "tool_rewrite": {"enabled": False},
-            "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
-        })
+        pipeline = Pipeline.from_route_config(
+            {
+                "tool_rewrite": {"enabled": False},
+                "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
+            }
+        )
         assert pipeline is not None
         assert [filter_.name for filter_ in pipeline.filters] == ["model_nudge"]
 
@@ -191,9 +192,11 @@ class TestPipelineFromRouteConfig:
         """Summarization and nudge modules can coexist in canonical config."""
         from keeprollming.orchestrator.pipeline import Pipeline
 
-        pipeline = Pipeline.from_route_config({
-            "summarization": {"enabled": True},
-            "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
-        })
+        pipeline = Pipeline.from_route_config(
+            {
+                "summarization": {"enabled": True},
+                "model_nudge": {"enabled": True, "trigger_patterns": [":$"]},
+            }
+        )
         assert pipeline is not None
         assert len(pipeline._filters) == 2

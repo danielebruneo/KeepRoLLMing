@@ -3,13 +3,10 @@
 import json
 import time
 
-import pytest
-
 from keeprollming.observability.events import EventSource, RuntimeEvent
 from keeprollming.observability.formatters import (
     FORMAT_ERROR,
     CompactFormatter,
-    Formatter,
     JsonFormatter,
     PlainTextFormatter,
 )

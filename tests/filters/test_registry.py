@@ -23,9 +23,7 @@ def test_registry_is_the_canonical_catalogue_for_builtin_filters():
         "model_nudge",
         "timestamp",
     }
-    assert request_priorities() == {
-        name: module.request_priority for name, module in modules.items()
-    }
+    assert request_priorities() == {name: module.request_priority for name, module in modules.items()}
 
 
 def test_registry_factory_builds_the_declared_filter_module():
@@ -55,6 +53,8 @@ def test_registry_rejects_unknown_or_wrongly_typed_module_settings():
 
 def test_multimodal_validator_rejects_unknown_image_retention_policy():
     with pytest.raises(ValueError, match="max_images_policy"):
-        validate_filter_module_settings({
-            "multimodal_validator": {"max_images_policy": "keep_everything"},
-        })
+        validate_filter_module_settings(
+            {
+                "multimodal_validator": {"max_images_policy": "keep_everything"},
+            }
+        )

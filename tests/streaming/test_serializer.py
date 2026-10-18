@@ -27,11 +27,9 @@ from tests.helpers.stream_client import (
     TestAssistantTextDelta,
     TestDone,
     TestFinish,
-    TestKeepalive,
-    TestStreamEvent,
-    parse_sse_events,
-    collect_assistant_text,
     assert_stream_protocol_valid,
+    collect_assistant_text,
+    parse_sse_events,
 )
 
 # ---------------------------------------------------------------------------
@@ -62,22 +60,21 @@ def test_serializer_keeps_envelope_stable_and_emits_role_once():
 
     serializer = OpenAISSESerializer()
     metadata = {"model": "test-model", "created": 123}
-    frames = serializer.serialize_events([
-        ReasoningTextDelta(delta="think", event_id="chatcmpl-response_1", metadata=metadata),
-        ToolCallComplete(
-            index=0,
-            id="call_1",
-            name="echo",
-            arguments_json='{"text":"hello"}',
-            event_id="chatcmpl-response_1",
-            metadata=metadata,
-        ),
-        Finish(reason="tool_calls", event_id="chatcmpl-response_1", metadata=metadata),
-    ])
-    payloads = [
-        json.loads(frame.decode().removeprefix("data: ").strip())
-        for frame in frames
-    ]
+    frames = serializer.serialize_events(
+        [
+            ReasoningTextDelta(delta="think", event_id="chatcmpl-response_1", metadata=metadata),
+            ToolCallComplete(
+                index=0,
+                id="call_1",
+                name="echo",
+                arguments_json='{"text":"hello"}',
+                event_id="chatcmpl-response_1",
+                metadata=metadata,
+            ),
+            Finish(reason="tool_calls", event_id="chatcmpl-response_1", metadata=metadata),
+        ]
+    )
+    payloads = [json.loads(frame.decode().removeprefix("data: ").strip()) for frame in frames]
 
     assert {payload["id"] for payload in payloads} == {"chatcmpl-response_1"}
     assert {payload["model"] for payload in payloads} == {"test-model"}
@@ -131,9 +128,7 @@ def test_finish_frame_has_no_content_in_delta():
     payload = json.loads(data_line)
 
     delta = payload["choices"][0]["delta"]
-    assert "content" not in delta, (
-        "Finish frame must not contain 'content' in delta"
-    )
+    assert "content" not in delta, "Finish frame must not contain 'content' in delta"
     assert delta == {}, f"Expected empty delta, got {delta}"
 
 
@@ -198,21 +193,16 @@ def test_no_content_after_finish_sequence_validation():
 def test_timestamp_finalizer_output_serializes_valid_stream():
     """TimestampFinalizer output → serialize → strict protocol valid + one footer."""
     from datetime import datetime, timezone
-    from zoneinfo import ZoneInfo
 
     from keeprollming.filters.timestamp.stream import TimestampFinalizer
 
     template = "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
 
-    finalizer = TimestampFinalizer(
-        template=template, clock=lambda: fixed_dt, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=template, clock=lambda: fixed_dt, tail_buffer_size=1024)
 
     # Feed a response with a stale footer
-    finalizer.process_delta(
-        "Hello world\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
-    )
+    finalizer.process_delta("Hello world\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC")
 
     # Collect safe emitted deltas (may be empty for short content)
     safe_deltas = finalizer.process_delta("")
@@ -239,6 +229,7 @@ def test_timestamp_finalizer_output_serializes_valid_stream():
 
     # Count timestamp footers
     import re
+
     footer_count = len(re.findall(r"\n*---\n\[?Timestamp: .+", text))
     assert footer_count == 1, f"Expected exactly 1 timestamp footer, got {footer_count}"
 
@@ -257,6 +248,7 @@ def test_serialize_reasoning_text_delta():
     reasoning_events = [e for e in events if hasattr(e, "delta") and not isinstance(e, TestAssistantTextDelta)]
     # The stream client stores reasoning as TestReasoningTextDelta
     from tests.helpers.stream_client import TestReasoningTextDelta
+
     reasoning_events = [e for e in events if isinstance(e, TestReasoningTextDelta)]
     assert len(reasoning_events) == 1
     assert reasoning_events[0].delta == "Let me think..."
@@ -274,6 +266,7 @@ def test_serialize_tool_call_delta():
     events = parse_sse_events([frame])
 
     from tests.helpers.stream_client import TestToolCallDelta
+
     tc_deltas = [e for e in events if isinstance(e, TestToolCallDelta)]
     assert len(tc_deltas) == 1
     assert tc_deltas[0].index == 0
@@ -301,6 +294,7 @@ def test_serialize_tool_call_complete():
     parsed = parse_sse_events(frames)
 
     from tests.helpers.stream_client import TestToolCallComplete
+
     tc_complete = [e for e in parsed if isinstance(e, TestToolCallComplete)]
     assert len(tc_complete) == 1
     assert tc_complete[0].name == "echo"
@@ -335,6 +329,7 @@ def test_serialize_error():
     # Error frames use {"error": {...}} which has no "choices", so they
     # are silently skipped. Verify the raw frame contains the error info.
     import json
+
     data = json.loads(frame.decode("utf-8").split("\n\n")[0].removeprefix("data: "))
     assert data["error"]["message"] == "Something went wrong"
     assert data["error"]["type"] == "internal_error"
@@ -364,11 +359,13 @@ def test_unhandled_event_type_raises():
 
 def test_frame_ends_with_double_newline():
     """Every serialized frame ends with \\n\\n (parseable by stream_client)."""
-    frames = _SER.serialize_events([
-        AssistantTextDelta(delta="test"),
-        Finish(reason="stop"),
-        Done(),
-    ])
+    frames = _SER.serialize_events(
+        [
+            AssistantTextDelta(delta="test"),
+            Finish(reason="stop"),
+            Done(),
+        ]
+    )
     for frame in frames:
         assert frame.endswith(b"\n\n"), f"Frame does not end with \\n\\n: {frame!r}"
 
@@ -446,9 +443,11 @@ def test_module_level_functions():
     assert isinstance(frame, bytes)
     assert b"test" in frame
 
-    frames = serialize_events([
-        AssistantTextDelta(delta="a"),
-        Finish(reason="stop"),
-        Done(),
-    ])
+    frames = serialize_events(
+        [
+            AssistantTextDelta(delta="a"),
+            Finish(reason="stop"),
+            Done(),
+        ]
+    )
     assert len(frames) == 3

@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from keeprollming.filters import built_in_filter_modules
-from keeprollming.streaming.finalizers import StreamFinalizer, ToolCallFinalizer
+from keeprollming.filters.loop_recovery import retry_limit
 from keeprollming.filters.nudge.stream import (
     NudgeContinuationFinalizer,
 )
@@ -19,6 +19,7 @@ from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
 from keeprollming.filters.timestamp.stream import TimestampFinalizer
 from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 from keeprollming.filters.tool_rewrite.stream import ToolRewriteFinalizer
+from keeprollming.streaming.finalizers import StreamFinalizer, ToolCallFinalizer
 
 _DEFAULT_TS_TEMPLATE = "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
 _DEFAULT_NUDGE_MESSAGE = "Continue."
@@ -63,9 +64,7 @@ def build_finalizers(
     independently from request and non-streaming response filters.
     """
     config = stream_filter_config or {}
-    conversation_tool_calls, conversation_reasoning = _conversation_context(
-        conversation_messages
-    )
+    conversation_tool_calls, conversation_reasoning = _conversation_context(conversation_messages)
     # Direct streams and exact-mode TLS can preserve native tool-call delta
     # cadence. RLS and fuzzy/AB TLS still need terminal attempt isolation
     # until their prefix/recovery contracts are similarly scoped.
@@ -74,10 +73,10 @@ def build_finalizers(
         tls_config is not None
         and tls_config.get("fuzzy_threshold") is None
         and tls_config.get("ab_loop_detection", False) is False
+        and not tls_config.get("fuzzy_max_repeats", 0)
     )
-    recovery_requires_terminal_tool_buffering = (
-        _enabled(config, "reasoning_loop_stopper") is not None
-        or (tls_config is not None and not progressive_exact_tls)
+    recovery_requires_terminal_tool_buffering = _enabled(config, "reasoning_loop_stopper") is not None or (
+        tls_config is not None and not progressive_exact_tls
     )
     finalizers: list[StreamFinalizer] = [
         ToolCallFinalizer(
@@ -101,7 +100,8 @@ def build_finalizers(
         finalizers.append(
             ToolRewriteFinalizer(
                 supported_patterns=tool_rewrite.get(
-                    "supported_patterns", ["nested", "separate", "function"],
+                    "supported_patterns",
+                    ["nested", "separate", "function"],
                 ),
             )
         )
@@ -122,7 +122,12 @@ def build_finalizers(
     if tls is not None:
         finalizers.append(
             TLSFinalizer(
-                max_attempts=tls.get("max_attempts", tls.get("max_repeats", _DEFAULT_MAX_ATTEMPTS)),
+                max_attempts=retry_limit(tls),
+                retry_timeout=tls.get("retry_timeout"),
+                max_repeats=tls.get("max_repeats", 1),
+                fuzzy_max_repeats=tls.get("fuzzy_max_repeats", 0),
+                fuzzy_look_back=tls.get("fuzzy_look_back", 0),
+                send_user_message=tls.get("send_user_message", True),
                 fuzzy_threshold=tls.get("fuzzy_threshold"),
                 detect_ab_loop=tls.get("ab_loop_detection", False),
                 tls_message=tls.get(
@@ -150,14 +155,35 @@ def build_finalizers(
     if rls is not None:
         finalizers.append(
             RLSFinalizer(
-                max_attempts=rls.get("max_attempts", rls.get("max_repeats", _DEFAULT_MAX_ATTEMPTS)),
+                max_attempts=retry_limit(rls),
+                retry_timeout=rls.get("retry_timeout"),
+                max_repeats=rls.get("max_repeats", 1),
+                conversation_reasonings=[
+                    message.get("reasoning_content") or message.get("reasoning")
+                    for message in conversation_messages or []
+                    if message.get("role") == "assistant"
+                    and (message.get("reasoning_content") or message.get("reasoning"))
+                ],
+                send_user_message=rls.get("send_user_message", True),
+                intervention_message=rls.get(
+                    "intervention_message",
+                    "I notice I'm repeating the same reasoning. I will try a different approach.",
+                ),
                 nudge_message=rls.get(
                     "rls_message",
                     "Your reasoning is repeating. Think differently or provide a direct answer.",
                 ),
                 detect_within_stream_loop=rls.get("detect_within_stream_loop", False),
                 conversation_reasoning=conversation_reasoning,
-                conversation_tool_calls=conversation_tool_calls,
+                conversation_tool_calls=next(
+                    (
+                        message.get("tool_calls") or []
+                        for message in reversed(conversation_messages or [])
+                        if message.get("role") == "assistant"
+                        and (message.get("reasoning_content") or message.get("reasoning"))
+                    ),
+                    [],
+                ),
                 fallback_message=rls.get(
                     "fallback_streaming_message",
                     rls.get("fallback_message"),
@@ -183,8 +209,7 @@ def build_finalizers(
             # streaming priority rather than inheriting request ordering.
             finalizer.priority = (
                 module_config["priority"]
-                if isinstance(module_config, Mapping)
-                and "priority" in module_config
+                if isinstance(module_config, Mapping) and "priority" in module_config
                 else module.stream_priority
             )
 

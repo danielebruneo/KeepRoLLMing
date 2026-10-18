@@ -3,16 +3,14 @@
 Verifies that ``events_upstream`` creates correct RuntimeEvent envelopes.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_upstream import (
-    emit_upstream_event,
-    emit_response_received,
+    emit_all_endpoints_failed,
     emit_ctx_len,
     emit_ctx_len_fallback,
-    emit_all_endpoints_failed,
     emit_override_applied,
+    emit_response_received,
+    emit_upstream_event,
 )
 
 

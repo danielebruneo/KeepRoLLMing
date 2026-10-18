@@ -99,253 +99,342 @@ def emit_pipeline_event(
 
 
 def emit_process_request_error(
-    req_id: str, filter_name: str, error: str,
+    req_id: str,
+    filter_name: str,
+    error: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.process_request_error",
-                         level="ERROR",
-                         filter_name=filter_name, error=error,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.process_request_error",
+        level="ERROR",
+        filter_name=filter_name,
+        error=error,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_filter_triggered(
-    req_id: str, action: str, filter_name: str, message: str = "",
+    req_id: str,
+    action: str,
+    filter_name: str,
+    message: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.filter_triggered",
-                         action=action, filter_name=filter_name,
-                         message=message or None,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.filter_triggered",
+        action=action,
+        filter_name=filter_name,
+        message=message or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_process_response_error(
-    req_id: str, filter_name: str, error: str,
+    req_id: str,
+    filter_name: str,
+    error: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.process_response_error",
-                         level="ERROR",
-                         filter_name=filter_name, error=error,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.process_response_error",
+        level="ERROR",
+        filter_name=filter_name,
+        error=error,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_first_chunk(
-    req_id: str, size: int, preview: str = "",
+    req_id: str,
+    size: int,
+    preview: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_first_chunk",
-                         size=size, preview=preview or None,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_first_chunk",
+        size=size,
+        preview=preview or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_chunk_progress(
-    req_id: str, count: int,
+    req_id: str,
+    count: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_chunk_progress",
-                         level="DEBUG",
-                         count=count, dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_chunk_progress",
+        level="DEBUG",
+        count=count,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_filter_error(
-    req_id: str, filter_name: str, error: str,
+    req_id: str,
+    filter_name: str,
+    error: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_filter_error",
-                         level="ERROR",
-                         filter_name=filter_name, error=error,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_filter_error",
+        level="ERROR",
+        filter_name=filter_name,
+        error=error,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_retry(
-    req_id: str, filter_name: str, chunks_processed: int,
+    req_id: str,
+    filter_name: str,
+    chunks_processed: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_retry",
-                         filter_name=filter_name,
-                         chunks_processed=chunks_processed,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_retry",
+        filter_name=filter_name,
+        chunks_processed=chunks_processed,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_stop(
-    req_id: str, filter_name: str, chunks_processed: int,
+    req_id: str,
+    filter_name: str,
+    chunks_processed: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_stop",
-                         filter_name=filter_name,
-                         chunks_processed=chunks_processed,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_stop",
+        filter_name=filter_name,
+        chunks_processed=chunks_processed,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_exhausted(
-    req_id: str, total_chunks: int,
+    req_id: str,
+    total_chunks: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_exhausted",
-                         level="DEBUG",
-                         total_chunks=total_chunks,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_exhausted",
+        level="DEBUG",
+        total_chunks=total_chunks,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_buffer_orphaned(
-    req_id: str, filter_name: str, chunks: int,
+    req_id: str,
+    filter_name: str,
+    chunks: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.buffer_orphaned",
-                         level="DEBUG",
-                         filter_name=filter_name, chunks=chunks,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.buffer_orphaned",
+        level="DEBUG",
+        filter_name=filter_name,
+        chunks=chunks,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_started(
-    req_id: str, has_upstream: bool = False,
+    req_id: str,
+    has_upstream: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_started",
-                         has_upstream=has_upstream,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_started",
+        has_upstream=has_upstream,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_request_filters_done(
-    req_id: str, has_upstream: bool = False,
+    req_id: str,
+    has_upstream: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_request_filters_done",
-                         has_upstream=has_upstream,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_request_filters_done",
+        has_upstream=has_upstream,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_finalizers_built(
-    req_id: str, finalizer_count: int,
+    req_id: str,
+    finalizer_count: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_finalizers_built",
-                         finalizer_count=finalizer_count,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_finalizers_built",
+        finalizer_count=finalizer_count,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_completed(
-    req_id: str, execution_usage: bool = False,
+    req_id: str,
+    execution_usage: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.stream_completed",
-                         execution_usage=execution_usage,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.stream_completed",
+        execution_usage=execution_usage,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_run_stream_entry(
-    req_id: str, has_upstream: bool = False,
+    req_id: str,
+    has_upstream: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.run_stream_entry",
-                         has_upstream=has_upstream,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.run_stream_entry",
+        has_upstream=has_upstream,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_phase1_done(
-    req_id: str, has_upstream: bool = False,
+    req_id: str,
+    has_upstream: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase1_done",
-                         has_upstream=has_upstream,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id, "execution.pipeline.phase1_done", has_upstream=has_upstream, dispatcher=dispatcher
+    )
 
 
 def emit_phase2_start(
     req_id: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase2_start",
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(req_id, "execution.pipeline.phase2_start", dispatcher=dispatcher)
 
 
 def emit_phase2_end(
-    req_id: str, captured_chunks: int,
+    req_id: str,
+    captured_chunks: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase2_end",
-                         captured_chunks=captured_chunks,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.phase2_end",
+        captured_chunks=captured_chunks,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_no_upstream(
     req_id: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.no_upstream",
-                         level="WARN",
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(req_id, "execution.pipeline.no_upstream", level="WARN", dispatcher=dispatcher)
 
 
 def emit_phase3_retry_start(
-    req_id: str, max_retries: int,
+    req_id: str,
+    max_retries: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase3_retry_start",
-                         max_retries=max_retries,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.phase3_retry_start",
+        max_retries=max_retries,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_phase3_retry_result(
-    req_id: str, retry_count: int,
+    req_id: str,
+    retry_count: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase3_retry_result",
-                         level="DEBUG",
-                         retry_count=retry_count,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.phase3_retry_result",
+        level="DEBUG",
+        retry_count=retry_count,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_phase3_retry_end(
     req_id: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase3_retry_end",
-                         level="DEBUG",
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(req_id, "execution.pipeline.phase3_retry_end", level="DEBUG", dispatcher=dispatcher)
 
 
 def emit_phase4_yield_content(
-    req_id: str, chunk_size: int,
+    req_id: str,
+    chunk_size: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase4_yield_content",
-                         level="DEBUG",
-                         chunk_size=chunk_size,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.phase4_yield_content",
+        level="DEBUG",
+        chunk_size=chunk_size,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_phase4_skip_tc(
     req_id: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase4_skip_tc",
-                         level="DEBUG",
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(req_id, "execution.pipeline.phase4_skip_tc", level="DEBUG", dispatcher=dispatcher)
 
 
 def emit_phase4_yield_tc(
-    req_id: str, tool_call_index: int,
+    req_id: str,
+    tool_call_index: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase4_yield_tc",
-                         level="DEBUG",
-                         tool_call_index=tool_call_index,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id,
+        "execution.pipeline.phase4_yield_tc",
+        level="DEBUG",
+        tool_call_index=tool_call_index,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_phase4_error(
-    req_id: str, error: str,
+    req_id: str,
+    error: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase4_error",
-                         level="ERROR",
-                         error=error,
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(
+        req_id, "execution.pipeline.phase4_error", level="ERROR", error=error, dispatcher=dispatcher
+    )
 
 
 def emit_phase4_fr_stop(
     req_id: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_pipeline_event(req_id, "execution.pipeline.phase4_fr_stop",
-                         dispatcher=dispatcher)
+    return emit_pipeline_event(req_id, "execution.pipeline.phase4_fr_stop", dispatcher=dispatcher)

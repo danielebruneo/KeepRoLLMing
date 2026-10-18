@@ -1,8 +1,7 @@
 """Prompt loading and rendering for summary generation."""
 
-import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 # ---------------------------------------------------------------------
@@ -11,6 +10,7 @@ from typing import Optional, Dict, Any
 def _get_config():
     """Lazy import of config constants."""
     from .config import SUMMARY_PROMPT_DIR, SUMMARY_PROMPT_TYPE
+
     return {
         "SUMMARY_PROMPT_DIR": SUMMARY_PROMPT_DIR,
         "SUMMARY_PROMPT_TYPE": SUMMARY_PROMPT_TYPE,
@@ -169,21 +169,21 @@ Transcript:
 === TRANSCRIPT START ===
 {{TRANSCRIPT}}
 === TRANSCRIPT END ===
-"""
+""",
 }
 
 
 def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
     """Load a summary prompt template from config or file or fallback to default."""
     import sys
-    
+
     # Check if we're being monkeypatched via summary package (test compatibility)
-    rs_module = sys.modules.get('keeprollming.summary')
-    
+    rs_module = sys.modules.get("keeprollming.summary")
+
     # Always check for patched values first (for test compatibility)
-    summary_prompt_dir = getattr(rs_module, 'SUMMARY_PROMPT_DIR', None) if rs_module else None
-    summary_prompt_type = getattr(rs_module, 'SUMMARY_PROMPT_TYPE', None) if rs_module else None
-    
+    summary_prompt_dir = getattr(rs_module, "SUMMARY_PROMPT_DIR", None) if rs_module else None
+    summary_prompt_type = getattr(rs_module, "SUMMARY_PROMPT_TYPE", None) if rs_module else None
+
     # If no patching detected, use config defaults
     if summary_prompt_dir is None:
         config = _get_config()
@@ -191,19 +191,20 @@ def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
     if summary_prompt_type is None:
         config = _get_config()
         summary_prompt_type = config["SUMMARY_PROMPT_TYPE"]
-    
+
     effective_type = (prompt_type or summary_prompt_type or "curated").strip()
 
     # If we have custom prompts defined in the configuration, check if this is one of them
     try:
         # Support monkeypatching via summary package (test compatibility)
-        rs_module = sys.modules.get('keeprollming.summary')
-        CONFIG = getattr(rs_module, 'CONFIG', None) if rs_module else None
-        
+        rs_module = sys.modules.get("keeprollming.summary")
+        CONFIG = getattr(rs_module, "CONFIG", None) if rs_module else None
+
         if CONFIG is None:
             from ..config import CONFIG as _CONFIG
+
             CONFIG = _CONFIG
-            
+
         custom_prompts_config = CONFIG.get("custom_summary_prompts", {})
 
         # Only proceed with config-based prompt handling if it's a dict and has our effective_type
@@ -212,7 +213,12 @@ def load_summary_prompt_template(prompt_type: Optional[str] = None) -> str:
 
             # If we have a file path string (relative to _prompts directory)
             # This handles paths that start with ./ or / or contain path separators
-            if isinstance(prompt_config, str) and (prompt_config.startswith('./') or prompt_config.startswith('/') or '/' in prompt_config or '\\' in prompt_config):
+            if isinstance(prompt_config, str) and (
+                prompt_config.startswith("./")
+                or prompt_config.startswith("/")
+                or "/" in prompt_config
+                or "\\" in prompt_config
+            ):
                 try:
                     path = Path(summary_prompt_dir) / prompt_config
                     return path.read_text(encoding="utf-8")
@@ -257,19 +263,11 @@ def render_summary_prompt(
         custom_prompt = load_custom_prompt(prompt_type)
         if custom_prompt != "":
             # We're using a custom prompt provided in request
-            return (
-                custom_prompt
-                .replace("{{TRANSCRIPT}}", transcript)
-                .replace("{{LANG_HINT}}", lang_hint)
-            )
+            return custom_prompt.replace("{{TRANSCRIPT}}", transcript).replace("{{LANG_HINT}}", lang_hint)
 
     template = load_summary_prompt_template(prompt_type=prompt_type)
 
-    return (
-        template
-        .replace("{{TRANSCRIPT}}", transcript)
-        .replace("{{LANG_HINT}}", lang_hint)
-    )
+    return template.replace("{{TRANSCRIPT}}", transcript).replace("{{LANG_HINT}}", lang_hint)
 
 
 def get_summary_system_prompt(prompt_type: Optional[str] = None) -> str:
@@ -279,13 +277,14 @@ def get_summary_system_prompt(prompt_type: Optional[str] = None) -> str:
     """
     # Support monkeypatching via summary package (test compatibility)
     import sys
-    rs_module = sys.modules.get('keeprollming.summary')
-    summary_prompt_type = getattr(rs_module, 'SUMMARY_PROMPT_TYPE', None) if rs_module else None
-    
+
+    rs_module = sys.modules.get("keeprollming.summary")
+    summary_prompt_type = getattr(rs_module, "SUMMARY_PROMPT_TYPE", None) if rs_module else None
+
     if summary_prompt_type is None:
         config = _get_config()
         summary_prompt_type = config["SUMMARY_PROMPT_TYPE"]
-    
+
     effective_type = (prompt_type or summary_prompt_type or "curated").strip()
 
     if effective_type == "classic":
@@ -300,10 +299,7 @@ def get_summary_system_prompt(prompt_type: Optional[str] = None) -> str:
             "Do not invent anything. Keep only what is useful for continuing the conversation."
         )
 
-    return (
-        "You are a context compaction engine. "
-        "Be faithful, compact, structured, and do not invent information."
-    )
+    return "You are a context compaction engine. Be faithful, compact, structured, and do not invent information."
 
 
 def render_incremental_summary_prompt(
@@ -314,14 +310,15 @@ def render_incremental_summary_prompt(
 ) -> str:
     """Render prompt for incremental summary update."""
     from .decision_engine import render_messages_for_summary
-    
+
     transcript = render_messages_for_summary(new_messages)
 
     # Support monkeypatching via summary package (test compatibility)
     import sys
-    rs_module = sys.modules.get('keeprollming.summary')
-    summary_prompt_dir = getattr(rs_module, 'SUMMARY_PROMPT_DIR', None) if rs_module else None
-    
+
+    rs_module = sys.modules.get("keeprollming.summary")
+    summary_prompt_dir = getattr(rs_module, "SUMMARY_PROMPT_DIR", None) if rs_module else None
+
     if summary_prompt_dir is None:
         config = _get_config()
         summary_prompt_dir = config["SUMMARY_PROMPT_DIR"]
@@ -334,8 +331,7 @@ def render_incremental_summary_prompt(
         raise RuntimeError(f"Failed to load incremental prompt template from {path}")
 
     return (
-        template
-        .replace("{{EXISTING_SUMMARY}}", existing_summary)
+        template.replace("{{EXISTING_SUMMARY}}", existing_summary)
         .replace("{{NEW_MESSAGES}}", transcript)
         .replace("{{LANG_HINT}}", lang_hint)
     )

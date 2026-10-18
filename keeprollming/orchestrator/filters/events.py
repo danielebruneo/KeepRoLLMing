@@ -85,92 +85,145 @@ def emit_filter_event(
 
 # ── Convenience wrappers (mirror FilterLogger method signatures) ─────
 
+
 def emit_system_prompt_inserted(context: Any, prompt_preview: str) -> None:
-    emit_filter_event(context, "system_prompt", "filter.system_prompt.inserted",
-                      prompt_preview=prompt_preview[:80])
+    emit_filter_event(
+        context,
+        "system_prompt",
+        "filter.system_prompt.inserted",
+        prompt_preview=prompt_preview[:80],
+    )
 
 
 def emit_system_prompt_overridden(context: Any, prompt_preview: str, old_length: int) -> None:
-    emit_filter_event(context, "system_prompt", "filter.system_prompt.overridden",
-                      prompt_preview=prompt_preview[:80], old_length=old_length)
+    emit_filter_event(
+        context,
+        "system_prompt",
+        "filter.system_prompt.overridden",
+        prompt_preview=prompt_preview[:80],
+        old_length=old_length,
+    )
 
 
 def emit_system_prompt_prepended(context: Any, prompt_preview: str, old_length: int) -> None:
-    emit_filter_event(context, "system_prompt", "filter.system_prompt.prepended",
-                      prompt_preview=prompt_preview[:80], old_length=old_length)
+    emit_filter_event(
+        context,
+        "system_prompt",
+        "filter.system_prompt.prepended",
+        prompt_preview=prompt_preview[:80],
+        old_length=old_length,
+    )
 
 
-def emit_nudge_detected(context: Any, trigger_pattern: str, response_content: str,
-                        nudge_attempt: int, action: str = "nudge", max_attempts: int = 3) -> None:
-    emit_filter_event(context, "model_nudge", "filter.nudge.detected",
-                      trigger_pattern=trigger_pattern,
-                      response_content=response_content[:200],
-                      nudge_attempt=nudge_attempt,
-                      action=action,
-                      max_attempts=max_attempts)
+def emit_nudge_detected(
+    context: Any,
+    trigger_pattern: str,
+    response_content: str,
+    nudge_attempt: int,
+    action: str = "nudge",
+    max_attempts: int = 3,
+) -> None:
+    emit_filter_event(
+        context,
+        "model_nudge",
+        "filter.nudge.detected",
+        trigger_pattern=trigger_pattern,
+        response_content=response_content[:200],
+        nudge_attempt=nudge_attempt,
+        action=action,
+        max_attempts=max_attempts,
+    )
 
 
-def emit_tool_loop_detected(context: Any, function_name: str, args_hash: str,
-                            attempt: int = 1) -> None:
-    emit_filter_event(context, "tool_loop_stopper", "filter.tool_loop.detected",
-                      function_name=function_name,
-                      args_hash=args_hash[:64],
-                      attempt=attempt)
+def emit_tool_loop_detected(context: Any, function_name: str, args_hash: str, attempt: int = 1) -> None:
+    emit_filter_event(
+        context,
+        "tool_loop_stopper",
+        "filter.tool_loop.detected",
+        function_name=function_name,
+        args_hash=args_hash[:64],
+        attempt=attempt,
+    )
 
 
 def emit_tls_intervention(context: Any, messages_count: int) -> None:
-    emit_filter_event(context, "tool_loop_stopper", "filter.tool_loop.intervention",
-                      messages_count=messages_count)
+    emit_filter_event(context, "tool_loop_stopper", "filter.tool_loop.intervention", messages_count=messages_count)
 
 
 def emit_tls_retry(context: Any, model: str, messages_count: int) -> None:
-    emit_filter_event(context, "tool_loop_stopper", "filter.tool_loop.retry",
-                      model=model, messages_count=messages_count)
+    emit_filter_event(
+        context,
+        "tool_loop_stopper",
+        "filter.tool_loop.retry",
+        model=model,
+        messages_count=messages_count,
+    )
 
 
 def emit_tls_fallback(context: Any, reason: str) -> None:
-    emit_filter_event(context, "tool_loop_stopper", "filter.tool_loop.fallback",
-                      reason=reason)
+    emit_filter_event(context, "tool_loop_stopper", "filter.tool_loop.fallback", reason=reason)
 
 
 def emit_reasoning_loop_detected(context: Any, reasoning: str) -> None:
-    emit_filter_event(context, "reasoning_loop_stopper", "filter.reasoning_loop.detected",
-                      reasoning=reasoning[:200])
+    emit_filter_event(
+        context,
+        "reasoning_loop_stopper",
+        "filter.reasoning_loop.detected",
+        reasoning=reasoning[:200],
+    )
 
 
 def emit_rls_intervention(context: Any, messages_count: int) -> None:
-    emit_filter_event(context, "reasoning_loop_stopper", "filter.reasoning_loop.intervention",
-                      messages_count=messages_count)
+    emit_filter_event(
+        context,
+        "reasoning_loop_stopper",
+        "filter.reasoning_loop.intervention",
+        messages_count=messages_count,
+    )
 
 
 def emit_rls_fallback(context: Any) -> None:
     emit_filter_event(context, "reasoning_loop_stopper", "filter.reasoning_loop.fallback")
 
 
-def emit_tool_rewrite_applied(context: Any, tool_name: str,
-                              original_length: int, cleaned_length: int) -> None:
-    emit_filter_event(context, "tool_rewrite", "filter.tool_rewrite.applied",
-                      tool_name=tool_name,
-                      original_length=original_length,
-                      cleaned_length=cleaned_length)
+def emit_tool_rewrite_applied(context: Any, tool_name: str, original_length: int, cleaned_length: int) -> None:
+    emit_filter_event(
+        context,
+        "tool_rewrite",
+        "filter.tool_rewrite.applied",
+        tool_name=tool_name,
+        original_length=original_length,
+        cleaned_length=cleaned_length,
+    )
 
 
-def emit_filter_chain_executed(context: Any, filters_executed: list,
-                               total_filters: int,
-                               nudge_count: int = 0,
-                               loop_count: int = 0) -> None:
-    emit_filter_event(context, "filter_chain", "filter.chain.executed",
-                      filters_executed=filters_executed,
-                      total_filters=total_filters,
-                      nudge_count=nudge_count,
-                      loop_count=loop_count)
+def emit_filter_chain_executed(
+    context: Any,
+    filters_executed: list,
+    total_filters: int,
+    nudge_count: int = 0,
+    loop_count: int = 0,
+) -> None:
+    emit_filter_event(
+        context,
+        "filter_chain",
+        "filter.chain.executed",
+        filters_executed=filters_executed,
+        total_filters=total_filters,
+        nudge_count=nudge_count,
+        loop_count=loop_count,
+    )
 
 
 def emit_filter_error(context: Any, error_type: str, message: str) -> None:
-    emit_filter_event(context, "filter_chain", "filter.error",
-                      level="ERROR",
-                      error_type=error_type,
-                      message=message)
+    emit_filter_event(
+        context,
+        "filter_chain",
+        "filter.error",
+        level="ERROR",
+        error_type=error_type,
+        message=message,
+    )
 
 
 def emit_filter_disabled(context: Any) -> None:

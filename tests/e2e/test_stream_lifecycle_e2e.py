@@ -45,15 +45,9 @@ class TestStreamLifecycleE2E:
         # Uvicorn may preserve SIGTERM as its subprocess status (-15), but it
         # must still exit within the graceful timeout without a forced kill.
         assert exit_code in {0, -15}
-        lifecycle_log = (
-            orchestrator_server.perf_dir.parent / "logs" / "keeprollming.log.json"
-        )
-        assert '"type": "execution.app.stopping"' in lifecycle_log.read_text(
-            encoding="utf-8", errors="replace"
-        )
-        stderr = orchestrator_server.stderr_path.read_text(
-            encoding="utf-8", errors="replace"
-        )
+        lifecycle_log = orchestrator_server.perf_dir.parent / "logs" / "keeprollming.log.json"
+        assert '"type": "execution.app.stopping"' in lifecycle_log.read_text(encoding="utf-8", errors="replace")
+        stderr = orchestrator_server.stderr_path.read_text(encoding="utf-8", errors="replace")
         assert "Task was destroyed but it is pending" not in stderr
 
     def test_shared_upstream_pool_times_out_while_a_stream_holds_only_slot(

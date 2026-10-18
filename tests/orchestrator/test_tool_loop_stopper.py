@@ -11,12 +11,11 @@ from typing import Any, Dict, List
 
 import pytest
 
-from keeprollming.orchestrator.filter import FilterExecutionContext
 from keeprollming.filters.tool_loop_stopper.request import (
-    ToolLoopStopperFilter,
     ToolLoopStopperConfig,
+    ToolLoopStopperFilter,
 )
-
+from keeprollming.orchestrator.filter import FilterExecutionContext
 
 # ── Test Helpers ──────────────────────────────────────────────────────────────
 
@@ -56,12 +55,14 @@ def _make_conv_with_tool(
 
 class MockResponseClass:
     """A proper response class for testing (not MagicMock) so type(response)(content=...) works."""
+
     def __init__(self, content="", tool_calls=None, model="test-model", finish_reason="stop"):
         self.content = content
         self.model = model
         self.tool_calls = tool_calls or []
         self.finish_reason = finish_reason
         self.usage = None
+
 
 def _make_mock_response(
     content: str = "",
@@ -151,7 +152,7 @@ class TestNonStreaming:
         ctx = _make_context(conv)
 
         # Mock the HTTP retry to simulate upstream responding to TLS
-        async def mock_retry(messages, model, upstream_url):
+        async def mock_retry(messages, model, upstream_url, **kwargs):
             assert len(messages) > len(conv)  # Conversation grew
             # Check TLS message was injected
             tool_msgs = [m for m in messages if m["role"] == "tool"]
@@ -192,7 +193,7 @@ class TestNonStreaming:
         )
         ctx = _make_context(conv)
 
-        async def mock_retry(messages, model, upstream_url):
+        async def mock_retry(messages, model, upstream_url, **kwargs):
             # Model repeats the SAME tool call after TLS
             return {
                 "choices": [
@@ -203,7 +204,10 @@ class TestNonStreaming:
                                 {
                                     "id": "r2",
                                     "type": "function",
-                                    "function": {"name": "search_file", "arguments": '{"pattern": "*.py"}'},
+                                    "function": {
+                                        "name": "search_file",
+                                        "arguments": '{"pattern": "*.py"}',
+                                    },
                                 }
                             ],
                         }
@@ -220,8 +224,6 @@ class TestNonStreaming:
 
 
 # ── Configuration Tests ────────────────────────────────────────────────────────
-
-
 
 
 # ── Streaming Tests ───────────────────────────────────────────────────────────
@@ -280,10 +282,15 @@ class TestStreaming:
         )
         ctx = _make_context(conv, stream=True)
 
-        async def mock_retry(messages, model, upstream_url):
+        async def mock_retry(messages, model, upstream_url, **kwargs):
             return {
                 "choices": [
-                    {"message": {"content": "Already did that. Here's the file content.", "tool_calls": []}}
+                    {
+                        "message": {
+                            "content": "Already did that. Here's the file content.",
+                            "tool_calls": [],
+                        }
+                    }
                 ]
             }
 
@@ -309,7 +316,10 @@ class TestConfig:
         config = ToolLoopStopperConfig()
         config.tls_message = ""
         config.__post_init__()
-        assert config.tls_message == "You've already executed this tool call with the same arguments. Please proceed with the next step or try a different approach."
+        assert (
+            config.tls_message
+            == "You've already executed this tool call with the same arguments. Please proceed with the next step or try a different approach."
+        )
 
     def test_empty_fallback_message_defaults(self):
         """Empty fallback_message gets auto-defaulted."""
@@ -318,10 +328,11 @@ class TestConfig:
         config.__post_init__()
         assert config.fallback_message == "I notice I'm repeating the same tool call. Let me try a different approach."
 
-    def test_backward_compat_max_attempts(self):
-        """'max_attempts' config key still works (mapped to max_repeats)."""
+    def test_max_attempts_is_retry_budget_alias(self):
+        """max_attempts is a retry budget alias, independent of max_repeats."""
         f = ToolLoopStopperFilter(config={"max_attempts": 3})
-        assert f.config.max_repeats == 3
+        assert f.config.max_retries == 3
+        assert f.config.max_repeats == 1
 
 
 # ── Helper Method Tests ───────────────────────────────────────────────────────
@@ -335,13 +346,15 @@ class TestHelperMethods:
         f = ToolLoopStopperFilter()
         conv = [
             {"role": "user", "content": "hi"},
-            {"role": "assistant", "tool_calls": [
-                {"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}],
+            },
             {"role": "tool", "content": "sunny"},
-            {"role": "assistant", "tool_calls": [
-                {"function": {"name": "get_time", "arguments": '{"city":"Rome"}'}}
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "get_time", "arguments": '{"city":"Rome"}'}}],
+            },
         ]
         sigs = f._get_signatures_from_conv(conv)
         assert len(sigs) == 2
@@ -356,38 +369,38 @@ class TestHelperMethods:
     def test_count_consecutive_from_end_basic(self):
         """Count consecutive matches from end."""
         f = ToolLoopStopperFilter()
-        sigs = [("a","{}"), ("b","{}"), ("b","{}"), ("b","{}")]
-        assert f._count_consecutive_from_end(sigs, ("b","{}")) == 3
-        assert f._count_consecutive_from_end(sigs, ("a","{}")) == 0
+        sigs = [("a", "{}"), ("b", "{}"), ("b", "{}"), ("b", "{}")]
+        assert f._count_consecutive_from_end(sigs, ("b", "{}")) == 3
+        assert f._count_consecutive_from_end(sigs, ("a", "{}")) == 0
 
     def test_count_consecutive_from_end_single(self):
         """Single consecutive match."""
         f = ToolLoopStopperFilter()
-        sigs = [("a","{}"), ("b","{}"), ("c","{}")]
-        assert f._count_consecutive_from_end(sigs, ("c","{}")) == 1
-        assert f._count_consecutive_from_end(sigs, ("a","{}")) == 0
+        sigs = [("a", "{}"), ("b", "{}"), ("c", "{}")]
+        assert f._count_consecutive_from_end(sigs, ("c", "{}")) == 1
+        assert f._count_consecutive_from_end(sigs, ("a", "{}")) == 0
 
     def test_count_consecutive_from_end_break(self):
         """Counting stops at first non-match."""
         f = ToolLoopStopperFilter()
         # Last is "a", then "b" — so consecutive "a" = 1 (just the last)
-        sigs = [("b","{}"), ("a","{}")]
-        assert f._count_consecutive_from_end(sigs, ("a","{}")) == 1
+        sigs = [("b", "{}"), ("a", "{}")]
+        assert f._count_consecutive_from_end(sigs, ("a", "{}")) == 1
 
     def test_count_fuzzy_in_window_nolimit(self):
         """fuzzy_look_back=0 scans all."""
         f = ToolLoopStopperFilter()
-        sigs = [("a","{}"), ("b","{}"), ("a","{}"), ("c","{}"), ("a","{}")]
-        assert f._count_fuzzy_in_window(sigs, ("a","{}"), look_back=0) == 3
+        sigs = [("a", "{}"), ("b", "{}"), ("a", "{}"), ("c", "{}"), ("a", "{}")]
+        assert f._count_fuzzy_in_window(sigs, ("a", "{}"), look_back=0) == 3
 
     def test_count_fuzzy_in_window_limited(self):
         """fuzzy_look_back=N limits to last N."""
         f = ToolLoopStopperFilter()
-        sigs = [("a","{}"), ("b","{}"), ("a","{}"), ("c","{}"), ("a","{}")]
+        sigs = [("a", "{}"), ("b", "{}"), ("a", "{}"), ("c", "{}"), ("a", "{}")]
         # Last 3: [("a","{}"), ("c","{}"), ("a","{}")] → 2 matches
-        assert f._count_fuzzy_in_window(sigs, ("a","{}"), look_back=3) == 2
+        assert f._count_fuzzy_in_window(sigs, ("a", "{}"), look_back=3) == 2
         # Last 1: [("a","{}")] → 1 match
-        assert f._count_fuzzy_in_window(sigs, ("a","{}"), look_back=1) == 1
+        assert f._count_fuzzy_in_window(sigs, ("a", "{}"), look_back=1) == 1
 
 
 # ── New Detection Behavior Tests ─────────────────────────────────────────────
@@ -399,6 +412,7 @@ class TestConsecutiveRepeats:
     def make_resp(self, tc_dicts):
         """Build a minimal mock response with tool_calls."""
         from keeprollming.orchestrator.filter import StreamingResponse
+
         return StreamingResponse(content="", tool_calls=tc_dicts)
 
     def _make_ctx(self, conv, req_id="test", upstream_url="http://upstream"):
@@ -410,7 +424,7 @@ class TestConsecutiveRepeats:
             upstream_model="test-model",
         )
 
-    async def _mock_retry_ok(self, messages, model, upstream_url):
+    async def _mock_retry_ok(self, messages, model, upstream_url, **kwargs):
         """Mock HTTP retry async."""
         return {"choices": [{"message": {"content": "ok, moving on", "tool_calls": []}}]}
 
@@ -419,16 +433,15 @@ class TestConsecutiveRepeats:
         f = ToolLoopStopperFilter(config={"max_repeats": 1})
         f._make_http_retry = self._mock_retry_ok
         conv = [
-            {"role": "assistant", "tool_calls": [
-                {"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}],
+            },
             {"role": "tool", "content": "sunny"},
         ]
         ctx = self._make_ctx(conv)
 
-        resp = self.make_resp([{
-            "function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}
-        }])
+        resp = self.make_resp([{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}])
         result = asyncio.run(f.process_response(resp, ctx))
 
         assert result is not resp  # Triggers: new response created
@@ -438,20 +451,20 @@ class TestConsecutiveRepeats:
         f = ToolLoopStopperFilter(config={"max_repeats": 2})
         f._make_http_retry = self._mock_retry_ok
         conv = [
-            {"role": "assistant", "tool_calls": [
-                {"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}],
+            },
             {"role": "tool", "content": "result1"},
-            {"role": "assistant", "tool_calls": [
-                {"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}],
+            },
             {"role": "tool", "content": "result2"},
         ]
         ctx = self._make_ctx(conv)
 
-        resp = self.make_resp([{
-            "function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}
-        }])
+        resp = self.make_resp([{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}])
         result = asyncio.run(f.process_response(resp, ctx))
 
         assert result is not resp  # Enough repeats → triggers
@@ -460,16 +473,15 @@ class TestConsecutiveRepeats:
         """max_repeats=2: one repeat is NOT enough, two repeats needed."""
         f = ToolLoopStopperFilter(config={"max_repeats": 2})
         conv = [
-            {"role": "assistant", "tool_calls": [
-                {"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}],
+            },
             {"role": "tool", "content": "result"},
         ]
         ctx = self._make_ctx(conv)
 
-        resp = self.make_resp([{
-            "function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}
-        }])
+        resp = self.make_resp([{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}])
         result = asyncio.run(f.process_response(resp, ctx))
 
         assert result is resp  # Not enough repeats → passes through
@@ -478,16 +490,15 @@ class TestConsecutiveRepeats:
         """max_repeats=0: no exact-match detection."""
         f = ToolLoopStopperFilter(config={"max_repeats": 0})
         conv = [
-            {"role": "assistant", "tool_calls": [
-                {"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}],
+            },
             {"role": "tool", "content": "result"},
         ]
         ctx = self._make_ctx(conv)
 
-        resp = self.make_resp([{
-            "function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}
-        }])
+        resp = self.make_resp([{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}])
         result = asyncio.run(f.process_response(resp, ctx))
         assert result is resp  # Passes through
 
@@ -497,15 +508,19 @@ class TestFuzzyLookBack:
 
     def make_resp(self, tc_dicts):
         from keeprollming.orchestrator.filter import StreamingResponse
+
         return StreamingResponse(content="", tool_calls=tc_dicts)
 
     def make_conv(self, names_args):
         """Build conversation from list of (name, args) tool calls, interleaved with tool results."""
         conv = [{"role": "user", "content": "start"}]
         for i, (name, args) in enumerate(names_args):
-            conv.append({"role": "assistant", "tool_calls": [
-                {"function": {"name": name, "arguments": json.dumps(args)}}
-            ]})
+            conv.append(
+                {
+                    "role": "assistant",
+                    "tool_calls": [{"function": {"name": name, "arguments": json.dumps(args)}}],
+                }
+            )
             conv.append({"role": "tool", "content": f"result{i}"})
         return conv
 
@@ -517,72 +532,78 @@ class TestFuzzyLookBack:
             upstream_model="test-model",
         )
 
-    async def _mock_retry_ok(self, messages, model, upstream_url):
+    async def _mock_retry_ok(self, messages, model, upstream_url, **kwargs):
         return {"choices": [{"message": {"content": "ok", "tool_calls": []}}]}
 
     def test_fuzzy_with_look_back_limits_window(self):
         """fuzzy_max_repeats=3 with look_back=3: only counts in last 3."""
-        f = ToolLoopStopperFilter(config={
-            "fuzzy_max_repeats": 3,
-            "fuzzy_look_back": 3,
-        })
+        f = ToolLoopStopperFilter(
+            config={
+                "fuzzy_max_repeats": 3,
+                "fuzzy_look_back": 3,
+            }
+        )
         f._make_http_retry = self._mock_retry_ok
-        conv = self.make_conv([
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Rome"}),
-        ])
+        conv = self.make_conv(
+            [
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Rome"}),
+            ]
+        )
         ctx = self._make_ctx(conv)
 
-        resp = self.make_resp([{
-            "function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}
-        }])
+        resp = self.make_resp([{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}])
         result = asyncio.run(f.process_response(resp, ctx))
         assert result is not resp
 
     def test_fuzzy_with_look_back_respects_boundary(self):
         """fuzzy_max_repeats=3 with look_back=3: 2 in window, extra outside → no trigger."""
-        f = ToolLoopStopperFilter(config={
-            "max_repeats": 0,  # Disable exact match
-            "fuzzy_max_repeats": 3,
-            "fuzzy_look_back": 3,
-        })
-        conv = self.make_conv([
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Milan"}),
-            ("get_weather", {"city": "Rome"}),
-        ])
+        f = ToolLoopStopperFilter(
+            config={
+                "max_repeats": 0,  # Disable exact match
+                "fuzzy_max_repeats": 3,
+                "fuzzy_look_back": 3,
+            }
+        )
+        conv = self.make_conv(
+            [
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Milan"}),
+                ("get_weather", {"city": "Rome"}),
+            ]
+        )
         ctx = self._make_ctx(conv)
 
-        resp = self.make_resp([{
-            "function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}
-        }])
+        resp = self.make_resp([{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}])
         result = asyncio.run(f.process_response(resp, ctx))
         assert result is resp
 
     def test_fuzzy_look_back_0_scans_all(self):
         """fuzzy_look_back=0 scans entire conversation (default)."""
-        f = ToolLoopStopperFilter(config={
-            "fuzzy_max_repeats": 3,
-            "fuzzy_look_back": 0,
-        })
+        f = ToolLoopStopperFilter(
+            config={
+                "fuzzy_max_repeats": 3,
+                "fuzzy_look_back": 0,
+            }
+        )
         f._make_http_retry = self._mock_retry_ok
-        conv = self.make_conv([
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Milan"}),
-            ("get_weather", {"city": "Rome"}),
-            ("get_weather", {"city": "Naples"}),
-            ("get_weather", {"city": "Rome"}),
-        ])
+        conv = self.make_conv(
+            [
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Milan"}),
+                ("get_weather", {"city": "Rome"}),
+                ("get_weather", {"city": "Naples"}),
+                ("get_weather", {"city": "Rome"}),
+            ]
+        )
         ctx = self._make_ctx(conv)
 
-        resp = self.make_resp([{
-            "function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}
-        }])
+        resp = self.make_resp([{"function": {"name": "get_weather", "arguments": '{"city":"Rome"}'}}])
         result = asyncio.run(f.process_response(resp, ctx))
         assert result is not resp
 

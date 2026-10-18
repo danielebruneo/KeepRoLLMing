@@ -15,11 +15,11 @@ and **synchronous** (< 1ms per lookup).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List
 
 from .events import RuntimeEvent
-from .formatters import Formatter, JsonFormatter, FORMAT_ERROR
+from .formatters import Formatter, JsonFormatter
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,7 @@ class Route:
     formatter:
         The Formatter instance to use for matching events.
     """
+
     priority: int
     event_prefix: str
     formatter: Formatter

@@ -10,56 +10,64 @@ Exports:
 - Route, RoutingEngine (routing.py)
 """
 
+from .consumers import LoggerConsumer, MetricsConsumer, PerformanceConsumer
 from .dispatcher import EventDispatcher
 from .events import EventSource, RuntimeEvent
-from .consumers import LoggerConsumer, MetricsConsumer, PerformanceConsumer
-from .formatters import Formatter, JsonFormatter, PlainTextFormatter, CompactFormatter
-from .routing import Route, RoutingEngine
-from .raw_trace_consumer import RawTraceConsumer
+from .events_downstream import (  # noqa: F401
+    emit_chunk_sent,
+    emit_delivery_closed,
+    emit_delivery_completed,
+    emit_delivery_failed,
+    emit_downstream_event,
+)
+from .events_execution_accounting import (  # noqa: F401
+    emit_attempt_recorded,
+    emit_execution_accounting_event,
+    emit_usage_captured,
+    emit_usage_finalized,
+)
 
 # O8 event modules (new permanent namespaces)
 from .events_request import (  # noqa: F401
-    emit_request_event,
-    emit_received,
-    emit_preprocessing_started,
-    emit_preprocessing_completed,
-    emit_completed,
-    emit_failed as emit_request_failed,
     emit_cancelled,
+    emit_completed,
+    emit_preprocessing_completed,
+    emit_preprocessing_started,
+    emit_received,
+    emit_request_event,
+)
+from .events_request import (
+    emit_failed as emit_request_failed,
+)
+from .events_routing import (
+    emit_failed as emit_routing_failed,
+)
+from .events_routing import (
+    emit_resolved as emit_routing_resolved,
 )
 from .events_routing import (  # noqa: F401
     emit_routing_event,
-    emit_started as emit_routing_started,
-    emit_resolved as emit_routing_resolved,
-    emit_failed as emit_routing_failed,
 )
-from .events_downstream import (  # noqa: F401
-    emit_downstream_event,
-    emit_chunk_sent,
-    emit_delivery_completed,
-    emit_delivery_closed,
-    emit_delivery_failed,
+from .events_routing import (
+    emit_started as emit_routing_started,
 )
 from .events_streaming_parser import (  # noqa: F401
-    emit_streaming_parser_event,
-    emit_frame_received,
     emit_events_generated,
-    emit_usage_buffered,
     emit_flushed,
+    emit_frame_received,
     emit_invalid_frame,
-)
-from .events_execution_accounting import (  # noqa: F401
-    emit_execution_accounting_event,
-    emit_usage_captured,
-    emit_attempt_recorded,
-    emit_usage_finalized,
+    emit_streaming_parser_event,
+    emit_usage_buffered,
 )
 from .events_tool_rewrite import (  # noqa: F401
-    emit_tool_rewrite_event,
+    emit_body_error,
     emit_parse_error,
     emit_streaming_error,
-    emit_body_error,
+    emit_tool_rewrite_event,
 )
+from .formatters import CompactFormatter, Formatter, JsonFormatter, PlainTextFormatter
+from .raw_trace_consumer import RawTraceConsumer
+from .routing import Route, RoutingEngine
 
 __all__ = [
     "EventDispatcher",
@@ -76,4 +84,8 @@ __all__ = [
     "Route",
     "RoutingEngine",
     "RawTraceConsumer",
+    "emit_request_failed",
+    "emit_routing_failed",
+    "emit_routing_resolved",
+    "emit_routing_started",
 ]

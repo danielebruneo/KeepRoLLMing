@@ -12,10 +12,10 @@ import pytest
 
 from keeprollming.filters.timestamp.request import TimestampFilter
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def default_filter():
@@ -39,6 +39,7 @@ def custom_hash_filter():
 # Tests: default template
 # ---------------------------------------------------------------------------
 
+
 class TestDefaultTemplate:
     """Tests using the default timestamp template."""
 
@@ -50,10 +51,7 @@ class TestDefaultTemplate:
 
     def test_double_footer_strips_to_base(self, default_filter):
         """Duplicate stale + fresh footer strips ALL consecutive footers to base."""
-        content = (
-            "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC\n\n"
-            "---\nTimestamp: 2026-06-28 18:55:58 UTC"
-        )
+        content = "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC\n\n---\nTimestamp: 2026-06-28 18:55:58 UTC"
         result = default_filter._strip_existing_timestamp_footer(content)
         assert result == "Hello"
 
@@ -65,10 +63,7 @@ class TestDefaultTemplate:
 
     def test_middle_and_end_footers(self, default_filter):
         """Middle footer preserved, end footer stripped."""
-        content = (
-            "Hello\n---\nTimestamp: 2020-01-01 00:00:00 UTC\nMore text\n\n"
-            "---\nTimestamp: 2026-06-28 18:55:58 UTC"
-        )
+        content = "Hello\n---\nTimestamp: 2020-01-01 00:00:00 UTC\nMore text\n\n---\nTimestamp: 2026-06-28 18:55:58 UTC"
         result = default_filter._strip_existing_timestamp_footer(content)
         assert "Timestamp: 2020-01-01" in result
         assert "Timestamp: 2026-06-28" not in result
@@ -89,6 +84,7 @@ class TestDefaultTemplate:
 # Tests: custom bracket template
 # ---------------------------------------------------------------------------
 
+
 class TestCustomBracketTemplate:
     """Tests using a custom [Generated at %Y-%m-%d] template."""
 
@@ -100,9 +96,7 @@ class TestCustomBracketTemplate:
 
     def test_double_footer_strips_to_base(self, custom_bracket_filter):
         """Duplicate stale + fresh footer strips ALL consecutive footers to base."""
-        content = (
-            "Hello\n[Generated at 2020-01-01]\n[Generated at 2026-06-28]"
-        )
+        content = "Hello\n[Generated at 2020-01-01]\n[Generated at 2026-06-28]"
         result = custom_bracket_filter._strip_existing_timestamp_footer(content)
         assert result == "Hello"
 
@@ -114,9 +108,7 @@ class TestCustomBracketTemplate:
 
     def test_middle_and_end_footers(self, custom_bracket_filter):
         """Middle footer preserved, end footer stripped."""
-        content = (
-            "Hello\n[Generated at 2020-01-01]\nMore text\n[Generated at 2026-06-28]"
-        )
+        content = "Hello\n[Generated at 2020-01-01]\nMore text\n[Generated at 2026-06-28]"
         result = custom_bracket_filter._strip_existing_timestamp_footer(content)
         assert "Generated at 2020-01-01" in result
         assert "Generated at 2026-06-28" not in result
@@ -129,11 +121,7 @@ class TestCustomBracketTemplate:
 
     def test_three_consecutive_footers_stripped(self, custom_bracket_filter):
         """Three consecutive bracket footers should all be stripped to base content."""
-        content = (
-            "Hello\n[Generated at 2020-01-01]\n"
-            "[Generated at 2025-01-01]\n"
-            "[Generated at 2026-01-01]"
-        )
+        content = "Hello\n[Generated at 2020-01-01]\n[Generated at 2025-01-01]\n[Generated at 2026-01-01]"
         result = custom_bracket_filter._strip_existing_timestamp_footer(content)
         assert result == "Hello"
 
@@ -148,6 +136,7 @@ class TestCustomBracketTemplate:
 # Tests: custom hash template
 # ---------------------------------------------------------------------------
 
+
 class TestCustomHashTemplate:
     """Tests using a custom ### Response time: %Y-%m-%d %H:%M:%S template."""
 
@@ -159,10 +148,7 @@ class TestCustomHashTemplate:
 
     def test_double_footer_strips_to_base(self, custom_hash_filter):
         """Duplicate stale + fresh footer strips ALL consecutive footers to base."""
-        content = (
-            "Hello\n### Response time: 2020-01-01 00:00:00\n"
-            "### Response time: 2026-06-28 18:55:58"
-        )
+        content = "Hello\n### Response time: 2020-01-01 00:00:00\n### Response time: 2026-06-28 18:55:58"
         result = custom_hash_filter._strip_existing_timestamp_footer(content)
         assert result == "Hello"
 
@@ -199,31 +185,22 @@ class TestCustomHashTemplate:
 # Tests: _content_has_timestamp_footer
 # ---------------------------------------------------------------------------
 
+
 class TestContentHasTimestampFooter:
     """Tests for the _content_has_timestamp_footer detection method."""
 
     def test_detects_default_footer(self, default_filter):
-        assert default_filter._content_has_timestamp_footer(
-            "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
-        )
-        assert default_filter._content_has_timestamp_footer(
-            "Hello\n\n---\nTimestamp: 2026-06-28 18:55:58 UTC"
-        )
+        assert default_filter._content_has_timestamp_footer("Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC")
+        assert default_filter._content_has_timestamp_footer("Hello\n\n---\nTimestamp: 2026-06-28 18:55:58 UTC")
 
     def test_detects_custom_bracket_footer(self, custom_bracket_filter):
-        assert custom_bracket_filter._content_has_timestamp_footer(
-            "Hello\n[Generated at 2020-01-01]"
-        )
+        assert custom_bracket_filter._content_has_timestamp_footer("Hello\n[Generated at 2020-01-01]")
 
     def test_detects_custom_hash_footer(self, custom_hash_filter):
-        assert custom_hash_filter._content_has_timestamp_footer(
-            "Hello\n### Response time: 2020-01-01 00:00:00"
-        )
+        assert custom_hash_filter._content_has_timestamp_footer("Hello\n### Response time: 2020-01-01 00:00:00")
 
     def test_rejects_non_matching_footer(self, default_filter):
-        assert not default_filter._content_has_timestamp_footer(
-            "Hello\n### Response time: 2020-01-01 00:00:00"
-        )
+        assert not default_filter._content_has_timestamp_footer("Hello\n### Response time: 2020-01-01 00:00:00")
 
     def test_rejects_no_footer(self, default_filter):
         assert not default_filter._content_has_timestamp_footer("Hello world")

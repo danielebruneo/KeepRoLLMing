@@ -3,30 +3,28 @@
 Verifies that ``events_summary`` creates correct RuntimeEvent envelopes.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_summary import (
-    emit_summary_event,
-    emit_plan,
-    emit_request,
-    emit_reply,
-    emit_retry_exhausted,
-    emit_incremental_retry_exhausted,
-    emit_preflight_chunking,
-    emit_incremental_preflight_chunking,
-    emit_preflight_forced_split,
-    emit_incremental_preflight_forced_split,
-    emit_no_progress_abort,
-    emit_incremental_no_progress_abort,
-    emit_overflow_chunking,
-    emit_incremental_overflow_chunking,
-    emit_overflow_forced_split,
-    emit_incremental_overflow_forced_split,
     emit_http_retry_chunking,
-    emit_incremental_http_retry_chunking,
     emit_http_retry_forced_split,
+    emit_incremental_http_retry_chunking,
     emit_incremental_http_retry_forced_split,
+    emit_incremental_no_progress_abort,
+    emit_incremental_overflow_chunking,
+    emit_incremental_overflow_forced_split,
+    emit_incremental_preflight_chunking,
+    emit_incremental_preflight_forced_split,
+    emit_incremental_retry_exhausted,
+    emit_no_progress_abort,
+    emit_overflow_chunking,
+    emit_overflow_forced_split,
+    emit_plan,
+    emit_preflight_chunking,
+    emit_preflight_forced_split,
+    emit_reply,
+    emit_request,
+    emit_retry_exhausted,
+    emit_summary_event,
 )
 
 

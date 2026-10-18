@@ -3,14 +3,12 @@
 Verifies that ``events_embeddings`` creates correct RuntimeEvent envelopes.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_embeddings import (
     emit_embedding_event,
+    emit_failed,
     emit_request,
     emit_request_debug,
-    emit_failed,
     emit_timeout,
 )
 

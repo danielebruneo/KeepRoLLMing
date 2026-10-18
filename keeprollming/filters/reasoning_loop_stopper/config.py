@@ -2,8 +2,19 @@
 
 from keeprollming.filters.contracts import FilterSettingsSchema
 
-SCHEMA = FilterSettingsSchema({
-    "max_attempts": int, "max_repeats": int, "max_retries": int, "rls_message": str,
-    "fallback_message": str, "fallback_streaming_message": str,
-    "send_user_message": bool, "upstream_url": str, "api_key": str,
-})
+SCHEMA = FilterSettingsSchema(
+    {
+        "max_attempts": int,
+        "max_repeats": int,
+        "max_retries": int,
+        "retry_timeout": (int, float),
+        "intervention_message": str,
+        "detect_within_stream_loop": bool,
+        "rls_message": str,
+        "fallback_message": str,
+        "fallback_streaming_message": str,
+        "send_user_message": bool,
+        "upstream_url": str,
+        "api_key": str,
+    }
+)

@@ -154,10 +154,7 @@ class ExecutionUsage:
             prompt = raw_usage.get("prompt_tokens", 0) or 0
             completion = raw_usage.get("completion_tokens", 0) or 0
             prompt_details = raw_usage.get("prompt_tokens_details") or {}
-            cached_prompt = (
-                prompt_details.get("cached_tokens")
-                if isinstance(prompt_details, dict) else None
-            )
+            cached_prompt = prompt_details.get("cached_tokens") if isinstance(prompt_details, dict) else None
             try:
                 cached_prompt = int(cached_prompt) if cached_prompt is not None else None
             except (TypeError, ValueError):
@@ -172,14 +169,10 @@ class ExecutionUsage:
             self.final_completion_tokens = completion
 
         # Rule 2: derive upstream total from upstream prompt + completion.
-        self.upstream_total_tokens = (
-            self.upstream_prompt_tokens + self.upstream_completion_tokens
-        )
+        self.upstream_total_tokens = self.upstream_prompt_tokens + self.upstream_completion_tokens
 
         # Update usage_complete flag
-        self.usage_complete = (
-            self.usage_reported_attempts == self.upstream_attempts
-        )
+        self.usage_complete = self.usage_reported_attempts == self.upstream_attempts
 
     def finalize(self) -> None:
         """Finalize the accounting object.
@@ -192,9 +185,7 @@ class ExecutionUsage:
         which is useful when add_attempt() was called but usage_complete
         was not updated (e.g., when add_attempt() doesn't update it).
         """
-        self.usage_complete = (
-            self.usage_reported_attempts == self.upstream_attempts
-        )
+        self.usage_complete = self.usage_reported_attempts == self.upstream_attempts
 
     def set_final_usage(
         self,

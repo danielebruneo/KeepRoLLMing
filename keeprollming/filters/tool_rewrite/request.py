@@ -14,17 +14,17 @@ Priority=20 — after Summarization (15), before TLS (25).
 import json
 import re
 import uuid
-from typing import List, Optional
+from typing import List
 
+from keeprollming.logger import log
 from keeprollming.orchestrator.filter import (
     Filter,
     FilterConfig,
     FilterExecutionContext,
     Response,
 )
-from keeprollming.logger import log
-from keeprollming.tool_rewrite import PseudoToolCall, PseudoToolCallParser
 from keeprollming.orchestrator.filters.events import emit_tool_rewrite_applied
+from keeprollming.tool_rewrite import PseudoToolCallParser
 
 
 class ToolRewriteFilter(Filter):
@@ -59,9 +59,7 @@ class ToolRewriteFilter(Filter):
     async def process_request(self, request, context):
         return request
 
-    async def process_response(
-        self, response: Response, context: FilterExecutionContext
-    ) -> Response:
+    async def process_response(self, response: Response, context: FilterExecutionContext) -> Response:
         """Detect XML tool calls in response content and convert them (non-streaming)."""
         try:
             content = response.content or ""
@@ -86,8 +84,10 @@ class ToolRewriteFilter(Filter):
 
             # Remove the XML from content (keep surrounding text)
             cleaned = re.sub(
-                r'<tool_call>.*?</tool_call>|<function=[^>]*>.*?</function>',
-                '', content, flags=re.DOTALL
+                r"<tool_call>.*?</tool_call>|<function=[^>]*>.*?</function>",
+                "",
+                content,
+                flags=re.DOTALL,
             )
             cleaned = cleaned.strip()
 
@@ -95,7 +95,8 @@ class ToolRewriteFilter(Filter):
                 context,
                 tool_name=pseudo_call.name,
                 original_length=len(content),
-                cleaned_length=len(cleaned))
+                cleaned_length=len(cleaned),
+            )
 
             # Set both cleaned content and structured tool_calls on the response
             response.content = cleaned
@@ -105,12 +106,16 @@ class ToolRewriteFilter(Filter):
             context.metadata["tool_rewrite_done"] = True
 
         except ImportError:
-            log("WARNING", "tool_rewrite_unavailable",
-                req_id=context.req_id)
+            log("WARNING", "tool_rewrite_unavailable", req_id=context.req_id)
         except Exception as e:
             import traceback
-            log("ERROR", "tool_rewrite_filter_error",
-                req_id=context.req_id, error=str(e),
-                traceback=traceback.format_exc())
+
+            log(
+                "ERROR",
+                "tool_rewrite_filter_error",
+                req_id=context.req_id,
+                error=str(e),
+                traceback=traceback.format_exc(),
+            )
 
         return response

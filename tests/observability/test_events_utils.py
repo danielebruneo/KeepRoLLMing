@@ -3,12 +3,10 @@
 Verifies that ``events_utils`` creates correct RuntimeEvent envelopes.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_utils import (
-    emit_utils_event,
     emit_dump_failed,
+    emit_utils_event,
 )
 
 

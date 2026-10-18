@@ -47,3 +47,10 @@ the same backend but enables a system prompt and nudge filter.
 For all available settings, start from
 [`config.example.full.yaml`](../config.example.full.yaml), not from an old
 configuration snippet found in an issue or historical discussion.
+
+## Next steps
+
+- Connect an application with the [OpenAI Python SDK or LibreChat](CLIENT_INTEGRATION.md).
+- See every HTTP endpoint in the [API reference](API_REFERENCE.md).
+- Learn the terms used in route configuration in the [concepts glossary](CONCEPTS.md).
+- Configure authentication, filters, upstreams, and routing in the [configuration guide](CONFIGURATION.md).

@@ -1,7 +1,6 @@
 """Integration tests for health check functionality."""
 
 import pytest
-from typing import Dict, Any
 
 from keeprollming.healthcheck import (
     HealthCheckResult,
@@ -9,10 +8,10 @@ from keeprollming.healthcheck import (
     quick_healthcheck,
 )
 
-
 # ============================================================================
 # Tests for HealthCheckResult and HealthCheckResults
 # ============================================================================
+
 
 def test_health_check_result_creation():
     """Test creating a health check result."""
@@ -24,7 +23,7 @@ def test_health_check_result_creation():
         actual_model="test-model",
         latency_ms=100.5,
     )
-    
+
     assert result.route_name == "test/route"
     assert result.status == "healthy"
     assert result.upstream_url == "http://test.com"
@@ -40,7 +39,7 @@ def test_health_check_result_unhealthy():
         expected_model="test-model",
         error_message="Connection refused",
     )
-    
+
     assert result.status == "unhealthy"
     assert result.error_message == "Connection refused"
 
@@ -48,7 +47,7 @@ def test_health_check_result_unhealthy():
 def test_health_check_results_add():
     """Test adding results to HealthCheckResults."""
     results = HealthCheckResults()
-    
+
     result1 = HealthCheckResult(
         route_name="route1",
         status="healthy",
@@ -59,10 +58,10 @@ def test_health_check_results_add():
         status="unhealthy",
         upstream_url="http://test2.com",
     )
-    
+
     results.add_result(result1)
     results.add_result(result2)
-    
+
     assert len(results.results) == 2
     assert results.summary["total"] == 2
 
@@ -70,33 +69,38 @@ def test_health_check_results_add():
 def test_health_check_results_summary():
     """Test generating summary statistics."""
     results = HealthCheckResults()
-    
+
     for i in range(5):
-        results.add_result(HealthCheckResult(
-            route_name=f"route{i}",
-            status="healthy",
-            upstream_url="http://test.com",
-        ))
-    
+        results.add_result(
+            HealthCheckResult(
+                route_name=f"route{i}",
+                status="healthy",
+                upstream_url="http://test.com",
+            )
+        )
+
     for i in range(3):
-        results.add_result(HealthCheckResult(
-            route_name=f"error{i}",
-            status="error",
-            error_message="Connection failed",
-        ))
-    
+        results.add_result(
+            HealthCheckResult(
+                route_name=f"error{i}",
+                status="error",
+                error_message="Connection failed",
+            )
+        )
+
     # Check summary counts
     assert results.summary["total"] == 8
     assert results.summary["healthy"] == 5
     assert results.summary["error"] == 3
-    
+
     # Check that is_healthy returns False when there are unhealthy routes
-    assert results.is_healthy == False
+    assert not results.is_healthy
 
 
 # ============================================================================
 # Tests for quick_healthcheck
 # ============================================================================
+
 
 def test_quick_healthcheck_structure():
     """Test that quick_healthcheck returns a boolean."""
@@ -109,17 +113,18 @@ def test_quick_healthcheck_structure():
 # Integration tests with real config
 # ============================================================================
 
+
 def test_healthcheck_with_real_config():
     """Test health check against actual config.yaml."""
-    from keeprollming.config import load_user_routes, CONFIG
+    from keeprollming.config import CONFIG, load_user_routes
     from keeprollming.healthcheck import run_health_check
 
     user_routes = load_user_routes(CONFIG)
-    routes_by_name = {route.name: route for route in user_routes}
-    
+    {route.name: route for route in user_routes}
+
     # Run health check with very short timeout to avoid hanging
     results = run_health_check(CONFIG, timeout=1, verbose=False)
-    
+
     # Should complete and return results object
     assert isinstance(results, HealthCheckResults)
 

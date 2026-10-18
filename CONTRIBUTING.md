@@ -31,12 +31,17 @@ bash scripts/run-single-test.sh tests/filters/test_registry.py
 # Full automated suite: parallel unit/functional tests, then serial E2E tests.
 bash scripts/run-parallel-tests.sh
 
-# Static checks for the files changed by your contribution.
-.venv/bin/ruff check keeprollming/filters/your_module.py tests/filters/test_your_module.py
+# Repository-wide static checks (same gate as CI).
+.venv/bin/ruff check keeprollming tests
+.venv/bin/ruff format --check keeprollming tests
 ```
 
 Use `bash scripts/start-with-fake.sh` when you need to observe a real proxy and
 upstream exchange without a local model.
+
+The development repository enforces these checks in CI. Public releases are
+curated source snapshots and do not include the internal workflow files; run
+the commands above locally rather than assuming a public PR has CI coverage.
 
 ## Project boundaries
 
@@ -56,7 +61,12 @@ Before opening a pull request:
 - Explain the user-visible motivation and any compatibility effect.
 - Keep configuration keys and docs consistent with the registry/loader.
 - Include focused tests; run the relevant suite.
-- Run Ruff on changed Python files and avoid unrelated formatting or generated artifacts.
+- Before submitting, run `.venv/bin/ruff check keeprollming tests` and
+  `.venv/bin/ruff format --check keeprollming tests`. Development CI runs both
+  repository-wide, so formatting-only changes should be included when they are
+  needed to restore the canonical format.
+- Development CI runs the full suite with `.venv/bin/python -m pytest tests/ -q`; locally,
+  `bash scripts/run-parallel-tests.sh` is available for a faster split run.
 - Update `CHANGELOG.md` when the change matters to users or operators.
 
 Please report security-sensitive issues privately rather than placing secrets,

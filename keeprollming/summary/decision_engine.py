@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..token_counter import TokenCounter
 from ..observability import events_summary as _summ
+from ..token_counter import TokenCounter
 
 
 # ---------------------------------------------------------------------
@@ -16,12 +15,13 @@ from ..observability import events_summary as _summ
 def _get_config():
     """Lazy import of config constants."""
     from .config import (
-        SAFETY_MARGIN_TOK,
-        SUMMARY_INSERT_BUDGET_TOK,
         MAX_HEAD,
         MAX_TAIL,
+        SAFETY_MARGIN_TOK,
+        SUMMARY_INSERT_BUDGET_TOK,
         SUMMARY_PIN_FIRST_USER,
     )
+
     return {
         "SAFETY_MARGIN_TOK": SAFETY_MARGIN_TOK,
         "SUMMARY_INSERT_BUDGET_TOK": SUMMARY_INSERT_BUDGET_TOK,
@@ -35,9 +35,11 @@ def _get_config():
 # Decision data structures
 # ---------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class SummarizePlan:
     """Plan for summarization decision."""
+
     should: bool
     reason: str
     threshold: int
@@ -53,7 +55,10 @@ class SummarizePlan:
 # Message splitting utilities
 # ---------------------------------------------------------------------
 
-def split_messages(messages: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+
+def split_messages(
+    messages: List[Dict[str, Any]],
+) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     """Split system message from non-system messages."""
     system_msgs = [m for m in messages if m.get("role") == "system"]
     non_system = [m for m in messages if m.get("role") != "system"]
@@ -118,6 +123,7 @@ def _estimate_repacked_tokens(
 # Head/Tail selection logic
 # ---------------------------------------------------------------------
 
+
 def _choose_head_tail(
     tok: TokenCounter,
     *,
@@ -136,9 +142,11 @@ def _choose_head_tail(
     """
     n = len(non_system)
     if n <= 2:
-        return (0, 0, _estimate_repacked_tokens(
-            tok, sys_msg=sys_msg, head=[], tail=[], summary_budget_tok=summary_budget_tok
-        ))
+        return (
+            0,
+            0,
+            _estimate_repacked_tokens(tok, sys_msg=sys_msg, head=[], tail=[], summary_budget_tok=summary_budget_tok),
+        )
 
     best: Tuple[int, int, int] | None = None
 
@@ -185,6 +193,7 @@ def _choose_head_tail(
 # Main decision function
 # ---------------------------------------------------------------------
 
+
 def should_summarise(
     *,
     tok: TokenCounter,
@@ -200,7 +209,7 @@ def should_summarise(
     """Make the summarization decision and choose dynamic head/tail sizes.
 
     All summarization logic lives here (decision + sizing + accounting).
-    
+
     Args:
         tok: TokenCounter instance for token estimation
         messages: List of conversation messages
@@ -215,7 +224,7 @@ def should_summarise(
     Returns:
         SummarizePlan with decision and sizing information
     """
-    config = _get_config()
+    _get_config()
     threshold = max(256, int(ctx_eff) - int(max_out) - int(safety_margin_tok))
     prompt_tok_est = _estimate_tokens_for_msgs(tok, messages)
 
@@ -309,6 +318,7 @@ def should_summarise(
 # ---------------------------------------------------------------------
 # Message rendering for summary prompts
 # ---------------------------------------------------------------------
+
 
 def render_messages_for_summary(messages: List[Dict[str, Any]], max_chars: int = 12000) -> str:
     """Render messages as plain text transcript for summary prompt."""

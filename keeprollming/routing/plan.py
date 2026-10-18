@@ -12,7 +12,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ..core.config_types import RouteSettings
 
@@ -45,6 +45,8 @@ class RoutePlan:
     client_model: str
     model: str
     route_name: str
+    requested_route_name: str
+    reroute_chain: tuple[str, ...]
     route_hierarchy: tuple[str, ...]
     settings: RouteSettings
     context_window: int
@@ -71,6 +73,10 @@ class RoutePlan:
         upstream_url: str,
         routes_by_name: Mapping[str, Any] | None = None,
         defaults: Any = None,
+        requested_route_name: str | None = None,
+        reroute_chain: tuple[str, ...] | None = None,
+        attempt_routes: Sequence[tuple[Any, str]] | None = None,
+        preserved_filters: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> "RoutePlan":
         """Compile route-derived runtime decisions after route resolution."""
         from ..orchestrator.pipeline import Pipeline
@@ -80,14 +86,30 @@ class RoutePlan:
         base_url = normalized_url[:-3] if normalized_url.endswith("/v1") else normalized_url
         frozen_filters = _freeze(settings.filters or {})
         mutable_filters = _thaw(frozen_filters)
-        resolved_attempts = [
-            UpstreamAttempt.from_route(candidate_route, candidate_model, defaults)
-            for candidate_route, candidate_model in resolve_fallback_chain(
+        if preserved_filters:
+            # The selector explicitly owns these named modules. Merge only
+            # those modules; all other target filters remain target-owned.
+            for name, source_config in preserved_filters.items():
+                target_config = mutable_filters.get(name)
+                if isinstance(target_config, Mapping) and isinstance(source_config, Mapping):
+                    merged = dict(target_config)
+                    merged.update(_thaw(source_config))
+                    mutable_filters[name] = merged
+                else:
+                    mutable_filters[name] = _thaw(source_config)
+        frozen_filters = _freeze(mutable_filters)
+        if attempt_routes is None:
+            route_attempts = resolve_fallback_chain(
                 route,
                 settings.upstream_model,
                 routes_by_name=dict(routes_by_name or {}),
                 defaults=defaults,
             )
+        else:
+            route_attempts = list(attempt_routes)
+        resolved_attempts = [
+            UpstreamAttempt.from_route(candidate_route, candidate_model, defaults)
+            for candidate_route, candidate_model in route_attempts
         ]
         # ``upstream_url`` has already incorporated endpoint-level root/env
         # fallback rules. Keep the primary plan aligned with that decision.
@@ -103,6 +125,8 @@ class RoutePlan:
             client_model=client_model,
             model=model,
             route_name=settings.route_name or getattr(route, "name", ""),
+            requested_route_name=(requested_route_name or settings.route_name or getattr(route, "name", "")),
+            reroute_chain=tuple(reroute_chain or (settings.route_name or getattr(route, "name", ""),)),
             route_hierarchy=tuple(getattr(route, "_route_hierarchy", ()) or ()),
             settings=settings,
             context_window=context_window,
@@ -121,9 +145,7 @@ class RoutePlan:
         """Create the mutable pipeline instance for this one request only."""
         from ..orchestrator.pipeline import Pipeline
 
-        return Pipeline.from_route_config(
-            _thaw(self.filters), api_key=self.settings.api_key
-        ) or Pipeline()
+        return Pipeline.from_route_config(_thaw(self.filters), api_key=self.settings.api_key) or Pipeline()
 
     def build_upstream_headers(self) -> dict[str, str]:
         """Return fresh request headers, including route API auth when needed."""

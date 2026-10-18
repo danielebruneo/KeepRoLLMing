@@ -16,15 +16,16 @@ from tests.helpers.stream_client import (
     TestFinish,
     TestToolCallComplete,
     TestToolCallDelta,
+    assert_stream_protocol_valid,
     collect_assistant_text,
     collect_tool_calls,
     parse_sse_events,
-    assert_stream_protocol_valid,
 )
 
 # ---------------------------------------------------------------------------
 # Helper: build a minimal SSE content chunk
 # ---------------------------------------------------------------------------
+
 
 def _content_chunk(text: str, finish_reason: str | None = None, index: int = 0) -> bytes:
     """Return a downstream OpenAI-compatible SSE data chunk."""
@@ -92,9 +93,11 @@ def _reasoning_chunk(text: str) -> bytes:
     }
     return b"data: " + json.dumps(obj).encode() + b"\n\n"
 
+
 # ---------------------------------------------------------------------------
 # Test 1: normal content + finish + [DONE]
 # ---------------------------------------------------------------------------
+
 
 def test_mini_client_parses_normal_content_finish_done() -> None:
     """Input SSE: content chunks → finish_reason stop → [DONE].
@@ -128,6 +131,7 @@ def test_mini_client_parses_normal_content_finish_done() -> None:
 # Test 2: content after finish_reason
 # ---------------------------------------------------------------------------
 
+
 def test_validator_rejects_content_after_finish() -> None:
     """Input SSE: content → finish → content → [DONE]."""
     chunks = [
@@ -146,6 +150,7 @@ def test_validator_rejects_content_after_finish() -> None:
 # Test 3: [DONE] not last
 # ---------------------------------------------------------------------------
 
+
 def test_validator_rejects_done_not_last() -> None:
     """Input SSE: content → [DONE] → content."""
     chunks = [
@@ -162,6 +167,7 @@ def test_validator_rejects_done_not_last() -> None:
 # ---------------------------------------------------------------------------
 # Test 4: duplicate finish_reason
 # ---------------------------------------------------------------------------
+
 
 def test_validator_rejects_duplicate_finish() -> None:
     """Input SSE: content → finish stop → finish stop → [DONE]."""
@@ -181,6 +187,7 @@ def test_validator_rejects_duplicate_finish() -> None:
 # Test 5: duplicate [DONE]
 # ---------------------------------------------------------------------------
 
+
 def test_validator_rejects_duplicate_done() -> None:
     """Input SSE: content → finish → [DONE] → [DONE]."""
     chunks = [
@@ -199,12 +206,11 @@ def test_validator_rejects_duplicate_done() -> None:
 # Test 6: duplicate timestamp footer
 # ---------------------------------------------------------------------------
 
+
 def test_validator_rejects_duplicate_timestamp_footer() -> None:
     """Input SSE: content with two timestamp footers → finish → [DONE]."""
     chunks = [
-        _content_chunk(
-            "Hello\n\n---\nTimestamp: 2026-01-01 00:00:00 UTC\n\n---\nTimestamp: 2026-01-01 01:00:00 UTC"
-        ),
+        _content_chunk("Hello\n\n---\nTimestamp: 2026-01-01 00:00:00 UTC\n\n---\nTimestamp: 2026-01-01 01:00:00 UTC"),
         _content_chunk("", finish_reason="stop"),
         b"data: [DONE]\n\n",
     ]
@@ -218,12 +224,11 @@ def test_validator_rejects_duplicate_timestamp_footer() -> None:
 # Test 7: single timestamp before finish (should pass)
 # ---------------------------------------------------------------------------
 
+
 def test_validator_accepts_single_timestamp_before_finish() -> None:
     """Input SSE: content with one timestamp footer → finish → [DONE]."""
     chunks = [
-        _content_chunk(
-            "Hello\n\n---\nTimestamp: 2026-01-01 00:00:00 UTC"
-        ),
+        _content_chunk("Hello\n\n---\nTimestamp: 2026-01-01 00:00:00 UTC"),
         _content_chunk("", finish_reason="stop"),
         b"data: [DONE]\n\n",
     ]
@@ -235,6 +240,7 @@ def test_validator_accepts_single_timestamp_before_finish() -> None:
 # ---------------------------------------------------------------------------
 # Test 8: tool_call arguments must be valid JSON when finished
 # ---------------------------------------------------------------------------
+
 
 def test_tool_call_arguments_must_be_valid_json_when_finished() -> None:
     """Input SSE: tool_call chunk with invalid function.arguments → finish tool_calls → [DONE]."""
@@ -258,6 +264,7 @@ def test_tool_call_arguments_must_be_valid_json_when_finished() -> None:
 # Test 9: tool_call requires finish_reason=tool_calls
 # ---------------------------------------------------------------------------
 
+
 def test_tool_call_requires_finish_reason_tool_calls() -> None:
     """Input SSE: tool_call chunk → finish_reason stop → [DONE]."""
     chunks = [
@@ -279,6 +286,7 @@ def test_tool_call_requires_finish_reason_tool_calls() -> None:
 # ---------------------------------------------------------------------------
 # Test 10: content and tool_call in same delta rejected in strict profile
 # ---------------------------------------------------------------------------
+
 
 def test_content_and_tool_call_same_delta_rejected_in_strict_profile() -> None:
     """Input SSE: one chunk with both delta.content and delta.tool_calls → finish tool_calls → [DONE]."""
@@ -309,6 +317,7 @@ def test_content_and_tool_call_same_delta_rejected_in_strict_profile() -> None:
 # Test D: multiple SSE frames in one chunk
 # ---------------------------------------------------------------------------
 
+
 def test_parse_multiple_sse_frames_in_one_chunk() -> None:
     """Two SSE frames inside a single chunk separated by blank line."""
     frame1 = _content_chunk("Hello ")
@@ -331,6 +340,7 @@ def test_parse_multiple_sse_frames_in_one_chunk() -> None:
 # ---------------------------------------------------------------------------
 # Test E: SSE frame split across chunks
 # ---------------------------------------------------------------------------
+
 
 def test_parse_sse_frame_split_across_chunks() -> None:
     """A single SSE frame is split across two input chunks."""
@@ -359,12 +369,13 @@ def test_parse_sse_frame_split_across_chunks() -> None:
 # Test F: [DONE] with extra whitespace
 # ---------------------------------------------------------------------------
 
+
 def test_parse_done_split_or_with_extra_whitespace() -> None:
     """[DONE] with surrounding whitespace or split across chunks."""
     # Chunk 1: partial [DONE]
-    chunk1 = b'data: [DO'
+    chunk1 = b"data: [DO"
     # Chunk 2: NE] + two newlines
-    chunk2 = b'NE]\n\n'
+    chunk2 = b"NE]\n\n"
 
     events = parse_sse_events([chunk1, chunk2])
 
@@ -377,6 +388,7 @@ def test_parse_done_split_or_with_extra_whitespace() -> None:
 # Test A: chunk index tracks real SSE chunk
 # ---------------------------------------------------------------------------
 
+
 def test_chunk_index_tracks_real_sse_chunk() -> None:
     """Content in chunk 0, tool_call in chunk 1, finish in chunk 2, DONE in chunk 3.
 
@@ -387,9 +399,7 @@ def test_chunk_index_tracks_real_sse_chunk() -> None:
     # Chunk 0: content
     c0 = _content_chunk("Hello ")
     # Chunk 1: tool_call
-    tc1 = _tool_call_chunk(
-        index=0, id="call_123", name="run_command", arguments='{"cmd":"ls"}'
-    )
+    tc1 = _tool_call_chunk(index=0, id="call_123", name="run_command", arguments='{"cmd":"ls"}')
     # Chunk 2: finish
     c2 = _content_chunk("", finish_reason="tool_calls")
     # Chunk 3: DONE
@@ -423,6 +433,7 @@ def test_chunk_index_tracks_real_sse_chunk() -> None:
 # Test B: tool_call_complete is before finish
 # ---------------------------------------------------------------------------
 
+
 def test_tool_call_complete_is_before_finish() -> None:
     """tool_call chunk → finish_reason tool_calls → DONE.
 
@@ -430,9 +441,7 @@ def test_tool_call_complete_is_before_finish() -> None:
     Validator passes.
     """
     chunks = [
-        _tool_call_chunk(
-            index=0, id="call_abc", name="run_command", arguments='{"cmd":"ls"}'
-        ),
+        _tool_call_chunk(index=0, id="call_abc", name="run_command", arguments='{"cmd":"ls"}'),
         _content_chunk("", finish_reason="tool_calls"),
         b"data: [DONE]\n\n",
     ]
@@ -463,6 +472,7 @@ def test_tool_call_complete_is_before_finish() -> None:
 # ---------------------------------------------------------------------------
 # Test C: delta and finish_reason in same chunk are both parsed
 # ---------------------------------------------------------------------------
+
 
 def test_delta_and_finish_reason_in_same_chunk_are_both_parsed() -> None:
     """One chunk with delta.content='Hello' and finish_reason='stop' → DONE.

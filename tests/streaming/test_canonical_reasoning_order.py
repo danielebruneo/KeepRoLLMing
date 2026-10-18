@@ -13,20 +13,15 @@ See _docs/streaming-v2-reasoning-order-contract.md for the full contract.
 
 import json
 
-import pytest
-
+from keeprollming.filters.nudge.stream import NudgeContinuationFinalizer
 from keeprollming.streaming.events import (
     AssistantTextDelta,
     Done,
     Finish,
     ReasoningTextDelta,
     StreamEvent,
-    ToolCallDelta,
 )
-from keeprollming.filters.nudge.stream import NudgeContinuationFinalizer
 from keeprollming.streaming.parser import StreamParser
-from keeprollming.streaming.serializer import OpenAISSESerializer
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,9 +51,7 @@ def _parse_and_collect(
         # Pass events through finalizers
         all_events = []
         for event in events:
-            produced, _ = _pass_through_finalizers_with_buffer_tracking(
-                [event], finalizers
-            )
+            produced, _ = _pass_through_finalizers_with_buffer_tracking([event], finalizers)
             all_events.extend(produced)
 
         # Run finalize on all finalizers
@@ -197,16 +190,20 @@ class TestParserStreamingOrder:
     def test_same_frame_reasoning_and_content(self):
         """Same-frame reasoning + content: Reasoning → Assistant → Finish → Done."""
         chunks = [
-            _sse_chunk({
-                "choices": [{
-                    "delta": {
-                        "role": "assistant",
-                        "reasoning_content": "R1",
-                        "content": "C1",
-                        "finish_reason": "stop",
-                    }
-                }]
-            }),
+            _sse_chunk(
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "role": "assistant",
+                                "reasoning_content": "R1",
+                                "content": "C1",
+                                "finish_reason": "stop",
+                            }
+                        }
+                    ]
+                }
+            ),
             b"data: [DONE]\n\n",
         ]
         events = _parse_and_collect(chunks)
@@ -267,7 +264,7 @@ class TestPassiveFinalizerStability:
 
         # With Nudge disabled (no finalizers)
         events_no_nudge = _parse_and_collect(chunks)
-        types_no_nudge = _event_types(events_no_nudge)
+        _event_types(events_no_nudge)
 
         # With Nudge enabled but not triggered (no lazy pattern)
         nudge = NudgeContinuationFinalizer()
@@ -302,12 +299,8 @@ class TestPassiveFinalizerStability:
         assert assistant == ["C1"]
 
         # Reasoning should come before assistant in the event list
-        reasoning_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, ReasoningTextDelta)
-        )
-        assistant_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, AssistantTextDelta)
-        )
+        reasoning_idx = next(i for i, e in enumerate(events) if isinstance(e, ReasoningTextDelta))
+        assistant_idx = next(i for i, e in enumerate(events) if isinstance(e, AssistantTextDelta))
         assert reasoning_idx < assistant_idx
 
 
@@ -330,7 +323,7 @@ class TestRecoveryPreservation:
         nudge.process_event(AssistantTextDelta(delta="Hello:"))
 
         # Finalize triggers recovery
-        events1 = nudge.finalize()
+        nudge.finalize()
         assert nudge.decision is not None
         assert nudge.decision.kind == "append_continuation"
 
@@ -422,14 +415,10 @@ class TestInvariants:
         ]
         events = _parse_and_collect(chunks)
 
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, Finish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, Finish))
         for i, e in enumerate(events):
             if i > finish_idx:
-                assert not isinstance(e, ReasoningTextDelta), (
-                    f"ReasoningTextDelta found after Finish at index {i}"
-                )
+                assert not isinstance(e, ReasoningTextDelta), f"ReasoningTextDelta found after Finish at index {i}"
 
     def test_no_assistant_after_finish(self):
         """I4: No AssistantTextDelta after Finish."""
@@ -441,14 +430,10 @@ class TestInvariants:
         ]
         events = _parse_and_collect(chunks)
 
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, Finish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, Finish))
         for i, e in enumerate(events):
             if i > finish_idx:
-                assert not isinstance(e, AssistantTextDelta), (
-                    f"AssistantTextDelta found after Finish at index {i}"
-                )
+                assert not isinstance(e, AssistantTextDelta), f"AssistantTextDelta found after Finish at index {i}"
 
     def test_finish_exactly_once(self):
         """I1: Exactly one Finish per stream."""

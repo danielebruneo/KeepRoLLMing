@@ -2,13 +2,11 @@
 
 import json
 import time
-from io import StringIO
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from keeprollming.observability.dispatcher import EventDispatcher
-from keeprollming.observability.events import EventSource, RuntimeEvent, LEVEL_ORDER
+from keeprollming.observability.events import LEVEL_ORDER, EventSource, RuntimeEvent
 from keeprollming.observability.formatters import JsonFormatter, PlainTextFormatter
 from keeprollming.observability.projectors import (
     FileSink,

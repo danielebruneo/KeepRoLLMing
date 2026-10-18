@@ -91,8 +91,7 @@ async def dump_failed_payload(
                 "_payload_size_bytes": len(payload_bytes),
             }
             summary["_note"] = (
-                f"Payload exceeded {_MAX_DUMP_FILE_SIZE_MB}MB limit. "
-                f"Full payload size: {len(payload_bytes)} bytes"
+                f"Payload exceeded {_MAX_DUMP_FILE_SIZE_MB}MB limit. Full payload size: {len(payload_bytes)} bytes"
             )
             payload_bytes = json.dumps(summary, indent=2, default=str).encode("utf-8")
 
@@ -103,6 +102,7 @@ async def dump_failed_payload(
     except Exception as e:
         # Never let a dump failure propagate
         from keeprollming.observability import events_utils as _u
+
         _u.emit_dump_failed(req_id=req_id, error=str(e))
         return None
 

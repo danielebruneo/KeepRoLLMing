@@ -186,9 +186,7 @@ class PerformanceConsumer:
         recovery_count = data.get("recovery_count", 0)
         retry_amplification_ratio = data.get("retry_amplification_ratio")
         try:
-            if retry_amplification_ratio is not None and not math.isfinite(
-                float(retry_amplification_ratio)
-            ):
+            if retry_amplification_ratio is not None and not math.isfinite(float(retry_amplification_ratio)):
                 retry_amplification_ratio = None
         except (TypeError, ValueError):
             retry_amplification_ratio = None

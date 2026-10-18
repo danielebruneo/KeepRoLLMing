@@ -9,15 +9,13 @@ configuration, specifically:
 
 from __future__ import annotations
 
-import pytest
-
-from keeprollming.orchestrator.pipeline import Pipeline
-from keeprollming.filters.tool_rewrite.stream import ToolRewriteFinalizer
-from keeprollming.filters.timestamp.stream import TimestampFinalizer
-from keeprollming.streaming.finalizers import ToolCallFinalizer
 from keeprollming.filters.nudge.stream import NudgeContinuationFinalizer
-from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
-from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
+from keeprollming.filters.timestamp.stream import TimestampFinalizer
+from keeprollming.filters.tool_rewrite.stream import ToolRewriteFinalizer
+from keeprollming.orchestrator.pipeline import Pipeline
+from keeprollming.streaming.finalizers import ToolCallFinalizer
+
+
 class TestBuildV2FinalizersChainConstruction:
     """Verify V2 finalizer chain construction from route config."""
 
@@ -25,32 +23,28 @@ class TestBuildV2FinalizersChainConstruction:
         """ToolRewriteFinalizer is present when tool_rewrite is enabled."""
         pipeline = Pipeline(stream_filter_config={"tool_rewrite": {"enabled": True}})
         finalizers = pipeline._build_stream_finalizers()
-        tr_finalizers = [
-            f for f in finalizers if isinstance(f, ToolRewriteFinalizer)
-        ]
+        tr_finalizers = [f for f in finalizers if isinstance(f, ToolRewriteFinalizer)]
         assert len(tr_finalizers) == 1, (
-            f"Expected exactly one ToolRewriteFinalizer when filter is "
-            f"enabled, got {len(tr_finalizers)}."
+            f"Expected exactly one ToolRewriteFinalizer when filter is enabled, got {len(tr_finalizers)}."
         )
 
     def test_tool_rewrite_disabled_excludes_finalizer(self):
         """ToolRewriteFinalizer is absent when tool_rewrite is disabled."""
         pipeline = Pipeline(stream_filter_config={"tool_rewrite": {"enabled": False}})
         finalizers = pipeline._build_stream_finalizers()
-        tr_finalizers = [
-            f for f in finalizers if isinstance(f, ToolRewriteFinalizer)
-        ]
+        tr_finalizers = [f for f in finalizers if isinstance(f, ToolRewriteFinalizer)]
         assert len(tr_finalizers) == 0, (
-            f"Expected zero ToolRewriteFinalizer when filter is disabled, "
-            f"got {len(tr_finalizers)}."
+            f"Expected zero ToolRewriteFinalizer when filter is disabled, got {len(tr_finalizers)}."
         )
 
     def test_priority_ordering(self):
         """Priority order: ToolRewrite(15) < Timestamp(20) < ToolCall(40)."""
-        pipeline = Pipeline(stream_filter_config={
-            "timestamp": {"enabled": True},
-            "tool_rewrite": {"enabled": True},
-        })
+        pipeline = Pipeline(
+            stream_filter_config={
+                "timestamp": {"enabled": True},
+                "tool_rewrite": {"enabled": True},
+            }
+        )
         finalizers = pipeline._build_stream_finalizers()
 
         # Build priority map
@@ -62,9 +56,7 @@ class TestBuildV2FinalizersChainConstruction:
         assert "ToolRewriteFinalizer" in priority_map, (
             "ToolRewriteFinalizer must be in the chain when tool_rewrite is enabled."
         )
-        assert "ToolCallFinalizer" in priority_map, (
-            "ToolCallFinalizer must always be in the chain."
-        )
+        assert "ToolCallFinalizer" in priority_map, "ToolCallFinalizer must always be in the chain."
 
         # Verify priority ordering
         assert priority_map["TimestampFinalizer"] == 20, (
@@ -83,17 +75,18 @@ class TestBuildV2FinalizersChainConstruction:
         tc_idx = next(i for i, f in enumerate(finalizers) if isinstance(f, ToolCallFinalizer))
 
         assert tr_idx < ts_idx < tc_idx, (
-            f"Finalizers must be in priority order: ToolRewrite({tr_idx}) < "
-            f"Timestamp({ts_idx}) < ToolCall({tc_idx})."
+            f"Finalizers must be in priority order: ToolRewrite({tr_idx}) < Timestamp({ts_idx}) < ToolCall({tc_idx})."
         )
 
     def test_full_chain_priority_order(self):
         """Full chain: ToolRewrite(15) < Timestamp(20) < ToolCall(40) < Nudge(50)."""
-        pipeline = Pipeline(stream_filter_config={
-            "timestamp": {"enabled": True},
-            "tool_rewrite": {"enabled": True},
-            "model_nudge": {"enabled": True},
-        })
+        pipeline = Pipeline(
+            stream_filter_config={
+                "timestamp": {"enabled": True},
+                "tool_rewrite": {"enabled": True},
+                "model_nudge": {"enabled": True},
+            }
+        )
         finalizers = pipeline._build_stream_finalizers()
 
         expected_order = [
@@ -106,9 +99,7 @@ class TestBuildV2FinalizersChainConstruction:
 
         # Verify all expected finalizers are present
         for expected in expected_order:
-            assert expected in actual_types, (
-                f"{expected.__name__} must be in the finalizer chain."
-            )
+            assert expected in actual_types, f"{expected.__name__} must be in the finalizer chain."
 
         # Verify ordering
         for i in range(len(expected_order) - 1):
@@ -121,15 +112,15 @@ class TestBuildV2FinalizersChainConstruction:
 
     def test_config_mapping_supported_patterns(self):
         """tool_rewrite supported_patterns maps to the V2 finalizer."""
-        pipeline = Pipeline(stream_filter_config={
-            "tool_rewrite": {
-                "enabled": True,
-                "supported_patterns": ["nested", "separate"],
-            },
-        })
+        pipeline = Pipeline(
+            stream_filter_config={
+                "tool_rewrite": {
+                    "enabled": True,
+                    "supported_patterns": ["nested", "separate"],
+                },
+            }
+        )
         finalizers = pipeline._build_stream_finalizers()
-        tr_finalizers = [
-            f for f in finalizers if isinstance(f, ToolRewriteFinalizer)
-        ]
+        tr_finalizers = [f for f in finalizers if isinstance(f, ToolRewriteFinalizer)]
         assert len(tr_finalizers) == 1
         assert tr_finalizers[0].supported_patterns == ["nested", "separate"]

@@ -8,21 +8,23 @@ Verifies:
 """
 
 import asyncio
-import json
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext, FilterChain
 from keeprollming.filters.nudge.request import ModelNudgeFilter
-
-
-from keeprollming.orchestrator.filter import StreamingResponse  # shared DTO (Architecture v2.1)
+from keeprollming.orchestrator.filter import (
+    FilterChain,
+    FilterConfig,
+    FilterExecutionContext,
+    StreamingResponse,  # shared DTO (Architecture v2.1)
+)
 
 
 class MockStreamingResponse(StreamingResponse):
     """Legacy alias — delegates to shared StreamingResponse dataclass."""
+
     pass
 
 
@@ -62,7 +64,7 @@ class TestStreamingFilterChainResultUsage:
 
         # Assert: filter returned a processed response (not None, not the original)
         assert result is not None, "Filter chain must return a response"
-        assert hasattr(result, 'content'), "Response must have content"
+        assert hasattr(result, "content"), "Response must have content"
         # Content should be the accumulated response (even if it's still lazy with no HTTP retry)
         assert "Now I will:" in result.content
 
@@ -90,7 +92,7 @@ class TestFilterChainResultContent:
 
         # The result should be a NEW response (not the original mock)
         assert result is not mock_response, "Filter must return new response, not original"
-        assert hasattr(result, 'content')
+        assert hasattr(result, "content")
         # Content must include the original lazy text
         assert "Now I will:" in result.content
 
@@ -119,7 +121,7 @@ class TestNonStreamingFilterChainResultUsage:
         result = asyncio.run(filter_instance.process_response(mock_response, ctx))
 
         assert result is not None
-        assert hasattr(result, 'content')
+        assert hasattr(result, "content")
         # Even without HTTP retry, the filter detects lazy pattern and returns accumulated content
         assert len(result.content) > 0
 
@@ -130,17 +132,17 @@ class TestStreamingHandlerMockIntegration:
     @pytest.mark.asyncio
     async def test_filter_chain_modifies_content_in_streaming_context(self):
         """Simulate streaming handler flow: filter modifies response, result is captured."""
-        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
+        from keeprollming.orchestrator.filter import FilterExecutionContext
 
         # Setup filter
         filter_chain_config = {
-                "model_nudge": {
-                    "enabled": True,
-                    "trigger_patterns": [":$"],
-                    "action": "nudge",
-                    "max_attempts": 1,
-                    "upstream_url": "",  # No HTTP call
-                }
+            "model_nudge": {
+                "enabled": True,
+                "trigger_patterns": [":$"],
+                "action": "nudge",
+                "max_attempts": 1,
+                "upstream_url": "",  # No HTTP call
+            }
         }
 
         chain = _nudge_chain(filter_chain_config)
@@ -155,13 +157,12 @@ class TestStreamingHandlerMockIntegration:
 
         # Verify the processed result is usable (has content)
         assert processed is not None
-        assert hasattr(processed, 'content')
+        assert hasattr(processed, "content")
         content = processed.content
 
         # Simulate what the streaming handler should do: use processed content
         if content:
             reconstructed_text = content
-            assistant_parts = [content]
             assert len(reconstructed_text) > 0
             assert "Now I will:" in reconstructed_text
 

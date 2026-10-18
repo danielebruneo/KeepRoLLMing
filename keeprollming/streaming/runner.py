@@ -40,7 +40,7 @@ from .events import (
 )
 from .finalizers import StreamFinalizer
 from .parser import StreamParser, _parse_single_frame, _split_sse_frames
-from .serializer import OpenAISSESerializer, serialize_event
+from .serializer import OpenAISSESerializer
 
 if TYPE_CHECKING:
     from keeprollming.filters.nudge.stream import RecoveryDecision
@@ -48,6 +48,7 @@ if TYPE_CHECKING:
 # Lazy import to avoid circular dependency
 try:
     from ..observability.events import EventSource, RuntimeEvent
+
     _OBSERVABILITY_AVAILABLE = True
 except ImportError:
     _OBSERVABILITY_AVAILABLE = False
@@ -86,9 +87,8 @@ def _parse_frame_into_events(
 
     NOTE: The runner currently uses parser internals
     (``_parse_single_frame``, ``_split_sse_frames``) and maintains its own
-    pending state.  This is temporary - Phase 3+ should refactor the runner
-    to use ``StreamParser.parse()`` directly.  See
-    ``_agent/state/STREAMING_V2_INTEGRATION_PLAN.md`` for the planned refactor.
+    pending state. A future consolidation can use ``StreamParser.parse()``
+    directly instead of maintaining a second parser integration here.
     """
     return _parse_single_frame(
         frame,
@@ -203,9 +203,7 @@ def _pass_through_finalizers_with_buffer_tracking(
     # - start_index: the index of the next finalizer to process
     # - suppressed: True if a previous finalizer consumed/buffered this
     #   event, meaning it should NOT be emitted even if it reaches the end
-    work_queue: List[tuple[StreamEvent, int, bool]] = [
-        (ev, 0, False) for ev in events
-    ]
+    work_queue: List[tuple[StreamEvent, int, bool]] = [(ev, 0, False) for ev in events]
 
     while work_queue:
         ev, start_idx, suppressed = work_queue.pop(0)
@@ -224,14 +222,12 @@ def _pass_through_finalizers_with_buffer_tracking(
                 type(fin).__name__ == "TimestampFinalizer"
                 and isinstance(ev, AssistantTextDelta)
                 and any(
-                    type(later).__name__ == "NudgeContinuationFinalizer"
-                    for later in finalizers_by_priority[i + 1:]
+                    type(later).__name__ == "NudgeContinuationFinalizer" for later in finalizers_by_priority[i + 1 :]
                 )
             ):
                 if not any(
-                    type(later).__name__ == "NudgeContinuationFinalizer"
-                    and getattr(later, "stream_deltas", False)
-                    for later in finalizers_by_priority[i + 1:]
+                    type(later).__name__ == "NudgeContinuationFinalizer" and getattr(later, "stream_deltas", False)
+                    for later in finalizers_by_priority[i + 1 :]
                 ):
                     # Standalone finalizer mode keeps the historic
                     # finalize-owned behaviour.
@@ -360,9 +356,7 @@ def _restart_upstream_for_recovery(
             if _is_recovery_capable(fin):
                 fin.reset(
                     preserve_buffer=preserve_buffer,
-                    recovery_attempt=(
-                        type(fin).__name__ == recovery_decision.origin_finalizer
-                    ),
+                    recovery_attempt=(type(fin).__name__ == recovery_decision.origin_finalizer),
                 )
             else:
                 fin.reset(preserve_buffer=preserve_buffer)
@@ -492,21 +486,14 @@ def _collect_finalize_outputs(
         if type(fin).__name__ == "TimestampFinalizer":
             ts_fin = fin
 
-    if (
-        nudge_fin is not None
-        and ts_fin is not None
-        and nudge_idx >= 0
-        and getattr(nudge_fin, "stream_deltas", False)
-    ):
+    if nudge_fin is not None and ts_fin is not None and nudge_idx >= 0 and getattr(nudge_fin, "stream_deltas", False):
         # Production nudge streams every delta as it arrives.  Timestamp has
         # observed the same text only to decide whether a footer is needed;
         # emitting its full tail here would duplicate already-sent content.
         # Emit its freshly formatted footer alone, then any structural
         # non-text finalizer output (for example a completed tool call).
         if getattr(ts_fin, "_final_delta", None) is not None:
-            outputs.append(serializer.serialize_event(
-                AssistantTextDelta(delta=ts_fin._format_timestamp())
-            ))
+            outputs.append(serializer.serialize_event(AssistantTextDelta(delta=ts_fin._format_timestamp())))
         for i, evts in enumerate(all_events):
             if i in (nudge_idx, finalizers_by_priority.index(ts_fin)):
                 continue
@@ -537,9 +524,7 @@ def _collect_finalize_outputs(
                 rewritten_events: List[StreamEvent] = []
                 if tr_fin is not None:
                     tr_fin.reset(preserve_buffer=False)
-                    rewrite_result = tr_fin.process_event(
-                        AssistantTextDelta(delta=merged_text)
-                    )
+                    rewrite_result = tr_fin.process_event(AssistantTextDelta(delta=merged_text))
                     # Collect all events from process_event
                     rewritten_events.extend(rewrite_result)
                     # Also collect any events from finalize (e.g. flushed buffers)
@@ -563,9 +548,7 @@ def _collect_finalize_outputs(
                 ts_fin.reset(preserve_buffer=False)
                 ts_prefix_events: List[StreamEvent] = []
                 if cleaned_text:
-                    ts_prefix_events = ts_fin.process_event(
-                        AssistantTextDelta(delta=cleaned_text)
-                    )
+                    ts_prefix_events = ts_fin.process_event(AssistantTextDelta(delta=cleaned_text))
                 ts_result = ts_fin.finalize()
 
                 # Emit tool call events first (before text content)
@@ -669,24 +652,16 @@ def _emit_fallback(
                 events.append(serializer.serialize_event(fe))
         except RuntimeError:
             # Fallback: emit raw message if TimestampFinalizer fails
-            events.append(serializer.serialize_event(
-                AssistantTextDelta(delta=fallback_message)
-            ))
+            events.append(serializer.serialize_event(AssistantTextDelta(delta=fallback_message)))
     else:
         # No TimestampFinalizer, emit raw message
-        events.append(serializer.serialize_event(
-            AssistantTextDelta(delta=fallback_message)
-        ))
+        events.append(serializer.serialize_event(AssistantTextDelta(delta=fallback_message)))
 
     # Emit Finish(reason="stop")
-    events.append(serializer.serialize_event(
-        Finish(reason="stop")
-    ))
+    events.append(serializer.serialize_event(Finish(reason="stop")))
 
     # Emit Done
-    events.append(serializer.serialize_event(
-        Done()
-    ))
+    events.append(serializer.serialize_event(Done()))
 
     return events
 
@@ -724,8 +699,13 @@ def _check_recovery_decision_with_fallback(
         # Recovery disabled - no upstream factory provided
         return None, None
 
-    # If global limit is reached, recovery is rejected (no fallback)
+    # A global cap must reject a bad attempt, not release its buffered calls.
     if global_attempt_index >= max_global_recovery_attempts:
+        for fin in finalizers_by_priority:
+            if type(fin).__name__ in {"TLSFinalizer", "RLSFinalizer"} and (
+                getattr(fin, "decision", None) is not None or getattr(fin, "recovery_exhausted", False)
+            ):
+                return None, type(fin).__name__
         return None, None
 
     recovery_decision = None
@@ -837,17 +817,11 @@ async def _run_core(
     # attempt's already-produced output (for example RLS/TLS).
     _pass_through_buffer: List[bytes] = []
 
-    _recovery_requires_buffering = (
-        upstream_factory is not None
-        and any(
-            _is_recovery_capable(fin)
-            and not (
-                type(fin).__name__ == "NudgeContinuationFinalizer"
-                and getattr(fin, "stream_deltas", False)
-            )
-            and not getattr(fin, "allows_live_output", False)
-            for fin in finalizers_by_priority
-        )
+    _recovery_requires_buffering = upstream_factory is not None and any(
+        _is_recovery_capable(fin)
+        and not (type(fin).__name__ == "NudgeContinuationFinalizer" and getattr(fin, "stream_deltas", False))
+        and not getattr(fin, "allows_live_output", False)
+        for fin in finalizers_by_priority
     )
 
     # B2: loop for recovery attempts
@@ -856,9 +830,7 @@ async def _run_core(
             if done_serialized:
                 break
 
-            s = raw_chunk if isinstance(raw_chunk, str) else raw_chunk.decode(
-                "utf-8", errors="replace"
-            )
+            s = raw_chunk if isinstance(raw_chunk, str) else raw_chunk.decode("utf-8", errors="replace")
             _partial[0] += s
             parts = _split_sse_frames(_partial[0])
 
@@ -888,54 +860,41 @@ async def _run_core(
                 # post-finish and must be dropped.  ``Finish`` is intentionally
                 # not present in ``parsed`` because its serialization is
                 # delayed for usage parity.
-                _finish_in_this_frame = (
-                    _finish_reason_before_frame is None
-                    and _pending_finish_reason[0] is not None
-                )
+                _finish_in_this_frame = _finish_reason_before_frame is None and _pending_finish_reason[0] is not None
 
                 # --- finish_reason barrier (Shape B parity fix) ---
                 # When finish_reason is recorded by the parser, run finalize()
                 # and check for recovery decisions. Finish emission is deferred
                 # to post-loop so that usage arriving after finish_reason is
                 # captured correctly.
-                if (
-                    _pending_finish_reason[0] is not None
-                    and not finish_serialized
-                    and not _finish_in_this_frame
-                ):
+                if _pending_finish_reason[0] is not None and not finish_serialized and not _finish_in_this_frame:
                     # B2 Recovery: collect finalizer output (with merge),
                     # check for recovery decision, then emit if no recovery.
-                    _finalizer_output, _tcc_detected = \
-                        _collect_finalize_outputs(
-                            finalizers_by_priority,
-                            serializer,
-                            global_attempt_index,
-                        )
+                    _finalizer_output, _tcc_detected = _collect_finalize_outputs(
+                        finalizers_by_priority,
+                        serializer,
+                        global_attempt_index,
+                    )
                     # Keep the fact that a client-visible tool call was
                     # already emitted.  In live mode ToolCallDelta instances
                     # precede the finish barrier, while finalize() correctly
                     # returns no duplicate ToolCallComplete.  Do not let an
                     # empty finalizer pass erase that terminal semantic.
-                    _has_tool_call_complete[0] = (
-                        _has_tool_call_complete[0] or _tcc_detected
-                    )
+                    _has_tool_call_complete[0] = _has_tool_call_complete[0] or _tcc_detected
 
                     # B2 Recovery: check if any finalizer requested recovery
                     # C2E: also check for fallback trigger
-                    recovery_decision, _fallback_origin = \
-                        _check_recovery_decision_with_fallback(
-                            finalizers_by_priority,
-                            upstream_factory,
-                            global_attempt_index,
-                            max_global_recovery_attempts,
-                        )
+                    recovery_decision, _fallback_origin = _check_recovery_decision_with_fallback(
+                        finalizers_by_priority,
+                        upstream_factory,
+                        global_attempt_index,
+                        max_global_recovery_attempts,
+                    )
 
                     if recovery_decision is not None:
                         synthetic_prefix = recovery_decision.diagnostics.get("synthetic_prefix")
                         if synthetic_prefix:
-                            yield serializer.serialize_event(
-                                AssistantTextDelta(delta=synthetic_prefix)
-                            )
+                            yield serializer.serialize_event(AssistantTextDelta(delta=synthetic_prefix))
                         # O2: emit recovery decision event at finish_reason barrier
                         if _OBSERVABILITY_AVAILABLE and dispatcher is not None:
                             dispatcher.emit(
@@ -950,15 +909,9 @@ async def _run_core(
                                         "kind": recovery_decision.kind,
                                         "origin_finalizer": recovery_decision.origin_finalizer,
                                         "reason": recovery_decision.reason,
-                                        "attempt_index": getattr(
-                                            recovery_decision, "attempt_index", 0
-                                        ),
-                                        "max_attempts": getattr(
-                                            recovery_decision, "max_attempts", 0
-                                        ),
-                                        "has_patch": bool(
-                                            recovery_decision.request_payload_patch
-                                        ),
+                                        "attempt_index": getattr(recovery_decision, "attempt_index", 0),
+                                        "max_attempts": getattr(recovery_decision, "max_attempts", 0),
+                                        "has_patch": bool(recovery_decision.request_payload_patch),
                                     },
                                     req_id=req_id,
                                     level="BASIC",
@@ -977,9 +930,7 @@ async def _run_core(
                         # recovery finalizer.  It still consumed provider work
                         # and must be represented in the usage ledger.
                         if execution_usage is not None:
-                            execution_usage.add_attempt(
-                                global_attempt_index, _pending_usage[0]
-                            )
+                            execution_usage.add_attempt(global_attempt_index, _pending_usage[0])
                         # Increment global attempt index
                         global_attempt_index += 1
                         # Reset state for new attempt (clear mutable container contents)
@@ -1005,7 +956,12 @@ async def _run_core(
                         )
                         try:
                             # upstream_factory may be sync or async
-                            _new_upstream = upstream_factory(_augmented_payload)
+                            _options = (
+                                {"request_timeout_override": recovery_decision.request_timeout}
+                                if recovery_decision.request_timeout is not None
+                                else {}
+                            )
+                            _new_upstream = upstream_factory(_augmented_payload, **_options)
                             if asyncio.iscoroutine(_new_upstream):
                                 _new_upstream = await _new_upstream
                             # Wrap sync iterable with _sync_to_async
@@ -1067,9 +1023,7 @@ async def _run_core(
                     if isinstance(event, Error):
                         _pass_through_buffer.clear()
                         if execution_usage is not None:
-                            execution_usage.add_attempt(
-                                global_attempt_index, _pending_usage[0]
-                            )
+                            execution_usage.add_attempt(global_attempt_index, _pending_usage[0])
                             execution_usage.finish_reason = "error"
                         yield serializer.serialize_event(event)
                         yield serializer.serialize_event(Done())
@@ -1092,13 +1046,9 @@ async def _run_core(
                             # successful attempt.  Accounting used to be skipped
                             # because the post-loop guard sees the synthetic flag.
                             if execution_usage is not None:
-                                execution_usage.add_attempt(
-                                    global_attempt_index, _pending_usage[0]
-                                )
+                                execution_usage.add_attempt(global_attempt_index, _pending_usage[0])
                                 execution_usage.finish_reason = _finish_reason
-                            yield serializer.serialize_event(
-                                Finish(reason=_finish_reason, usage=_pending_usage[0])
-                            )
+                            yield serializer.serialize_event(Finish(reason=_finish_reason, usage=_pending_usage[0]))
                             _done_emitted_synthetic_finish[0] = True
 
                         # If no finish_reason was seen, finalize all finalizers first
@@ -1119,20 +1069,17 @@ async def _run_core(
                             # B2 Recovery: check if any finalizer requested recovery
                             # at the Done barrier (no explicit Finish event)
                             # C2E: also check for fallback trigger
-                            recovery_decision, _fallback_origin = \
-                                _check_recovery_decision_with_fallback(
-                                    finalizers_by_priority,
-                                    upstream_factory,
-                                    global_attempt_index,
-                                    max_global_recovery_attempts,
-                                )
+                            recovery_decision, _fallback_origin = _check_recovery_decision_with_fallback(
+                                finalizers_by_priority,
+                                upstream_factory,
+                                global_attempt_index,
+                                max_global_recovery_attempts,
+                            )
 
                             if recovery_decision is not None:
                                 synthetic_prefix = recovery_decision.diagnostics.get("synthetic_prefix")
                                 if synthetic_prefix:
-                                    yield serializer.serialize_event(
-                                        AssistantTextDelta(delta=synthetic_prefix)
-                                    )
+                                    yield serializer.serialize_event(AssistantTextDelta(delta=synthetic_prefix))
                                 # O2: emit recovery decision event
                                 if _OBSERVABILITY_AVAILABLE and dispatcher is not None:
                                     dispatcher.emit(
@@ -1147,15 +1094,9 @@ async def _run_core(
                                                 "kind": recovery_decision.kind,
                                                 "origin_finalizer": recovery_decision.origin_finalizer,
                                                 "reason": recovery_decision.reason,
-                                                "attempt_index": getattr(
-                                                    recovery_decision, "attempt_index", 0
-                                                ),
-                                                "max_attempts": getattr(
-                                                    recovery_decision, "max_attempts", 0
-                                                ),
-                                                "has_patch": bool(
-                                                    recovery_decision.request_payload_patch
-                                                ),
+                                                "attempt_index": getattr(recovery_decision, "attempt_index", 0),
+                                                "max_attempts": getattr(recovery_decision, "max_attempts", 0),
+                                                "has_patch": bool(recovery_decision.request_payload_patch),
                                             },
                                             req_id=req_id,
                                             level="BASIC",
@@ -1173,9 +1114,7 @@ async def _run_core(
                                 # A Done-barrier recovery rejects a completed
                                 # upstream attempt just like the Finish barrier.
                                 if execution_usage is not None:
-                                    execution_usage.add_attempt(
-                                        global_attempt_index, _pending_usage[0]
-                                    )
+                                    execution_usage.add_attempt(global_attempt_index, _pending_usage[0])
                                 # Increment global attempt index
                                 global_attempt_index += 1
                                 # Reset state for new attempt (clear mutable container contents)
@@ -1201,7 +1140,12 @@ async def _run_core(
                                 )
                                 try:
                                     # upstream_factory may be sync or async
-                                    _new_upstream = upstream_factory(_augmented_payload)
+                                    _options = (
+                                        {"request_timeout_override": recovery_decision.request_timeout}
+                                        if recovery_decision.request_timeout is not None
+                                        else {}
+                                    )
+                                    _new_upstream = upstream_factory(_augmented_payload, **_options)
                                     if asyncio.iscoroutine(_new_upstream):
                                         _new_upstream = await _new_upstream
                                     # Wrap sync iterable with _sync_to_async
@@ -1255,9 +1199,7 @@ async def _run_core(
                                 # before marking the synthetic finish, otherwise the
                                 # post-loop guard skips accounting entirely.
                                 if execution_usage is not None:
-                                    execution_usage.add_attempt(
-                                        global_attempt_index, _pending_usage[0]
-                                    )
+                                    execution_usage.add_attempt(global_attempt_index, _pending_usage[0])
                                     execution_usage.finish_reason = _synthetic_reason
                                 yield serializer.serialize_event(
                                     Finish(reason=_synthetic_reason, usage=_pending_usage[0])
@@ -1406,15 +1348,11 @@ async def _run_core(
                     yield _frame
 
         # Emit Finish with accumulated usage (Shape B parity: usage after finish_reason captured)
-        if not _done_emitted_synthetic_finish[0] and (
-            _content_emitted[0] or _finalizers_buffered[0]
-        ):
+        if not _done_emitted_synthetic_finish[0] and (_content_emitted[0] or _finalizers_buffered[0]):
             # Propagate finish_reason to ExecutionUsage for metrics emission.
             if execution_usage is not None:
                 execution_usage.finish_reason = _finish_reason
-            yield serializer.serialize_event(
-                Finish(reason=_finish_reason, usage=_pending_usage[0])
-            )
+            yield serializer.serialize_event(Finish(reason=_finish_reason, usage=_pending_usage[0]))
 
 
 # ---------------------------------------------------------------------------
@@ -1553,9 +1491,7 @@ async def run_stream(
         _execution_usage = execution_usage
 
     # Check if it's an async iterator (has __aiter__ method)
-    is_async = hasattr(upstream_chunks, "__aiter__") and callable(
-        getattr(upstream_chunks, "__aiter__")
-    )
+    is_async = hasattr(upstream_chunks, "__aiter__") and callable(getattr(upstream_chunks, "__aiter__"))
 
     if is_async:
         async for chunk in _run_core(
@@ -1638,9 +1574,7 @@ def collect_stream_events(
     error_serialized = False
 
     for raw_chunk in chunks:
-        s = raw_chunk if isinstance(raw_chunk, str) else raw_chunk.decode(
-            "utf-8", errors="replace"
-        )
+        s = raw_chunk if isinstance(raw_chunk, str) else raw_chunk.decode("utf-8", errors="replace")
         _partial += s
         parts = _split_sse_frames(_partial)
         for frame in parts[:-1]:
@@ -1723,9 +1657,7 @@ def collect_stream_events(
             _pending_reasoning.clear()
 
         # Finalize all finalizers
-        _has_tool_call_complete = any(
-            isinstance(e, ToolCallComplete) for e in pending
-        )
+        _has_tool_call_complete = any(isinstance(e, ToolCallComplete) for e in pending)
         for fin in finalizers_by_priority:
             try:
                 for fe in fin.finalize():
@@ -1742,9 +1674,7 @@ def collect_stream_events(
         if _pending_finish_reason[0] is not None:
             _finish_reason = _pending_finish_reason[0]
         else:
-            _has_tool_call_complete = any(
-                isinstance(e, ToolCallComplete) for e in pending
-            )
+            _has_tool_call_complete = any(isinstance(e, ToolCallComplete) for e in pending)
             _finish_reason = "tool_calls" if _has_tool_call_complete else "stop"
         pending.append(Finish(reason=_finish_reason, usage=_pending_usage[0]))
 

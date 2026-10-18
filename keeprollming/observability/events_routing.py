@@ -70,44 +70,63 @@ def emit_routing_event(
 
 
 def emit_started(
-    req_id: str, client_model: str,
+    req_id: str,
+    client_model: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_routing_event(req_id, "routing.resolution.started",
-                         client_model=client_model, dispatcher=dispatcher)
+    return emit_routing_event(req_id, "routing.resolution.started", client_model=client_model, dispatcher=dispatcher)
 
 
 def emit_resolved(
-    req_id: str, client_model: str, resolved_route: str,
-    model: str, upstream_model: str,
+    req_id: str,
+    client_model: str,
+    resolved_route: str,
+    model: str,
+    upstream_model: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_routing_event(req_id, "routing.resolution.resolved",
-                         client_model=client_model,
-                         resolved_route=resolved_route,
-                         model=model, upstream_model=upstream_model,
-                         dispatcher=dispatcher)
+    return emit_routing_event(
+        req_id,
+        "routing.resolution.resolved",
+        client_model=client_model,
+        resolved_route=resolved_route,
+        model=model,
+        upstream_model=upstream_model,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_failed(
-    req_id: str, client_model: str, error: str = "",
+    req_id: str,
+    client_model: str,
+    error: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_routing_event(req_id, "routing.resolution.failed",
-                         level="ERROR",
-                         client_model=client_model,
-                         error=error or None, dispatcher=dispatcher)
+    return emit_routing_event(
+        req_id,
+        "routing.resolution.failed",
+        level="ERROR",
+        client_model=client_model,
+        error=error or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_fallback_error(
-    req_id: str, from_model: str, to_model: str,
-    error_type: str = "", err_msg: str = "",
+    req_id: str,
+    from_model: str,
+    to_model: str,
+    error_type: str = "",
+    err_msg: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_routing_event(req_id, "routing.resolution.fallback_error",
-                         level="WARN",
-                         from_model=from_model,
-                         to_model=to_model,
-                         error_type=error_type or None,
-                         err_msg=err_msg or None,
-                         dispatcher=dispatcher)
+    return emit_routing_event(
+        req_id,
+        "routing.resolution.fallback_error",
+        level="WARN",
+        from_model=from_model,
+        to_model=to_model,
+        error_type=error_type or None,
+        err_msg=err_msg or None,
+        dispatcher=dispatcher,
+    )

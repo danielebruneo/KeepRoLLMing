@@ -62,7 +62,10 @@ def test_rolling_summary_trigger_repacked_messages(client, monkeypatch):
         "/v1/chat/completions",
         json={
             "model": "local/main",
-            "messages": [{"role": "user", "content": long_text}, {"role": "assistant", "content": "y" * 2000}],
+            "messages": [
+                {"role": "user", "content": long_text},
+                {"role": "assistant", "content": "y" * 2000},
+            ],
         },
     )
     assert resp.status_code == 200
@@ -116,7 +119,6 @@ def test_passthrough_model_routes_without_summary(client, monkeypatch):
     passthrough models, it means the routing logic failed to short-circuit
     early enough.
     """
-    from keeprollming import app
 
     # If summarize_middle is called in passthrough mode, the test should fail.
     async def _boom(*args, **kwargs):
@@ -132,7 +134,7 @@ def test_passthrough_model_routes_without_summary(client, monkeypatch):
             "model": "pass/my-backend-model",
             "messages": [
                 {"role": "user", "content": long_text},
-                {"role": "user", "content": long_text}
+                {"role": "user", "content": long_text},
             ],
         },
     )
@@ -146,4 +148,5 @@ def test_passthrough_model_routes_without_summary(client, monkeypatch):
 def _get_fake_upstream():
     """Helper to get the global fake upstream client."""
     from tests.conftest import _fake_upstream
+
     return _fake_upstream

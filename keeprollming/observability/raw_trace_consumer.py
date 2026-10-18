@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .events import RuntimeEvent
 from .redactor import NoOpRedactor, Redactor, ZeroContentRedactor
+
+logger = logging.getLogger(__name__)
 
 
 class RawTraceConsumer:
@@ -81,16 +84,19 @@ class RawTraceConsumer:
         req_id = event.req_id
         if self._privacy_mode:
             self._sequence[req_id] += 1
-            self._write_record(req_id, {
-                "format_version": 1,
-                "sequence": self._sequence[req_id],
-                "req_id": req_id,
-                "kind": "chunk_omitted",
-                "direction": (event.data or {}).get("direction"),
-                "boundary": (event.data or {}).get("boundary"),
-                "chunk_index": (event.data or {}).get("chunk_index"),
-                "byte_length": len(raw),
-            })
+            self._write_record(
+                req_id,
+                {
+                    "format_version": 1,
+                    "sequence": self._sequence[req_id],
+                    "req_id": req_id,
+                    "kind": "chunk_omitted",
+                    "direction": (event.data or {}).get("direction"),
+                    "boundary": (event.data or {}).get("boundary"),
+                    "chunk_index": (event.data or {}).get("chunk_index"),
+                    "byte_length": len(raw),
+                },
+            )
             return
         if self._written[req_id] + len(raw) > self._max_bytes:
             if req_id not in self._truncated:
@@ -118,20 +124,21 @@ class RawTraceConsumer:
         req_id = event.req_id
         self._sequence[req_id] += 1
         data = event.data or {}
-        self._write_record(req_id, {
-            "format_version": 1,
-            "sequence": self._sequence[req_id],
-            "req_id": req_id,
-            "kind": "lifecycle",
-            "boundary": data.get("boundary"),
-            "monotonic_ns": data.get("monotonic_ns"),
-            "timestamp_ns": event.timestamp_ns,
-            "data": self._redactor.redact({
-                key: value
-                for key, value in data.items()
-                if key not in {"boundary", "monotonic_ns", "raw_bytes"}
-            }),
-        })
+        self._write_record(
+            req_id,
+            {
+                "format_version": 1,
+                "sequence": self._sequence[req_id],
+                "req_id": req_id,
+                "kind": "lifecycle",
+                "boundary": data.get("boundary"),
+                "monotonic_ns": data.get("monotonic_ns"),
+                "timestamp_ns": event.timestamp_ns,
+                "data": self._redactor.redact(
+                    {key: value for key, value in data.items() if key not in {"boundary", "monotonic_ns", "raw_bytes"}}
+                ),
+            },
+        )
 
     def _write_record(self, req_id: str, record: dict[str, Any]) -> None:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -141,4 +148,4 @@ class RawTraceConsumer:
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record, separators=(",", ":")) + "\n")
         except OSError:
-            pass
+            logger.exception("raw trace write failed req_id=%s", req_id)

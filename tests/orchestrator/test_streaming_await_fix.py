@@ -15,11 +15,11 @@ def client(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_streaming_no_await_warning(client):
     """Verify no RuntimeWarning about coroutine never awaited in streaming.
-    
-    Regression test for: RuntimeWarning: coroutine 'FilterChain.process_response' 
-   never awaited in streaming_handlers.py line 464
-    This happens when filters is configured as a dict and the post-stream
-    filtering code path is executed without awaiting process_response().
+
+     Regression test for: RuntimeWarning: coroutine 'FilterChain.process_response'
+    never awaited in streaming_handlers.py line 464
+     This happens when filters is configured as a dict and the post-stream
+     filtering code path is executed without awaiting process_response().
     """
     # Make a simple streaming request (no filter chain configured, so code path
     # should be skipped, but we verify no warnings are raised)
@@ -27,21 +27,19 @@ async def test_streaming_no_await_warning(client):
         "/v1/chat/completions",
         json={
             "model": "local/quick",  # Uses quick route without filters
-            "messages": [
-                {"role": "user", "content": "Hello"}
-            ],
+            "messages": [{"role": "user", "content": "Hello"}],
             "stream": True,
             "max_tokens": 10,
         },
     )
 
     assert response.status_code == 200
-    
+
     # Stream and collect chunks
     chunks = []
     for line in response.iter_lines():
         if line:
             chunks.append(line)
-    
+
     # Should have at least some chunks
     assert len(chunks) > 0

@@ -34,6 +34,7 @@ from .events import (
 # Lazy import to avoid circular dependency
 try:
     from ..observability.events import EventSource, RuntimeEvent
+
     _OBSERVABILITY_AVAILABLE = True
 except ImportError:
     _OBSERVABILITY_AVAILABLE = False
@@ -110,7 +111,7 @@ def _parse_single_frame(
 
             # SSE data: line
             if line.startswith("data:"):
-                payload = line[len("data:"):].strip()
+                payload = line[len("data:") :].strip()
 
                 # [DONE]
                 if payload == "[DONE]":
@@ -284,11 +285,14 @@ def _parse_json_chunk(
                     fn = tc.get("function", {})
                     name = fn.get("name")
                     args = fn.get("arguments", "")
-                    pending_tool_calls.setdefault(idx, {
-                        "id": delta_id,
-                        "name": name,
-                        "arguments": args,
-                    })
+                    pending_tool_calls.setdefault(
+                        idx,
+                        {
+                            "id": delta_id,
+                            "name": name,
+                            "arguments": args,
+                        },
+                    )
                     events.append(
                         ToolCallDelta(
                             index=idx,
@@ -482,9 +486,7 @@ class StreamParser:
 
         return events
 
-    async def parse(
-        self, chunks: AsyncIterator[Union[bytes, str]]
-    ) -> AsyncIterator[StreamEvent]:
+    async def parse(self, chunks: AsyncIterator[Union[bytes, str]]) -> AsyncIterator[StreamEvent]:
         """Async generator: parse upstream SSE chunks into StreamEvents.
 
         Parameters

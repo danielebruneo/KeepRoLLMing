@@ -26,17 +26,17 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, AsyncIterator, Mapping
 
-from keeprollming.orchestrator.filter import (
-    Filter,
-    FilterExecutionContext,
-    StopFilterChain,
-)
 from keeprollming.filters import (
     built_in_filter_modules,
     normalize_filters,
     validate_filter_module_settings,
 )
 from keeprollming.observability import events_pipeline as _pipe
+from keeprollming.orchestrator.filter import (
+    Filter,
+    FilterExecutionContext,
+    StopFilterChain,
+)
 from keeprollming.streaming.accounting import ExecutionUsage
 
 
@@ -91,9 +91,8 @@ class Pipeline:
         )
         validate_filter_module_settings(normalized)
         return [
-            name for name, _ in sorted(
-                normalized.items(), key=lambda item: item[1]["priority"]
-            )
+            name
+            for name, _ in sorted(normalized.items(), key=lambda item: item[1]["priority"])
             if normalized[name]["enabled"]
         ]
 
@@ -108,9 +107,7 @@ class Pipeline:
         validate_filter_module_settings(normalized)
 
         filters = []
-        for name, cfg in sorted(
-            normalized.items(), key=lambda item: item[1]["priority"]
-        ):
+        for name, cfg in sorted(normalized.items(), key=lambda item: item[1]["priority"]):
             if cfg["enabled"]:
                 fcfg = dict(cfg, name=name)
                 # Inject route-level api_key into filter config if not already set
@@ -164,6 +161,7 @@ class Pipeline:
             if not f.is_enabled:
                 continue
             try:
+
                 class _Req:
                     def __init__(self, msgs, mod, stream):
                         self.messages = msgs
@@ -178,8 +176,7 @@ class Pipeline:
                 req = await f.process_request(req, context)
                 payload["messages"] = req.messages
             except Exception as e:
-                _pipe.emit_process_request_error(
-                    req_id=req_id, filter_name=f.__class__.__name__, error=str(e))
+                _pipe.emit_process_request_error(req_id=req_id, filter_name=f.__class__.__name__, error=str(e))
 
         self._last_request_context = context
         return payload
@@ -197,6 +194,7 @@ class Pipeline:
         is_streaming: bool = False,
         upstream_caller: Any = None,
         context_metadata: dict[str, Any] | None = None,
+        dispatcher: Any = None,
     ) -> Any:
         """Run all response-phase filters on the response.
 
@@ -215,24 +213,59 @@ class Pipeline:
             upstream_url=upstream_url,
             is_streaming_post_process=is_streaming,
         )
+        context.event_dispatcher = dispatcher
+        context.metadata["pipeline_response_reentry"] = True
         if context_metadata:
             context.metadata.update(context_metadata)
         context._upstream_caller = upstream_caller
 
-        for f in self.filters:
+        if upstream_caller is not None and not is_streaming:
+
+            async def bounded_caller(retry_payload, **options):
+                attempts = context.metadata.get("recovery_count", 0)
+                if attempts >= 10:
+                    raise RuntimeError("Global response recovery budget exhausted")
+                context.metadata["recovery_count"] = attempts + 1
+                context.metadata["response_replaced"] = True
+                result = await upstream_caller(retry_payload, **options)
+                context.upstream_payload = deepcopy(retry_payload)
+                return result
+
+            context._upstream_caller = bounded_caller
+
+        filters = self.filters
+        index = 0
+        while index < len(filters):
+            f = filters[index]
+            index += 1
             if not f.is_enabled:
                 continue
             if is_streaming and not f.supports_streaming:
                 continue
             try:
+                context.metadata["response_replaced"] = False
                 response = await f.process_response(response, context)
+                if context.metadata.get("response_replaced"):
+                    # A regenerated response must pass rewrite and loop controls
+                    # again. Request filters never rerun; budgets stay request-scoped.
+                    index = 0
             except StopFilterChain as e:
                 _pipe.emit_filter_triggered(
-                    req_id=req_id, action=e.action,
-                    filter_name=f.__class__.__name__, message=e.message)
+                    req_id=req_id,
+                    action=e.action,
+                    filter_name=f.__class__.__name__,
+                    message=e.message,
+                )
             except Exception as e:
-                _pipe.emit_process_response_error(
-                    req_id=req_id, filter_name=f.__class__.__name__, error=str(e))
+                _pipe.emit_process_response_error(req_id=req_id, filter_name=f.__class__.__name__, error=str(e))
+                if f.name in {"reasoning_loop_stopper", "model_tool_loop_stopper"}:
+                    from .filter import StreamingResponse
+
+                    response = StreamingResponse(
+                        content=f.config.fallback_message,
+                        model=getattr(response, "model", upstream_model),
+                        finish_reason="stop",
+                    )
 
         return response
 
@@ -255,6 +288,7 @@ class Pipeline:
             list[StreamFinalizer]: Finalizers ordered by priority (lower first).
         """
         from keeprollming.streaming.finalizer_factory import build_finalizers
+
         return build_finalizers(
             self._stream_filter_config,
             conversation_messages=conversation_messages,
@@ -289,25 +323,20 @@ class Pipeline:
         Yields:
             Processed streaming chunks (bytes), including final [DONE]
         """
-        from keeprollming.streaming.serializer import OpenAISSESerializer
         from keeprollming.streaming.runner import run_stream
+        from keeprollming.streaming.serializer import OpenAISSESerializer
 
-        _pipe.emit_stream_started(
-            req_id=req_id, has_upstream=upstream_stream is not None)
+        _pipe.emit_stream_started(req_id=req_id, has_upstream=upstream_stream is not None)
 
         # Phase 1: request filters
-        payload = await self.process_request(
-            payload, req_id, upstream_model, route_name, upstream_url
-        )
+        payload = await self.process_request(payload, req_id, upstream_model, route_name, upstream_url)
 
-        _pipe.emit_stream_request_filters_done(
-            req_id=req_id, has_upstream=upstream_stream is not None)
+        _pipe.emit_stream_request_filters_done(req_id=req_id, has_upstream=upstream_stream is not None)
 
         # Phase 2: Build finalizers from enabled filters
         finalizers = self._build_stream_finalizers(payload.get("messages"))
 
-        _pipe.emit_stream_finalizers_built(
-            req_id=req_id, finalizer_count=len(finalizers))
+        _pipe.emit_stream_finalizers_built(req_id=req_id, finalizer_count=len(finalizers))
 
         # Phase 3: run the canonical pipeline with recovery support.
         async def _stream_upstream(upstream_payload):
@@ -319,9 +348,11 @@ class Pipeline:
         # B2/C2A: Build upstream_factory for recovery attempts.
         # The factory accepts a payload argument so the runner can pass an
         # augmented payload (with request_payload_patch applied) on recovery.
-        upstream_factory = None
-        if upstream_stream:
-            upstream_factory = lambda p: _stream_upstream(p)
+        async def _build_upstream_factory(factory_payload):
+            async for chunk in _stream_upstream(factory_payload):
+                yield chunk
+
+        upstream_factory = _build_upstream_factory if upstream_stream else None
 
         serializer = OpenAISSESerializer()
         # Pass the same ExecutionUsage object into
@@ -358,9 +389,7 @@ class Pipeline:
         # Expose execution_usage to caller via Pipeline instance attribute
         self._execution_usage = _execution_usage
 
-        _pipe.emit_stream_completed(
-            req_id=req_id,
-            execution_usage=_execution_usage is not None)
+        _pipe.emit_stream_completed(req_id=req_id, execution_usage=_execution_usage is not None)
 
     # ── Full run (non-streaming) ─────────────────────────────────────
 
@@ -395,9 +424,7 @@ class Pipeline:
             Processed response object
         """
         # Phase 1: Request filters (run once)
-        payload = await self.process_request(
-            payload, req_id, upstream_model, route_name, upstream_url
-        )
+        payload = await self.process_request(payload, req_id, upstream_model, route_name, upstream_url)
 
         # Phase 2+3: Upstream call + response filters (with retry loop)
         response = None
@@ -409,18 +436,23 @@ class Pipeline:
                 break
 
             response = await self.process_response(
-                response, payload, req_id, upstream_model,
-                route_name, upstream_url, is_streaming=False,
+                response,
+                payload,
+                req_id,
+                upstream_model,
+                route_name,
+                upstream_url,
+                is_streaming=False,
                 upstream_caller=upstream_call,
             )
 
             # Check if a filter requested retry
             # (Filters set this via the context passed to process_response)
-            if not hasattr(response, '_retry_needed') or not response._retry_needed:
+            if not hasattr(response, "_retry_needed") or not response._retry_needed:
                 break
 
             # Use modified messages for retry if provided
-            if hasattr(response, '_retry_messages'):
+            if hasattr(response, "_retry_messages"):
                 payload = dict(payload)
                 payload["messages"] = response._retry_messages
 

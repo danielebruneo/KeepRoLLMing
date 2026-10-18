@@ -1,9 +1,6 @@
 """Unit tests for LoggerConsumer (Phase O3)."""
 
-import logging
 import time
-
-import pytest
 
 from keeprollming.observability.consumers import LoggerConsumer
 from keeprollming.observability.events import EventSource, RuntimeEvent

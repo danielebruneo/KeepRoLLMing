@@ -25,7 +25,7 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .observability import events_tool_rewrite as _events
 
@@ -119,6 +119,7 @@ class PseudoToolCallParser:
         except Exception as e:
             # Log the error for debugging; return None to avoid breaking the pipeline
             import traceback
+
             _events.emit_parse_error(error=str(e), traceback=traceback.format_exc())
             pass
 
@@ -238,9 +239,7 @@ class ToolCallRewriter:
             request_id: Request ID for generating unique call IDs
         """
         self.enabled = enabled
-        self.parser = PseudoToolCallParser(
-            supported_patterns=supported_patterns or ["nested", "separate"]
-        )
+        self.parser = PseudoToolCallParser(supported_patterns=supported_patterns or ["nested", "separate"])
         self.request_id = request_id or str(uuid.uuid4())[:8]
 
     def should_rewrite(self, route_config: Dict[str, Any]) -> bool:
@@ -310,13 +309,12 @@ class ToolCallRewriter:
                 return chunk
 
             # Re-encode as SSE
-            return (
-                "data: " + json.dumps(new_obj, separators=(",", ":")) + "\n\n"
-           ).encode("utf-8")
+            return ("data: " + json.dumps(new_obj, separators=(",", ":")) + "\n\n").encode("utf-8")
 
         except Exception as e:
             # Log the error for debugging; return original chunk to avoid breaking the stream
             import traceback
+
             _events.emit_streaming_error(error=str(e), traceback=traceback.format_exc())
             return chunk
 
@@ -345,9 +343,7 @@ class ToolCallRewriter:
         # or chunks that already have tool_calls (to skip)
         return has_content or has_tool_calls
 
-    def _rewrite_content_in_chunk(
-        self, obj: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _rewrite_content_in_chunk(self, obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Try to rewrite pseudo-tool-call content in a chunk.
 
@@ -393,9 +389,7 @@ class ToolCallRewriter:
 
         return new_obj
 
-    def _convert_to_openai_tool_call(
-        self, pseudo_call: PseudoToolCall
-    ) -> Dict[str, Any]:
+    def _convert_to_openai_tool_call(self, pseudo_call: PseudoToolCall) -> Dict[str, Any]:
         """
         Convert a PseudoToolCall to OpenAI-compatible tool call structure.
 
@@ -421,9 +415,7 @@ class ToolCallRewriter:
             },
         }
 
-    def rewrite_response_body(
-        self, body: Dict[str, Any], route_config: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def rewrite_response_body(self, body: Dict[str, Any], route_config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transform pseudo-tool-call in a non-streaming response body.
 
@@ -479,5 +471,6 @@ class ToolCallRewriter:
         except Exception as e:
             # Log the error for debugging; return original body to avoid breaking the response
             import traceback
+
             _events.emit_body_error(error=str(e), traceback=traceback.format_exc())
             return body

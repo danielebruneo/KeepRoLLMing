@@ -20,21 +20,22 @@ def _wait_for(path, *needles: str, timeout: float = 3.0) -> str:
     return text
 
 
-def test_streaming_transcript_and_projector_contract(
-    orchestrator_server, configure_fake_backend, backend_client
-):
+def test_streaming_transcript_and_projector_contract(orchestrator_server, configure_fake_backend, backend_client):
     """A real server process produces readable PLAIN and canonical JSONL."""
-    configure_fake_backend({
-        "chat": {
-            "stream_pieces": ["Assistant ", "response.", " More output."],
-            "reasoning_pieces": ["Reasoning visible in the transcript."],
-            "include_usage": True,
-            "chunk_delay_ms": 25,
+    configure_fake_backend(
+        {
+            "chat": {
+                "stream_pieces": ["Assistant ", "response.", " More output."],
+                "reasoning_pieces": ["Reasoning visible in the transcript."],
+                "include_usage": True,
+                "chunk_delay_ms": 25,
+            }
         }
-    })
+    )
 
     with httpx.stream(
-        "POST", f"{orchestrator_server.base_url}/v1/chat/completions",
+        "POST",
+        f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "internal/timestamp-v2",
             "stream": True,
@@ -42,7 +43,8 @@ def test_streaming_transcript_and_projector_contract(
                 {"role": "system", "content": "System text must be visible."},
                 {"role": "user", "content": "User text must be visible."},
             ],
-        }, timeout=15.0,
+        },
+        timeout=15.0,
     ) as response:
         assert response.status_code == 200
         assert "Assistant response." in "".join(response.iter_text())
@@ -88,9 +90,7 @@ def test_streaming_transcript_and_projector_contract(
         time.sleep(0.05)
         perf_files = list(orchestrator_server.perf_dir.glob("*.requests.jsonl"))
     assert perf_files
-    perf_rows = [
-        json.loads(line) for line in perf_files[0].read_text().splitlines() if line.strip()
-    ]
+    perf_rows = [json.loads(line) for line in perf_files[0].read_text().splitlines() if line.strip()]
     assert perf_rows[-1]["ttft_ms"] is not None
     assert perf_rows[-1]["ttft_ms"] > 0
     assert perf_rows[-1]["completed_at"] > 0
@@ -109,44 +109,46 @@ def test_streaming_transcript_and_projector_contract(
     assert all("bytes_b64" in row and "relative_ns" in row for row in chunk_rows)
     assert lifecycle_rows
     assert all("boundary" in row and "timestamp_ns" in row for row in lifecycle_rows)
-    assert "downstream.response_stream_started" in {
-        row["boundary"] for row in lifecycle_rows
-    }
+    assert "downstream.response_stream_started" in {row["boundary"] for row in lifecycle_rows}
 
 
-def test_streaming_sends_reasoning_before_tool_call_and_terminal_finish(
-    orchestrator_server, configure_fake_backend
-):
+def test_streaming_sends_reasoning_before_tool_call_and_terminal_finish(orchestrator_server, configure_fake_backend):
     """The client receives a tool turn in the OpenAI SSE semantic order.
 
     A client must see the model's reasoning and its structured tool call before
     the terminal ``tool_calls`` finish.  The tool result belongs to the next
     client request, after the client has executed that call.
     """
-    configure_fake_backend({
-        "chat": {
-            "stream_pieces": [],
-            "reasoning_pieces": ["I need to run date first."],
-            "tool_calls": [{
-                "index": 0,
-                "id": "call-date",
-                "type": "function",
-                "function": {
-                    "name": "bash_tool",
-                    "arguments": '{"command":"date"}',
-                },
-            }],
-            "include_usage": True,
+    configure_fake_backend(
+        {
+            "chat": {
+                "stream_pieces": [],
+                "reasoning_pieces": ["I need to run date first."],
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call-date",
+                        "type": "function",
+                        "function": {
+                            "name": "bash_tool",
+                            "arguments": '{"command":"date"}',
+                        },
+                    }
+                ],
+                "include_usage": True,
+            }
         }
-    })
+    )
 
     with httpx.stream(
-        "POST", f"{orchestrator_server.base_url}/v1/chat/completions",
+        "POST",
+        f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "internal/timestamp-v2",
             "stream": True,
             "messages": [{"role": "user", "content": "What time is it?"}],
-        }, timeout=15.0,
+        },
+        timeout=15.0,
     ) as response:
         assert response.status_code == 200
         body = "".join(response.iter_text())
@@ -161,48 +163,45 @@ def test_streaming_sends_reasoning_before_tool_call_and_terminal_finish(
     def event_index(predicate):
         return next(index for index, event in enumerate(events) if predicate(event))
 
-    reasoning_index = event_index(
-        lambda event: "reasoning_content" in event["choices"][0]["delta"]
-    )
-    tool_call_index = event_index(
-        lambda event: "tool_calls" in event["choices"][0]["delta"]
-    )
-    terminal_index = event_index(
-        lambda event: event["choices"][0].get("finish_reason") == "tool_calls"
-    )
+    reasoning_index = event_index(lambda event: "reasoning_content" in event["choices"][0]["delta"])
+    tool_call_index = event_index(lambda event: "tool_calls" in event["choices"][0]["delta"])
+    terminal_index = event_index(lambda event: event["choices"][0].get("finish_reason") == "tool_calls")
 
     assert reasoning_index < tool_call_index < terminal_index
 
 
-def test_direct_stream_relays_tool_call_before_upstream_terminal_barrier(
-    orchestrator_server, configure_fake_backend
-):
+def test_direct_stream_relays_tool_call_before_upstream_terminal_barrier(orchestrator_server, configure_fake_backend):
     """A direct route exposes a tool delta before the delayed terminal frame.
 
     This is intentionally a cadence test, not merely an ordering test: the
     former terminal-only ToolCallFinalizer would withhold the first downstream
     byte until the backend's delayed finish frame arrived.
     """
-    configure_fake_backend({
-        "chat": {
-            "stream_pieces": [],
-            "tool_calls": [{
-                "index": 0,
-                "id": "call-readme",
-                "type": "function",
-                "function": {
-                    "name": "read_file",
-                    "arguments": '{"path":"README.md"}',
-                },
-            }],
-            "include_usage": True,
-            "chunk_delay_ms": 600,
+    configure_fake_backend(
+        {
+            "chat": {
+                "stream_pieces": [],
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call-readme",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"path":"README.md"}',
+                        },
+                    }
+                ],
+                "include_usage": True,
+                "chunk_delay_ms": 600,
+            }
         }
-    })
+    )
 
     started = time.monotonic()
     with httpx.stream(
-        "POST", f"{orchestrator_server.base_url}/v1/chat/completions",
+        "POST",
+        f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "pass/main-model",
             "stream": True,
@@ -232,26 +231,31 @@ def test_exact_tls_releases_safe_tool_call_before_upstream_terminal_barrier(
     and this route intentionally has no fuzzy/A-B heuristics.  Its first delta
     must therefore reach the client before the delayed finish frame.
     """
-    configure_fake_backend({
-        "chat": {
-            "stream_pieces": [],
-            "tool_calls": [{
-                "index": 0,
-                "id": "call-safe-read",
-                "type": "function",
-                "function": {
-                    "name": "read_file",
-                    "arguments": '{"path":"README.md"}',
-                },
-            }],
-            "include_usage": True,
-            "chunk_delay_ms": 600,
+    configure_fake_backend(
+        {
+            "chat": {
+                "stream_pieces": [],
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call-safe-read",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"path":"README.md"}',
+                        },
+                    }
+                ],
+                "include_usage": True,
+                "chunk_delay_ms": 600,
+            }
         }
-    })
+    )
 
     started = time.monotonic()
     with httpx.stream(
-        "POST", f"{orchestrator_server.base_url}/v1/chat/completions",
+        "POST",
+        f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "internal/exact-tls",
             "stream": True,
@@ -272,25 +276,27 @@ def test_exact_tls_releases_safe_tool_call_before_upstream_terminal_barrier(
     assert first_payload["choices"][0].get("finish_reason") is None
 
 
-def test_direct_upstream_streaming_also_emits_assistant_and_usage(
-    orchestrator_server, configure_fake_backend
-):
+def test_direct_upstream_streaming_also_emits_assistant_and_usage(orchestrator_server, configure_fake_backend):
     """Routes without a filter chain retain the same log transcript contract."""
-    configure_fake_backend({
-        "chat": {
-            "stream_pieces": ["Direct assistant response."],
-            "reasoning_pieces": ["Direct reasoning."],
-            "include_usage": True,
+    configure_fake_backend(
+        {
+            "chat": {
+                "stream_pieces": ["Direct assistant response."],
+                "reasoning_pieces": ["Direct reasoning."],
+                "include_usage": True,
+            }
         }
-    })
+    )
 
     with httpx.stream(
-        "POST", f"{orchestrator_server.base_url}/v1/chat/completions",
+        "POST",
+        f"{orchestrator_server.base_url}/v1/chat/completions",
         json={
             "model": "pass/main-model",
             "stream": True,
             "messages": [{"role": "user", "content": "Direct user text."}],
-        }, timeout=15.0,
+        },
+        timeout=15.0,
     ) as response:
         assert response.status_code == 200
         assert "Direct assistant response." in "".join(response.iter_text())

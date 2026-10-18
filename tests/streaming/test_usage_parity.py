@@ -24,11 +24,8 @@ from __future__ import annotations
 import json
 from typing import Any, Dict
 
-import pytest
-
 from keeprollming.streaming.events import AssistantTextDelta, Done, Finish
 from keeprollming.streaming.parser import StreamParser
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -57,10 +54,12 @@ class TestShapeA_SameChunkUsage:
         """Shape A: usage + finish_reason in same chunk."""
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        chunk = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "usage": usage,
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": usage,
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         done_events = [e for e in events if isinstance(e, Done)]
@@ -73,10 +72,12 @@ class TestShapeA_SameChunkUsage:
         """Shape A: content + usage + finish_reason in same chunk."""
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        chunk = _sse_chunk({
-            "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": "stop"}],
-            "usage": usage,
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": "stop"}],
+                "usage": usage,
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         assistant_events = [e for e in events if isinstance(e, AssistantTextDelta)]
         finish_events = [e for e in events if isinstance(e, Finish)]
@@ -91,14 +92,18 @@ class TestShapeA_SameChunkUsage:
         """Shape A: tool_calls + usage + finish_reason=tool_calls."""
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        chunk = _sse_chunk({
-            "choices": [{
-                "index": 0,
-                "delta": {"tool_calls": [{"index": 0, "function": {"name": "test"}}]},
-                "finish_reason": "tool_calls",
-            }],
-            "usage": usage,
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"tool_calls": [{"index": 0, "function": {"name": "test"}}]},
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+                "usage": usage,
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1
@@ -119,9 +124,11 @@ class TestShapeC_UsageBeforeFinish:
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
         chunk1 = _sse_chunk({"choices": [], "usage": usage})
-        chunk2 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk2 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events = parser.parse_sync([chunk1, chunk2, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         done_events = [e for e in events if isinstance(e, Done)]
@@ -135,12 +142,16 @@ class TestShapeC_UsageBeforeFinish:
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
         chunk1 = _sse_chunk({"choices": [], "usage": usage})
-        chunk2 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {"content": "Hello"}}],
-        })
-        chunk3 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk2 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {"content": "Hello"}}],
+            }
+        )
+        chunk3 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events = parser.parse_sync([chunk1, chunk2, chunk3, _done_chunk()])
         assistant_events = [e for e in events if isinstance(e, AssistantTextDelta)]
         finish_events = [e for e in events if isinstance(e, Finish)]
@@ -156,9 +167,11 @@ class TestShapeC_UsageBeforeFinish:
         usage2 = {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
         chunk1 = _sse_chunk({"choices": [], "usage": usage1})
         chunk2 = _sse_chunk({"choices": [], "usage": usage2})
-        chunk3 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk3 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events = parser.parse_sync([chunk1, chunk2, chunk3, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1
@@ -181,17 +194,18 @@ class TestShapeB_FinishBeforeUsage_Supported:
         """Shape B: finish first, then usage — usage is captured (fixed)."""
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        chunk1 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk1 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         chunk2 = _sse_chunk({"choices": [], "usage": usage})
         events = parser.parse_sync([chunk1, chunk2, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         done_events = [e for e in events if isinstance(e, Done)]
         assert len(finish_events) == 1
         assert finish_events[0].reason == "stop"
-        assert finish_events[0].usage == usage, \
-            "Shape B: usage after finish_reason must be captured"
+        assert finish_events[0].usage == usage, "Shape B: usage after finish_reason must be captured"
         assert len(done_events) == 1
 
 
@@ -206,9 +220,11 @@ class TestNoUsage:
     def test_no_usage_finish(self):
         """Finish without usage has usage=None."""
         parser = StreamParser()
-        chunk = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1
@@ -217,9 +233,11 @@ class TestNoUsage:
     def test_no_usage_with_content(self):
         """Content stream without usage."""
         parser = StreamParser()
-        chunk = _sse_chunk({
-            "choices": [{"index": 0, "delta": {"content": "Hello"}}],
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {"content": "Hello"}}],
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         # No finish_reason in chunk, so no Finish event emitted
@@ -241,9 +259,11 @@ class TestLatestUsageWins:
         usage2 = {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
         chunk1 = _sse_chunk({"choices": [], "usage": usage1})
         chunk2 = _sse_chunk({"choices": [], "usage": usage2})
-        chunk3 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk3 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events = parser.parse_sync([chunk1, chunk2, chunk3, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1
@@ -255,10 +275,12 @@ class TestLatestUsageWins:
         usage1 = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
         usage2 = {"prompt_tokens": 200, "completion_tokens": 100, "total_tokens": 300}
         chunk1 = _sse_chunk({"choices": [], "usage": usage1})
-        chunk2 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "usage": usage2,
-        })
+        chunk2 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": usage2,
+            }
+        )
         events = parser.parse_sync([chunk1, chunk2, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1
@@ -280,21 +302,24 @@ class TestParserLifecycle:
 
         # First stream: has usage
         chunk1 = _sse_chunk({"choices": [], "usage": usage})
-        chunk2 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk2 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events1 = parser.parse_sync([chunk1, chunk2, _done_chunk()])
         finish_events1 = [e for e in events1 if isinstance(e, Finish)]
         assert finish_events1[0].usage == usage
 
         # Second stream: no usage
-        chunk3 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk3 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events2 = parser.parse_sync([chunk3, _done_chunk()])
         finish_events2 = [e for e in events2 if isinstance(e, Finish)]
-        assert finish_events2[0].usage is None, \
-            "Usage from previous stream should not leak"
+        assert finish_events2[0].usage is None, "Usage from previous stream should not leak"
 
     def test_pending_usage_reset_after_finish(self):
         """pending_usage is reset after Finish is emitted."""
@@ -303,18 +328,22 @@ class TestParserLifecycle:
 
         # Stream with usage
         chunk1 = _sse_chunk({"choices": [], "usage": usage})
-        chunk2 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk2 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events = parser.parse_sync([chunk1, chunk2, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert finish_events[0].usage == usage
 
         # Verify parser state is clean (no usage leakage)
         # by parsing a new stream without usage
-        chunk3 = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        })
+        chunk3 = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
         events2 = parser.parse_sync([chunk3, _done_chunk()])
         finish_events2 = [e for e in events2 if isinstance(e, Finish)]
         assert finish_events2[0].usage is None
@@ -332,14 +361,18 @@ class TestUsageEdgeCases:
         """Usage with reasoning_content."""
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        chunk = _sse_chunk({
-            "choices": [{
-                "index": 0,
-                "delta": {"reasoning_content": "Thinking..."},
-                "finish_reason": "stop",
-            }],
-            "usage": usage,
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": "Thinking..."},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": usage,
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         reasoning_events = [e for e in events if e.__class__.__name__ == "ReasoningTextDelta"]
         finish_events = [e for e in events if isinstance(e, Finish)]
@@ -352,14 +385,18 @@ class TestUsageEdgeCases:
         """Usage with tool_calls."""
         parser = StreamParser()
         usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        chunk = _sse_chunk({
-            "choices": [{
-                "index": 0,
-                "delta": {"tool_calls": [{"index": 0, "function": {"name": "test"}}]},
-                "finish_reason": "tool_calls",
-            }],
-            "usage": usage,
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"tool_calls": [{"index": 0, "function": {"name": "test"}}]},
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+                "usage": usage,
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1
@@ -375,10 +412,12 @@ class TestUsageEdgeCases:
             "total_tokens": 1100,
             "prompt_tokens_details": {"cached_tokens": 800},
         }
-        chunk = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "usage": usage,
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": usage,
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1
@@ -389,10 +428,12 @@ class TestUsageEdgeCases:
         """Usage with only some fields present."""
         parser = StreamParser()
         usage = {"prompt_tokens": 10}
-        chunk = _sse_chunk({
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "usage": usage,
-        })
+        chunk = _sse_chunk(
+            {
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": usage,
+            }
+        )
         events = parser.parse_sync([chunk, _done_chunk()])
         finish_events = [e for e in events if isinstance(e, Finish)]
         assert len(finish_events) == 1

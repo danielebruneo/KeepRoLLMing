@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from keeprollming.orchestrator.pipeline import Pipeline
 
 
@@ -37,11 +35,11 @@ class TestNudgeStreamingPipeline:
             # First attempt: lazy response
             if first_attempt:
                 first_attempt = False
-                yield b"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Here is the list:\"}}]}\n\n"
+                yield b'data: {"choices":[{"index":0,"delta":{"content":"Here is the list:"}}]}\n\n'
                 yield b"data: [DONE]\n\n"
             else:
                 # Continuation
-                yield b"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\" item 1, item 2.\"}}]}\n\n"
+                yield b'data: {"choices":[{"index":0,"delta":{"content":" item 1, item 2."}}]}\n\n'
                 yield b"data: [DONE]\n\n"
 
         async def collect_chunks():

@@ -1,16 +1,12 @@
 """Integration tests for streaming pipeline instrumentation (Phase O2)."""
 
-import asyncio
-import time
 from typing import List
 
-import pytest
-
-from keeprollming.observability.dispatcher import EventDispatcher
-from keeprollming.observability.events import EventSource, RuntimeEvent
 from keeprollming.observability.consumers import LoggerConsumer
+from keeprollming.observability.dispatcher import EventDispatcher
+from keeprollming.observability.events import RuntimeEvent
+from keeprollming.streaming.events import AssistantTextDelta, Done, Finish
 from keeprollming.streaming.parser import StreamParser
-from keeprollming.streaming.events import AssistantTextDelta, Finish, Done
 from keeprollming.streaming.serializer import OpenAISSESerializer
 
 
@@ -32,8 +28,8 @@ class TestParserInstrumentation:
 
         parser = StreamParser(dispatcher=dispatcher)
         chunks = [
-            b"data: {\"choices\": [{\"delta\": {\"content\": \"Hello\"}}]}\n\n",
-            b"data: {\"choices\": [{\"delta\": {}, \"finish_reason\": \"stop\"}]}\n\n",
+            b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n',
+            b'data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}\n\n',
             b"data: [DONE]\n\n",
         ]
         events = parser.parse_sync(chunks)
@@ -55,8 +51,8 @@ class TestParserInstrumentation:
         """StreamParser is no-op when dispatcher is None."""
         parser = StreamParser(dispatcher=None)
         chunks = [
-            b"data: {\"choices\": [{\"delta\": {\"content\": \"Hello\"}}]}\n\n",
-            b"data: {\"choices\": [{\"delta\": {}, \"finish_reason\": \"stop\"}]}\n\n",
+            b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n',
+            b'data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}\n\n',
             b"data: [DONE]\n\n",
         ]
         events = parser.parse_sync(chunks)
@@ -115,8 +111,8 @@ class TestEndToEndEventFlow:
 
         parser = StreamParser(dispatcher=dispatcher)
         chunks = [
-            b"data: {\"choices\": [{\"delta\": {\"content\": \"test\"}}]}\n\n",
-            b"data: {\"choices\": [{\"delta\": {}, \"finish_reason\": \"stop\"}]}\n\n",
+            b'data: {"choices": [{"delta": {"content": "test"}}]}\n\n',
+            b'data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}\n\n',
         ]
         parser.parse_sync(chunks)
 
@@ -138,7 +134,7 @@ class TestEndToEndEventFlow:
 
         parser = StreamParser(dispatcher=dispatcher)
         chunks = [
-            b"data: {\"choices\": [{\"delta\": {\"content\": \"x\"}}]}\n\n",
+            b'data: {"choices": [{"delta": {"content": "x"}}]}\n\n',
         ]
         parser.parse_sync(chunks)
 

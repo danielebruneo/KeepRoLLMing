@@ -22,16 +22,12 @@ from typing import Any, Dict, List, Optional
 
 from keeprollming.streaming.events import (
     AssistantTextDelta,
-    Done,
-    Finish,
-    Keepalive,
     ReasoningTextDelta,
     StreamEvent,
     ToolCallComplete,
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer
-
 
 # ---------------------------------------------------------------------------
 # RecoveryDecision — control signal from finalizer → runner
@@ -87,6 +83,7 @@ class RecoveryDecision:
     preserve_output_so_far: bool = True
     merge_strategy: str = "replace"
     diagnostics: Dict[str, Any] = field(default_factory=dict)
+    request_timeout: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -236,9 +233,7 @@ class NudgeContinuationFinalizer(StreamFinalizer):
         # B2: allow process_event after reset (for recovery attempts)
         # Only raise if finalize() was called AND reset() was not called after.
         if self._finalized:
-            raise RuntimeError(
-                "NudgeContinuationFinalizer.finalize() already called without reset()"
-            )
+            raise RuntimeError("NudgeContinuationFinalizer.finalize() already called without reset()")
 
         if isinstance(event, AssistantTextDelta):
             # ``reset(preserve_buffer=True)`` marks the first continuation
@@ -300,25 +295,17 @@ class NudgeContinuationFinalizer(StreamFinalizer):
             they are handled separately by the runner's pipeline.
         """
         if self._finalized:
-            raise RuntimeError(
-                "NudgeContinuationFinalizer.finalize() already called without reset()"
-            )
+            raise RuntimeError("NudgeContinuationFinalizer.finalize() already called without reset()")
         self._finalized = True
 
         # Determine if lazy (only if no tool calls — tool calls prevent nudge)
-        self._lazy_detected = (
-            not self._has_tool_call
-            and self._matches_lazy_response(self._text_buffer)
-        )
+        self._lazy_detected = not self._has_tool_call and self._matches_lazy_response(self._text_buffer)
 
         # Build recovery decision if lazy
         if self._lazy_detected:
             self._decision = RecoveryDecision(
                 kind="append_continuation",
-                reason=(
-                    "Lazy output detected — model stopped at trigger pattern. "
-                    "Requesting continuation."
-                ),
+                reason=("Lazy output detected — model stopped at trigger pattern. Requesting continuation."),
                 priority=self.priority,
                 origin_finalizer="NudgeContinuationFinalizer",
                 attempt_index=self._attempt_index,
@@ -346,7 +333,6 @@ class NudgeContinuationFinalizer(StreamFinalizer):
             return []
 
         # Flush buffers as events (reasoning before text, KRM canonical channel order)
-        # See _docs/streaming-v2-reasoning-order-contract.md (Option A — Grouped).
         events: list[StreamEvent] = []
         if self._reasoning_buffer:
             events.append(ReasoningTextDelta(delta=self._reasoning_buffer))

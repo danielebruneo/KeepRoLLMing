@@ -22,7 +22,6 @@ from keeprollming.streaming.events import (
     Finish,
     Keepalive,
     ReasoningTextDelta,
-    StreamEvent,
     ToolCallDelta,
 )
 from keeprollming.streaming.parser import StreamParser
@@ -60,10 +59,7 @@ def test_parse_vllm_reasoning_alias_as_reasoning_delta():
 
 def test_parse_embedded_upstream_error_envelope():
     """HTTP-200 SSE error envelopes become canonical Error events."""
-    chunk = (
-        b'data: {"error":{"message":"sampling parameter unsupported",'
-        b'"type":"BadRequestError","code":400}}\n\n'
-    )
+    chunk = b'data: {"error":{"message":"sampling parameter unsupported","type":"BadRequestError","code":400}}\n\n'
     events = StreamParser().parse_sync([chunk])
 
     errors = [event for event in events if isinstance(event, Error)]
@@ -207,9 +203,10 @@ def test_parse_frame_split_across_chunks():
 def test_parse_unicode_quotes_newline_backslash():
     """Content with unicode, quotes, newline, backslash is preserved exactly."""
     content = 'Hello "world"\n日本語 \\escaped\\'
-    chunk = f'data: {{\'choices\':[{{\'delta\':{{\'content\':\'' + content + r'\'}}}}]}}}\n\n'
+    chunk = "data: {'choices':[{'delta':{'content':'" + content + r"\'}}}}]}}}\n\n"
     # Use json.dumps to ensure valid JSON
     import json
+
     payload = json.dumps({"choices": [{"delta": {"content": content}}]})
     chunk = f"data: {payload}\n\n".encode("utf-8")
 
@@ -242,7 +239,7 @@ def test_parse_finish_reason_tool_calls():
 
 def test_invalid_json_does_not_crash():
     """Invalid JSON frame is silently skipped; parser does not crash."""
-    chunk = b"data: {invalid json}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"OK\"}}]}\n\n"
+    chunk = b'data: {invalid json}\n\ndata: {"choices":[{"delta":{"content":"OK"}}]}\n\n'
     events = _PARSER.parse_sync([chunk])
 
     text_deltas = [e for e in events if isinstance(e, AssistantTextDelta)]
@@ -352,7 +349,7 @@ def test_parser_still_emits_tool_call_delta_only():
 
     events = _PARSER.parse_sync([chunk])
 
-    from keeprollming.streaming.events import ToolCallDelta, ToolCallComplete
+    from keeprollming.streaming.events import ToolCallComplete, ToolCallDelta
 
     tc_deltas = [e for e in events if isinstance(e, ToolCallDelta)]
     tc_completes = [e for e in events if isinstance(e, ToolCallComplete)]

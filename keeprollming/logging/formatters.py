@@ -7,12 +7,23 @@ import re
 import textwrap
 from typing import Any
 
-from .constants import ANSI_BOLD, ANSI_BLUE, ANSI_CYAN, ANSI_DIM, ANSI_GREEN, ANSI_MAGENTA, ANSI_RED, ANSI_YELLOW, ANSI_RESET
+from .constants import (
+    ANSI_BLUE,
+    ANSI_BOLD,
+    ANSI_CYAN,
+    ANSI_DIM,
+    ANSI_GRAY,
+    ANSI_GREEN,
+    ANSI_MAGENTA,
+    ANSI_RESET,
+    ANSI_YELLOW,
+)
 
 
 def _c(text: str, *codes: str) -> str:
     """Wrap text in ANSI color codes (uses LOG_PLAIN_COLORS from constants)."""
     from .constants import LOG_PLAIN_COLORS
+
     if not LOG_PLAIN_COLORS or not codes:
         return text
     return "".join(codes) + text + ANSI_RESET
@@ -37,7 +48,7 @@ def _highlight_speaker_chunk(line: str) -> str:
     """Highlight speaker prefixes in a log line."""
     for speaker, color in SPEAKER_COLORS:
         if line.startswith(speaker):
-            return _c(speaker, ANSI_BOLD, color) + line[len(speaker):]
+            return _c(speaker, ANSI_BOLD, color) + line[len(speaker) :]
     return line
 
 
@@ -84,6 +95,7 @@ def _indent_block(text: str | None, prefix: str = "│   ") -> list[str]:
 
 
 # ── Meta / token / usage formatters ────────────────────────────────
+
 
 def _fmt_meta_item(key: str, value: Any) -> str:
     """Format a single metadata key=value pair."""
@@ -145,9 +157,9 @@ def _fmt_usage(usage: Any) -> str:
 
 # ── Tool call / tool result formatters ─────────────────────────────
 
+
 def _fmt_tool_calls_yaml(tool_calls: list[Any]) -> str | None:
     """Format tool calls as YAML-style list with one line per call."""
-    from .constants import LOG_PLAIN_COLORS, ANSI_RESET
 
     if not isinstance(tool_calls, list) or not tool_calls:
         return None
@@ -172,9 +184,9 @@ def _fmt_tool_calls_yaml(tool_calls: list[Any]) -> str | None:
                 arg_parts = []
                 for k, v in args_dict.items():
                     if isinstance(v, (dict, list)):
-                        arg_parts.append(_c(f'{k}={json.dumps(v)}', ANSI_DIM, ANSI_BLUE))
+                        arg_parts.append(_c(f"{k}={json.dumps(v)}", ANSI_DIM, ANSI_BLUE))
                     else:
-                        arg_parts.append(f"{_c(k, ANSI_YELLOW)}=\"{_c(str(v), ANSI_GREEN)}\"")
+                        arg_parts.append(f'{_c(k, ANSI_YELLOW)}="{_c(str(v), ANSI_GREEN)}"')
                 args_str = ", ".join(arg_parts)
             except Exception:
                 args_str = _c(args, ANSI_DIM, ANSI_BLUE) if args else ""
@@ -204,7 +216,7 @@ def _fmt_tool_result_yaml(tool_call_id: str | None, name: str | None, result: An
     # Format result based on type - compact inline representation avoids wrapping issues.
     if isinstance(result, (dict, list)):
         try:
-            formatted_result = json.dumps(result, ensure_ascii=False, separators=(',', ':'))
+            formatted_result = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
             colored_result = _c(formatted_result, ANSI_DIM, ANSI_BLUE)
             return f"{header} {colored_result}"
         except Exception:
@@ -213,7 +225,7 @@ def _fmt_tool_result_yaml(tool_call_id: str | None, name: str | None, result: An
         try:
             parsed = json.loads(result)
             if isinstance(parsed, (dict, list)):
-                formatted_result = json.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
+                formatted_result = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
                 colored_result = _c(formatted_result, ANSI_DIM, ANSI_BLUE)
                 return f"{header} {colored_result}"
         except Exception:
@@ -226,6 +238,7 @@ def _fmt_tool_result_yaml(tool_call_id: str | None, name: str | None, result: An
 
 
 # ── Plain-text request header/footer ───────────────────────────────
+
 
 def _plain_header(req_id: str) -> str:
     """Format the opening marker for a plain-text log entry."""

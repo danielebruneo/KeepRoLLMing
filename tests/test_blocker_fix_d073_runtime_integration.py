@@ -4,15 +4,14 @@ These tests verify the four runtime integration defects identified by
 TASK-20260805-010 investigation and fixed by the BLOCKER_FIXER.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from keeprollming.observability import EventDispatcher, RuntimeEvent
+from keeprollming.observability import RuntimeEvent
 from keeprollming.observability.events_execution import (
+    emit_assistant,
     emit_execution_event,
     emit_http_in,
     emit_route_resolved,
-    emit_assistant,
 )
 from keeprollming.streaming.accounting import ExecutionUsage
 
@@ -74,9 +73,15 @@ class TestDefect2_LevelUpgrade:
     def test_route_resolved_is_basic(self):
         """emit_route_resolved() produces BASIC-level events."""
         event = emit_route_resolved(
-            "req-3", client_model="gpt-4", resolved_route="default",
-            model="gpt-4", upstream_model="gpt-4", summary_model="",
-            passthrough_enabled=False, ctx_len=128000, max_tokens_default=4096,
+            "req-3",
+            client_model="gpt-4",
+            resolved_route="default",
+            model="gpt-4",
+            upstream_model="gpt-4",
+            summary_model="",
+            passthrough_enabled=False,
+            ctx_len=128000,
+            max_tokens_default=4096,
             parent_routes=[],
         )
         assert event.level == "BASIC"

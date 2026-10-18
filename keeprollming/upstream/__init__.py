@@ -255,8 +255,6 @@ def prepare_upstream_request(
         applied = apply_overrides(upstream_payload, route.overrides)
         if applied:
             for key, old_val, new_val in applied:
-                _up.emit_override_applied(
-                    req_id=req_id, param=key, old_value=old_val, new_value=new_val
-                )
+                _up.emit_override_applied(req_id=req_id, param=key, old_value=old_val, new_value=new_val)
 
     return upstream_payload

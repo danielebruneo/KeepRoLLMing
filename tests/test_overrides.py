@@ -19,3 +19,12 @@ def test_reasoning_effort_override_is_added_when_client_omits_it() -> None:
 
     assert payload["reasoning_effort"] == "medium"
     assert applied == [("reasoning_effort", None, "medium")]
+
+
+def test_qwen_top_k_override_replaces_client_value() -> None:
+    payload = {"model": "qwen3.8-27b", "top_k": 20}
+
+    applied = apply_overrides(payload, {"top_k": 45})
+
+    assert payload["top_k"] == 45
+    assert applied == [("top_k", 20, 45)]

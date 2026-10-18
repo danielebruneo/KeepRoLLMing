@@ -37,6 +37,4 @@ def test_materialize_prompt_file_fails_early_for_missing_file(tmp_path):
 
 def test_system_prompt_rejects_ambiguous_inline_and_file_sources():
     with pytest.raises(ValueError, match="either 'prompt' or 'prompt_file'"):
-        validate_filter_module_settings(
-            {"system_prompt": {"prompt": "inline", "prompt_file": "prompt.md"}}
-        )
+        validate_filter_module_settings({"system_prompt": {"prompt": "inline", "prompt_file": "prompt.md"}})

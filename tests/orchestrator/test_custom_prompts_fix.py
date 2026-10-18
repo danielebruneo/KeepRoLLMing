@@ -33,7 +33,11 @@ class _FakeAsyncClient:
                 "created": 0,
                 "model": json.get("model", "unknown") if json else "unknown",
                 "choices": [
-                    {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "stop",
+                    }
                 ],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             },
@@ -43,9 +47,10 @@ class _FakeAsyncClient:
         class _FakeStreamCtx:
             async def __aenter__(self):
                 return self
+
             async def __aexit__(self, exc_type, exc, tb):
                 return None
-        
+
         return _FakeStreamCtx()
 
 
@@ -62,13 +67,14 @@ def test_direct_custom_prompt_text(client):
     """Test that direct custom prompt text from payload works"""
 
     # This should use the summary_prompt field content directly as template
-    response = client.post("/v1/chat/completions", json={
-        "model": "local/quick",
-        "messages": [
-            {"role": "user", "content": "Explain quantum computing"}
-        ],
-        "summary_prompt": "You are an expert explainer. Please explain the following conversation transcript in simple terms:"
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "messages": [{"role": "user", "content": "Explain quantum computing"}],
+            "summary_prompt": "You are an expert explainer. Please explain the following conversation transcript in simple terms:",
+        },
+    )
 
     # The request should succeed with mocked backend
     assert response.status_code == 200
@@ -78,14 +84,15 @@ def test_prompt_type_with_custom_prompt_text(client):
     """Test that summary_prompt_type with summary_prompt works"""
 
     # This should use the summary_prompt field content for a specific prompt type
-    response = client.post("/v1/chat/completions", json={
-        "model": "local/quick",
-        "messages": [
-            {"role": "user", "content": "Explain quantum computing"}
-        ],
-        "summary_prompt_type": "custom",
-        "summary_prompt": "You are an expert explainer. Please explain the following conversation transcript in simple terms:"
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "messages": [{"role": "user", "content": "Explain quantum computing"}],
+            "summary_prompt_type": "custom",
+            "summary_prompt": "You are an expert explainer. Please explain the following conversation transcript in simple terms:",
+        },
+    )
 
     # The request should succeed with mocked backend
     assert response.status_code == 200
@@ -94,12 +101,13 @@ def test_prompt_type_with_custom_prompt_text(client):
 def test_default_behavior_still_works(client):
     """Test that default behavior without custom prompts still works"""
 
-    response = client.post("/v1/chat/completions", json={
-        "model": "local/quick",
-        "messages": [
-            {"role": "user", "content": "Explain quantum computing"}
-        ]
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "messages": [{"role": "user", "content": "Explain quantum computing"}],
+        },
+    )
 
     # The request should succeed with mocked backend
     assert response.status_code == 200
@@ -108,13 +116,14 @@ def test_default_behavior_still_works(client):
 def test_prompt_from_config_file(client):
     """Test that prompt from config file works correctly"""
 
-    response = client.post("/v1/chat/completions", json={
-        "model": "local/quick",
-        "messages": [
-            {"role": "user", "content": "Explain quantum computing"}
-        ],
-        "summary_prompt_type": "structured_explainer"
-    })
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "local/quick",
+            "messages": [{"role": "user", "content": "Explain quantum computing"}],
+            "summary_prompt_type": "structured_explainer",
+        },
+    )
 
     # The request should succeed with mocked backend
     assert response.status_code == 200

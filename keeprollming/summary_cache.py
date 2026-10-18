@@ -77,10 +77,12 @@ def conversation_fingerprint(
     while preferring LibreChat ids when available.
     """
     if user_id or conv_id:
-        return _digest([
-            normalize_message_for_hash({"role": "", "content": user_id}),
-            normalize_message_for_hash({"role": "", "content": conv_id}),
-        ])
+        return _digest(
+            [
+                normalize_message_for_hash({"role": "", "content": user_id}),
+                normalize_message_for_hash({"role": "", "content": conv_id}),
+            ]
+        )
 
     n = max(1, int(n_head or 1))
     parts: list[str] = []
@@ -105,7 +107,12 @@ def ensure_cache_dir(path: str | Path) -> Path:
 def resolve_cache_dir(cache_dir: str | Path, *, user_id: str = "", conv_id: str = "", fingerprint: str = "") -> Path:
     root = ensure_cache_dir(cache_dir)
     if user_id or conv_id:
-        return ensure_cache_dir(root / "librechat" / _safe_path_part(user_id, "anonymous") / _safe_path_part(conv_id, fingerprint[:16] or "conversation"))
+        return ensure_cache_dir(
+            root
+            / "librechat"
+            / _safe_path_part(user_id, "anonymous")
+            / _safe_path_part(conv_id, fingerprint[:16] or "conversation")
+        )
     return ensure_cache_dir(root / "generic" / _safe_path_part(fingerprint[:32], "default"))
 
 
@@ -114,12 +121,16 @@ def build_cache_filename(entry: SummaryCacheEntry) -> str:
 
 
 def save_cache_entry(cache_dir: str | Path, entry: SummaryCacheEntry, *, user_id: str = "", conv_id: str = "") -> Path:
-    p = resolve_cache_dir(cache_dir, user_id=user_id, conv_id=conv_id, fingerprint=entry.fingerprint) / build_cache_filename(entry)
+    p = resolve_cache_dir(
+        cache_dir, user_id=user_id, conv_id=conv_id, fingerprint=entry.fingerprint
+    ) / build_cache_filename(entry)
     p.write_text(json.dumps(entry.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
     return p
 
 
-def load_cache_entries(cache_dir: str | Path, fingerprint: str, *, user_id: str = "", conv_id: str = "") -> list[SummaryCacheEntry]:
+def load_cache_entries(
+    cache_dir: str | Path, fingerprint: str, *, user_id: str = "", conv_id: str = ""
+) -> list[SummaryCacheEntry]:
     p = resolve_cache_dir(cache_dir, user_id=user_id, conv_id=conv_id, fingerprint=fingerprint)
     out: list[SummaryCacheEntry] = []
     for f in p.glob("*.json"):
@@ -133,7 +144,9 @@ def load_cache_entries(cache_dir: str | Path, fingerprint: str, *, user_id: str 
     return out
 
 
-def find_best_prefix_entry(entries: List[SummaryCacheEntry], messages: List[Dict[str, Any]], expected_start_idx: int = 0) -> Optional[SummaryCacheEntry]:
+def find_best_prefix_entry(
+    entries: List[SummaryCacheEntry], messages: List[Dict[str, Any]], expected_start_idx: int = 0
+) -> Optional[SummaryCacheEntry]:
     best, _reasons = find_best_prefix_entry_with_reasons(entries, messages, expected_start_idx=expected_start_idx)
     return best
 

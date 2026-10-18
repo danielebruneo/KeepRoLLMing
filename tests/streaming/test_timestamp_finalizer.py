@@ -17,11 +17,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from keeprollming.streaming.events import AssistantTextDelta
 from keeprollming.filters.timestamp.stream import (
     TimestampFinalizer,
-    _strip_existing_timestamp_footer,
 )
+from keeprollming.streaming.events import AssistantTextDelta
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -58,9 +57,7 @@ def _fresh_hash_footer() -> str:
 
 def test_short_response_appends_timestamp():
     """Input shorter than tail buffer: process_delta emits nothing, finalize emits content + fresh footer."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     # Short content — stays in tail buffer
     deltas = finalizer.process_delta("Hello")
@@ -83,9 +80,7 @@ def test_short_response_appends_timestamp():
 
 def test_empty_response_does_not_produce_timestamp_only_delta():
     """Tool-call turns have no assistant text to timestamp."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
     assert finalizer.finalize() == []
 
 
@@ -96,9 +91,7 @@ def test_empty_response_does_not_produce_timestamp_only_delta():
 
 def test_stale_footer_replaced():
     """Stale timestamp footer at end is stripped, replaced by one fresh footer."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     finalizer.process_delta("Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC")
     final_list = finalizer.finalize()
@@ -118,14 +111,9 @@ def test_stale_footer_replaced():
 
 def test_duplicate_final_footers_collapse_to_one():
     """Two consecutive final timestamp footers collapse to base + one fresh footer."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
-    content = (
-        "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC\n\n"
-        "---\nTimestamp: 2026-06-28 18:55:58 UTC"
-    )
+    content = "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC\n\n---\nTimestamp: 2026-06-28 18:55:58 UTC"
     finalizer.process_delta(content)
     final_list = finalizer.finalize()
     text = final_list[0].delta
@@ -145,9 +133,7 @@ def test_duplicate_final_footers_collapse_to_one():
 
 def test_middle_timestamp_preserved():
     """Timestamp-looking text in the middle plus normal trailing text: middle preserved, fresh footer appended."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     content = "Hello\n---\nTimestamp: 2020-01-01 00:00:00 UTC\nMore text"
     finalizer.process_delta(content)
@@ -165,9 +151,7 @@ def test_middle_timestamp_preserved():
 
 def test_custom_template_bracket():
     """Custom bracket template: stale bracket footer replaced by one fresh bracket footer."""
-    finalizer = TimestampFinalizer(
-        template=_BRACKET_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_BRACKET_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     content = "Hello\n[Generated at 2020-01-01]"
     finalizer.process_delta(content)
@@ -186,9 +170,7 @@ def test_custom_template_bracket():
 
 def test_custom_template_hash():
     """Custom hash template: stale hash footer replaced by one fresh hash footer."""
-    finalizer = TimestampFinalizer(
-        template=_HASH_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_HASH_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     content = "Hello\n### Response time: 2020-01-01 00:00:00"
     finalizer.process_delta(content)
@@ -207,9 +189,7 @@ def test_custom_template_hash():
 
 def test_different_template_not_stripped():
     """Finalizer with bracket template: default Timestamp footer remains as normal text."""
-    finalizer = TimestampFinalizer(
-        template=_BRACKET_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_BRACKET_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     content = "Hello\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
     finalizer.process_delta(content)
@@ -230,9 +210,7 @@ def test_different_template_not_stripped():
 def test_long_response_emits_safe_prefix_before_finalize():
     """Long response with small tail buffer: safe prefix emitted before finalize."""
     tail_size = 20
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=tail_size
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=tail_size)
 
     long_content = "A" * 50  # 50 chars, well above tail buffer
     deltas = finalizer.process_delta(long_content)
@@ -274,17 +252,13 @@ def test_chunking_invariance():
     base_content = "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
 
     # Single delta approach
-    final_single = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    final_single = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
     final_single.process_delta(base_content)
     single_list = final_single.finalize()
     single_text = single_list[0].delta
 
     # Many small deltas approach
-    final_multi = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    final_multi = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
     for ch in base_content:
         final_multi.process_delta(ch)
     multi_list = final_multi.finalize()
@@ -295,9 +269,7 @@ def test_chunking_invariance():
         """Remove the timestamp value portion for comparison."""
         return ts.replace("2026-06-29 12:00:00 UTC", "TIMESTAMP")
 
-    assert _normalize(single_text) == _normalize(multi_text), (
-        f"Single: {single_text!r}\nMulti: {multi_text!r}"
-    )
+    assert _normalize(single_text) == _normalize(multi_text), f"Single: {single_text!r}\nMulti: {multi_text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -307,9 +279,7 @@ def test_chunking_invariance():
 
 def test_finalize_idempotence():
     """Second finalize() raises RuntimeError (not idempotent by default)."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     finalizer.process_delta("Hello")
     final_list = finalizer.finalize()
@@ -326,9 +296,7 @@ def test_finalize_idempotence():
 
 def test_three_consecutive_footers_collapse_to_one():
     """Three consecutive final timestamp footers collapse to base + one fresh footer."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     content = (
         "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC\n\n"
@@ -355,9 +323,7 @@ def test_three_consecutive_footers_collapse_to_one():
 
 def test_trailing_whitespace_after_stale_footer():
     """Stale footer followed by trailing spaces/newlines/tabs: still stripped."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     content = "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC   \n  \t  "
     finalizer.process_delta(content)
@@ -376,9 +342,7 @@ def test_trailing_whitespace_after_stale_footer():
 
 def test_process_delta_after_finalize_raises():
     """process_delta() called after finalize() raises RuntimeError."""
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=_clock, tail_buffer_size=1024)
 
     finalizer.process_delta("Hello")
     finalizer.finalize()

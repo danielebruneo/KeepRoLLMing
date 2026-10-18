@@ -5,7 +5,6 @@ Simple test to verify logging functionality works correctly.
 This directly tests the 'log' function from keeprollming.logger module.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -13,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 print("=== Testing log function ===")
-from keeprollming.logger import log
+from keeprollming.logger import log  # noqa: E402
 
 # Test the log function directly
 print("\nTesting basic log calls...")

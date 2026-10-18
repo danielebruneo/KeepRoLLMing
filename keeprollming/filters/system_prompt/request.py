@@ -9,16 +9,13 @@ Depending on config:
 Always triggers (no conditional logic like lazy detection).
 """
 
-import copy
-from typing import Any, Dict, List, Optional
-
+from keeprollming.logger import log
 from keeprollming.orchestrator.filter import (
     Filter,
     FilterConfig,
     FilterExecutionContext,
     Request,
 )
-from keeprollming.logger import log
 from keeprollming.orchestrator.filters.events import (
     emit_system_prompt_inserted,
     emit_system_prompt_overridden,

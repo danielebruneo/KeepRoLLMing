@@ -46,8 +46,7 @@ def level_at_or_above(level: str, minimum: str) -> bool:
         idx_min = LEVEL_ORDER.index(minimum)
     except ValueError as exc:
         raise ValueError(
-            f"Invalid level in comparison: {level!r} vs {minimum!r}; "
-            f"valid levels are {LEVEL_ORDER}"
+            f"Invalid level in comparison: {level!r} vs {minimum!r}; valid levels are {LEVEL_ORDER}"
         ) from exc
     return idx_level >= idx_min
 
@@ -59,6 +58,7 @@ class EventSource:
     The ``namespace`` property derives the permanent hierarchical
     namespace from domain + component (+ optional instance).
     """
+
     domain: str
     component: str
     instance: Optional[str] = None
@@ -99,6 +99,7 @@ class RuntimeEvent:
             level="DEBUG",
         )
     """
+
     # ── Required fields (no defaults) ────────────────────────────
 
     #: Permanent hierarchical event type (e.g., "streaming.parser.event").
@@ -148,18 +149,12 @@ class RuntimeEvent:
         """Validate envelope invariants."""
         # E-01: type must be a valid namespace (dot-separated, no empty segments)
         if not self.type or "." not in self.type:
-            raise ValueError(
-                f"RuntimeEvent.type must be a dot-separated namespace, got: {self.type!r}"
-            )
+            raise ValueError(f"RuntimeEvent.type must be a dot-separated namespace, got: {self.type!r}")
 
         # E-07: level must be a valid log level
         if self.level not in ("TRACE", "DEBUG", "INFO", "BASIC", "WARN", "ERROR"):
-            raise ValueError(
-                f"RuntimeEvent.level must be TRACE/DEBUG/INFO/BASIC/WARN/ERROR, got: {self.level!r}"
-            )
+            raise ValueError(f"RuntimeEvent.level must be TRACE/DEBUG/INFO/BASIC/WARN/ERROR, got: {self.level!r}")
 
         # data must be a dict
         if not isinstance(self.data, dict):
-            raise TypeError(
-                f"RuntimeEvent.data must be a dict, got: {type(self.data).__name__}"
-            )
+            raise TypeError(f"RuntimeEvent.data must be a dict, got: {type(self.data).__name__}")

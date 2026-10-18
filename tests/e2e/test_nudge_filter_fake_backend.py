@@ -22,18 +22,24 @@ class TestNudgeRetryE2E:
         )
 
     def test_non_streaming_retries_up_to_configured_limit(
-        self, orchestrator_server, backend_client, configure_fake_backend, get_fake_stats,
+        self,
+        orchestrator_server,
+        backend_client,
+        configure_fake_backend,
+        get_fake_stats,
     ):
-        configure_fake_backend({
-            "chat": {
-                "script": [
-                    {"content": "Still thinking:"},
-                    {"content": "Still thinking:"},
-                    {"content": "Still thinking:"},
-                    {"content": "Still thinking:"},
-                ],
-            },
-        })
+        configure_fake_backend(
+            {
+                "chat": {
+                    "script": [
+                        {"content": "Still thinking:"},
+                        {"content": "Still thinking:"},
+                        {"content": "Still thinking:"},
+                        {"content": "Still thinking:"},
+                    ],
+                },
+            }
+        )
 
         response = self._request(backend_client, orchestrator_server, stream=False)
 
@@ -44,16 +50,25 @@ class TestNudgeRetryE2E:
         )
 
     def test_streaming_retries_and_keeps_one_terminal_sequence(
-        self, orchestrator_server, backend_client, configure_fake_backend, get_fake_stats,
+        self,
+        orchestrator_server,
+        backend_client,
+        configure_fake_backend,
+        get_fake_stats,
     ):
-        configure_fake_backend({
-            "chat": {
-                "script": [
-                    {"content": "I will say:", "stream_pieces": ["I will ", "say:"]},
-                    {"content": "The complete continuation.", "stream_pieces": ["The complete continuation."]},
-                ],
-            },
-        })
+        configure_fake_backend(
+            {
+                "chat": {
+                    "script": [
+                        {"content": "I will say:", "stream_pieces": ["I will ", "say:"]},
+                        {
+                            "content": "The complete continuation.",
+                            "stream_pieces": ["The complete continuation."],
+                        },
+                    ],
+                },
+            }
+        )
 
         response = self._request(backend_client, orchestrator_server, stream=True)
 
@@ -67,11 +82,21 @@ class TestNudgeRetryE2E:
 
     @pytest.mark.parametrize("stream", [False, True])
     def test_complete_response_does_not_retry(
-        self, orchestrator_server, backend_client, configure_fake_backend, get_fake_stats, stream,
+        self,
+        orchestrator_server,
+        backend_client,
+        configure_fake_backend,
+        get_fake_stats,
+        stream,
     ):
-        configure_fake_backend({
-            "chat": {"content": "This response is complete.", "stream_pieces": [["This response is complete."]]},
-        })
+        configure_fake_backend(
+            {
+                "chat": {
+                    "content": "This response is complete.",
+                    "stream_pieces": [["This response is complete."]],
+                },
+            }
+        )
 
         response = self._request(backend_client, orchestrator_server, stream=stream)
 

@@ -76,45 +76,61 @@ def emit_embedding_event(
 
 
 def emit_request(
-    req_id: str, model: str = "", input_length: int = 0,
-    upstream_url: str = "", route: str = "",
+    req_id: str,
+    model: str = "",
+    input_length: int = 0,
+    upstream_url: str = "",
+    route: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_embedding_event(req_id, "execution.embeddings.request",
-                         model=model or None,
-                         input_length=input_length or None,
-                         upstream_url=upstream_url or None,
-                         route=route or None,
-                         dispatcher=dispatcher)
+    return emit_embedding_event(
+        req_id,
+        "execution.embeddings.request",
+        model=model or None,
+        input_length=input_length or None,
+        upstream_url=upstream_url or None,
+        route=route or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_request_debug(
-    req_id: str, body_json: Any = None,
+    req_id: str,
+    body_json: Any = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_embedding_event(req_id, "execution.embeddings.request_debug",
-                         body_json=body_json,
-                         dispatcher=dispatcher)
+    return emit_embedding_event(
+        req_id, "execution.embeddings.request_debug", body_json=body_json, dispatcher=dispatcher
+    )
 
 
 def emit_failed(
-    req_id: str, error: str = "", traceback: str = "",
+    req_id: str,
+    error: str = "",
+    traceback: str = "",
     upstream_url: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_embedding_event(req_id, "execution.embeddings.failed",
-                         level="ERROR",
-                         error=error or None,
-                         traceback=traceback or None,
-                         upstream_url=upstream_url or None,
-                         dispatcher=dispatcher)
+    return emit_embedding_event(
+        req_id,
+        "execution.embeddings.failed",
+        level="ERROR",
+        error=error or None,
+        traceback=traceback or None,
+        upstream_url=upstream_url or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_timeout(
-    req_id: str, upstream_url: str = "",
+    req_id: str,
+    upstream_url: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_embedding_event(req_id, "execution.embeddings.timeout",
-                         level="ERROR",
-                         upstream_url=upstream_url or None,
-                         dispatcher=dispatcher)
+    return emit_embedding_event(
+        req_id,
+        "execution.embeddings.timeout",
+        level="ERROR",
+        upstream_url=upstream_url or None,
+        dispatcher=dispatcher,
+    )

@@ -49,8 +49,10 @@ def running_krm():
 
     subprocess.Popen(
         [KRM, "start", "--port", str(PORT), "--log-path", str(workdir)],
-        cwd=PROJECT_DIR, env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        cwd=PROJECT_DIR,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     # Wait up to 10s for health endpoint
     deadline = time.time() + 10
@@ -67,12 +69,13 @@ def running_krm():
 
     if not ok:
         logs = "\n".join(
-            path.read_text(encoding="utf-8", errors="replace")
-            for path in sorted(workdir.glob("server*.log"))
+            path.read_text(encoding="utf-8", errors="replace") for path in sorted(workdir.glob("server*.log"))
         )
         subprocess.run(
             [KRM, "stop", "--port", str(PORT), "--log-path", str(workdir), "--force"],
-            cwd=PROJECT_DIR, env=env, capture_output=True,
+            cwd=PROJECT_DIR,
+            env=env,
+            capture_output=True,
         )
         shutil.rmtree(workdir, ignore_errors=True)
         pytest.fail(f"Daemon did not start within 10s. Logs:\n{logs[-4000:]}")
@@ -82,7 +85,9 @@ def running_krm():
     finally:
         subprocess.run(
             [KRM, "stop", "--port", str(PORT), "--log-path", str(workdir), "--force"],
-            cwd=PROJECT_DIR, env=env, capture_output=True,
+            cwd=PROJECT_DIR,
+            env=env,
+            capture_output=True,
         )
         shutil.rmtree(workdir, ignore_errors=True)
 

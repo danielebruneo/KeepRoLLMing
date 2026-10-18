@@ -88,43 +88,66 @@ def emit_streaming_event(
 
 
 def emit_pipeline_build(
-    req_id: str, route_name: str = "", built: bool = False,
+    req_id: str,
+    route_name: str = "",
+    built: bool = False,
     filter_keys: list | None = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.pipeline_build",
-                         route_name=route_name or None,
-                         built=built,
-                         filter_keys=filter_keys or [],
-                         dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.pipeline_build",
+        route_name=route_name or None,
+        built=built,
+        filter_keys=filter_keys or [],
+        dispatcher=dispatcher,
+    )
 
 
 def emit_handler_entry(
-    req_id: str, route_name: str = "", filters: list | None = None,
+    req_id: str,
+    route_name: str = "",
+    filters: list | None = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.handler_entry",
-                         route_name=route_name or None,
-                         filters=filters or [], dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.handler_entry",
+        route_name=route_name or None,
+        filters=filters or [],
+        dispatcher=dispatcher,
+    )
 
 
 def emit_handler_pipeline(
-    req_id: str, pipeline_built: bool = False,
+    req_id: str,
+    pipeline_built: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.handler_pipeline",
-                         pipeline_built=pipeline_built,
-                         dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.handler_pipeline",
+        pipeline_built=pipeline_built,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_progress(
-    req_id: str, *, elapsed_ms: float, ttft_ms: float | None, chunks: int,
-    output_chars: int, output_tokens_est: int, decode_tps_est: float | None,
+    req_id: str,
+    *,
+    elapsed_ms: float,
+    ttft_ms: float | None,
+    chunks: int,
+    output_chars: int,
+    output_tokens_est: int,
+    decode_tps_est: float | None,
     dispatcher: Optional[Any] = None,
 ) -> None:
     """Emit rate-limited live stream telemetry (estimated until final usage)."""
     return emit_streaming_event(
-        req_id, "execution.streaming.progress", level="BASIC",
+        req_id,
+        "execution.streaming.progress",
+        level="BASIC",
         elapsed_ms=round(elapsed_ms, 1),
         ttft_ms=round(ttft_ms, 1) if ttft_ms is not None else None,
         chunks=chunks,
@@ -136,69 +159,104 @@ def emit_stream_progress(
 
 
 def emit_upstream_connect(
-    req_id: str, url: str,
+    req_id: str,
+    url: str,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.upstream_connect",
-                         level="DEBUG",
-                         url=url, dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.upstream_connect",
+        level="DEBUG",
+        url=url,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_upstream_connected(
-    req_id: str, status: int,
+    req_id: str,
+    status: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.upstream_connected",
-                         level="DEBUG",
-                         status=status, dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.upstream_connected",
+        level="DEBUG",
+        status=status,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_upstream_closed(
-    req_id: str, reason: str, total_chunks: int,
+    req_id: str,
+    reason: str,
+    total_chunks: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
     # Normal upstream completion is useful only in a detailed projection.  A
     # cancellation, however, is an essential terminal fact in BASIC PLAIN.
     level = "BASIC" if reason in {"cancelled", "generator_exit"} else "DEBUG"
-    return emit_streaming_event(req_id, "execution.streaming.upstream_closed",
-                         level=level, reason=reason, total_chunks=total_chunks,
-                         dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.upstream_closed",
+        level=level,
+        reason=reason,
+        total_chunks=total_chunks,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_pipeline_run_start(
-    req_id: str, route: str = "",
+    req_id: str,
+    route: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.pipeline_run_start",
-                         route=route or None, dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id, "execution.streaming.pipeline_run_start", route=route or None, dispatcher=dispatcher
+    )
 
 
 def emit_pipeline_run_done(
-    req_id: str, total_yielded: int,
+    req_id: str,
+    total_yielded: int,
     execution_usage: bool = False,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.pipeline_run_done",
-                         total_yielded=total_yielded,
-                         execution_usage=execution_usage,
-                         dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.pipeline_run_done",
+        total_yielded=total_yielded,
+        execution_usage=execution_usage,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_downstream_closed(
-    req_id: str, reason: str = "", chunks_yielded: int = 0,
+    req_id: str,
+    reason: str = "",
+    chunks_yielded: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.downstream_closed",
-                         # A downstream closure is the concise, operator-facing
-                         # explanation for a stream without normal completion.
-                         level="BASIC", reason=reason, chunks_yielded=chunks_yielded,
-                         dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.downstream_closed",
+        # A downstream closure is the concise, operator-facing
+        # explanation for a stream without normal completion.
+        level="BASIC",
+        reason=reason,
+        chunks_yielded=chunks_yielded,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_peer_disconnected(
-    req_id: str, *, reason: str = "http.disconnect",
-    action: str = "cancel_body_stream", asgi_spec: str = "",
-    peer: str = "", path: str = "", http_version: str = "",
+    req_id: str,
+    *,
+    reason: str = "http.disconnect",
+    action: str = "cancel_body_stream",
+    asgi_spec: str = "",
+    peer: str = "",
+    path: str = "",
+    http_version: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
     """Record the detailed boundary where downstream delivery was aborted."""
@@ -214,13 +272,17 @@ def emit_peer_disconnected(
     if http_version:
         data["http_version"] = http_version
     return emit_streaming_event(
-        req_id, "execution.streaming.peer_disconnected", level="DEBUG",
-        dispatcher=dispatcher, **data,
+        req_id,
+        "execution.streaming.peer_disconnected",
+        level="DEBUG",
+        dispatcher=dispatcher,
+        **data,
     )
 
 
 def emit_handler_error(
-    req_id: str, error: str = "",
+    req_id: str,
+    error: str = "",
     route_name: Optional[str] = None,
     upstream_url: Optional[str] = None,
     upstream_model: Optional[str] = None,
@@ -238,70 +300,97 @@ def emit_handler_error(
         data["upstream_url"] = upstream_url
     if upstream_model is not None:
         data["upstream_model"] = upstream_model
-    return emit_streaming_event(req_id, "execution.streaming.handler_error",
-                         level="ERROR",
-                         dispatcher=dispatcher, **data)
+    return emit_streaming_event(
+        req_id, "execution.streaming.handler_error", level="ERROR", dispatcher=dispatcher, **data
+    )
 
 
 def emit_downstream_complete(
-    req_id: str, total_yielded: int,
+    req_id: str,
+    total_yielded: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.downstream_complete",
-                         total_yielded=total_yielded,
-                         dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.downstream_complete",
+        total_yielded=total_yielded,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_stream_closed(
-    req_id: str, chunks_yielded: int,
+    req_id: str,
+    chunks_yielded: int,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_streaming_event(req_id, "execution.streaming.stream_closed",
-                         level="DEBUG",
-                         chunks_yielded=chunks_yielded,
-                         dispatcher=dispatcher)
+    return emit_streaming_event(
+        req_id,
+        "execution.streaming.stream_closed",
+        level="DEBUG",
+        chunks_yielded=chunks_yielded,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_trace_request_started(
-    req_id: str, *, route: str, dispatcher: Optional[Any] = None,
+    req_id: str,
+    *,
+    route: str,
+    dispatcher: Optional[Any] = None,
 ) -> None:
     """Announce an opt-in request to the raw trace consumer."""
     if dispatcher is None:
         return
-    dispatcher.emit(RuntimeEvent(
-        type="transport.trace.request_started",
-        timestamp_ns=time.time_ns(),
-        source=EventSource(domain="transport", component="trace"),
-        data={"route": route}, req_id=req_id, level="TRACE",
-    ))
+    dispatcher.emit(
+        RuntimeEvent(
+            type="transport.trace.request_started",
+            timestamp_ns=time.time_ns(),
+            source=EventSource(domain="transport", component="trace"),
+            data={"route": route},
+            req_id=req_id,
+            level="TRACE",
+        )
+    )
 
 
 def emit_trace_chunk(
-    req_id: str, *, direction: str, boundary: str, chunk_index: int,
-    raw_bytes: bytes, started_monotonic_ns: int, dispatcher: Optional[Any] = None,
+    req_id: str,
+    *,
+    direction: str,
+    boundary: str,
+    chunk_index: int,
+    raw_bytes: bytes,
+    started_monotonic_ns: int,
+    dispatcher: Optional[Any] = None,
 ) -> None:
     """Publish an exact transport chunk for the specialized raw trace sink."""
     if dispatcher is None:
         return
     now = time.perf_counter_ns()
-    dispatcher.emit(RuntimeEvent(
-        type="transport.trace.chunk",
-        timestamp_ns=time.time_ns(),
-        source=EventSource(domain="transport", component="trace"),
-        data={
-            "direction": direction,
-            "boundary": boundary,
-            "chunk_index": chunk_index,
-            "monotonic_ns": now,
-            "relative_ns": now - started_monotonic_ns,
-            "raw_bytes": raw_bytes,
-        },
-        req_id=req_id, level="TRACE",
-    ))
+    dispatcher.emit(
+        RuntimeEvent(
+            type="transport.trace.chunk",
+            timestamp_ns=time.time_ns(),
+            source=EventSource(domain="transport", component="trace"),
+            data={
+                "direction": direction,
+                "boundary": boundary,
+                "chunk_index": chunk_index,
+                "monotonic_ns": now,
+                "relative_ns": now - started_monotonic_ns,
+                "raw_bytes": raw_bytes,
+            },
+            req_id=req_id,
+            level="TRACE",
+        )
+    )
 
 
 def emit_trace_lifecycle(
-    req_id: str, *, boundary: str, dispatcher: Optional[Any] = None,
+    req_id: str,
+    *,
+    boundary: str,
+    dispatcher: Optional[Any] = None,
     **data: Any,
 ) -> None:
     """Persist an opt-in transport lifecycle fact beside exact SSE chunks.
@@ -314,11 +403,13 @@ def emit_trace_lifecycle(
     if dispatcher is None:
         return
     now = time.perf_counter_ns()
-    dispatcher.emit(RuntimeEvent(
-        type="transport.trace.lifecycle",
-        timestamp_ns=time.time_ns(),
-        source=EventSource(domain="transport", component="trace"),
-        data={"boundary": boundary, "monotonic_ns": now, **data},
-        req_id=req_id,
-        level="TRACE",
-    ))
+    dispatcher.emit(
+        RuntimeEvent(
+            type="transport.trace.lifecycle",
+            timestamp_ns=time.time_ns(),
+            source=EventSource(domain="transport", component="trace"),
+            data={"boundary": boundary, "monotonic_ns": now, **data},
+            req_id=req_id,
+            level="TRACE",
+        )
+    )

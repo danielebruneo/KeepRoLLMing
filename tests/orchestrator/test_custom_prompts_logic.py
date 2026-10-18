@@ -2,10 +2,9 @@
 Unit tests for custom summary prompts logic - focusing on parsing and function calls
 """
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import patch, MagicMock
-from keeprollming.endpoints.chat_completions import process_chat_request
-from starlette.requests import Request
 
 
 def test_custom_prompt_parsing():
@@ -16,7 +15,7 @@ def test_custom_prompt_parsing():
         "model": "local/quick",
         "messages": [{"role": "user", "content": "test message"}],
         "summary_prompt_type": "custom",
-        "summary_prompt": "This is a custom prompt"
+        "summary_prompt": "This is a custom prompt",
     }
 
     # Mock the request object
@@ -32,32 +31,25 @@ def test_custom_prompt_parsing():
 
 def test_custom_prompt_logic():
     """Test that custom prompt processing logic works correctly"""
-    
+
     # Test various scenarios for our custom prompt handling
-    payload_with_both = {
-        "summary_prompt_type": "custom",
-        "summary_prompt": "Custom text"
-    }
-    
-    payload_with_only_text = {
-        "summary_prompt": "Custom text"
-    }
-    
-    payload_without_custom = {}
-    
+    payload_with_both = {"summary_prompt_type": "custom", "summary_prompt": "Custom text"}
+
+    payload_with_only_text = {"summary_prompt": "Custom text"}
+
     # Simulate our logic processing:
     custom_prompt_type = payload_with_both.get("summary_prompt_type")
     custom_prompt_text = payload_with_both.get("summary_prompt")
-    
-    # When we have both, it should process appropriately 
+
+    # When we have both, it should process appropriately
     assert custom_prompt_type == "custom"
     assert custom_prompt_text == "Custom text"
-    
+
     # When we have only text, the logic should set prompt type to the text
     if custom_prompt_text and isinstance(custom_prompt_text, str):
-        expected_prompt_type = custom_prompt_text  # This is our new logic in app.py
-        
-    # Verify basic parsing works correctly for all cases  
+        pass  # This is our new logic in app.py
+
+    # Verify basic parsing works correctly for all cases
     assert payload_with_only_text.get("summary_prompt") == "Custom text"
 
 

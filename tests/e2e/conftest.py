@@ -12,6 +12,7 @@ from typing import Any, Dict
 
 import httpx
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,6 +36,24 @@ class RunningServer:
     workdir: Path
     perf_dir: Path
     cache_dir: Path
+
+
+@dataclass
+class FallbackAdmissionServers:
+    """Three real HTTP processes used to prove fallback admission transfer."""
+
+    orchestrator: RunningServer
+    primary: RunningServer
+    secondary: RunningServer
+
+
+@dataclass
+class BalancedRoutingServers:
+    """Two real fake backends and one KRM process for routing E2E coverage."""
+
+    orchestrator: RunningServer
+    fast: RunningServer
+    slow: RunningServer
 
 
 def _free_port() -> int:
@@ -93,7 +112,10 @@ def _spawn_uvicorn(
     module_name, attr_name = app_ref.split(":", 1)
     cmd = [sys.executable, "-c", _runner_code(module_name, attr_name, "127.0.0.1", port)]
 
-    with stdout_path.open("w", encoding="utf-8") as stdout_fh, stderr_path.open("w", encoding="utf-8") as stderr_fh:
+    with (
+        stdout_path.open("w", encoding="utf-8") as stdout_fh,
+        stderr_path.open("w", encoding="utf-8") as stderr_fh,
+    ):
         proc = subprocess.Popen(
             cmd,
             cwd=str(workdir),
@@ -158,6 +180,221 @@ def fake_backend_server(tmp_path: Path):
 
 
 @pytest.fixture
+def fallback_admission_servers(tmp_path: Path, fake_backend_server: RunningServer):
+    """Run KRM with separate primary and fallback fake backends.
+
+    This is intentionally process-based rather than an in-process client mock:
+    an active SSE response on the fallback backend must occupy KRM's real
+    admission slot while a second request attempts the same fallback.
+    """
+    secondary_port = _free_port()
+    backend_env = os.environ.copy()
+    backend_env["PYTHONUNBUFFERED"] = "1"
+    backend_env["PYTHONPATH"] = str(ROOT) + os.pathsep + backend_env.get("PYTHONPATH", "")
+    secondary = _spawn_uvicorn(
+        "tests.e2e.fake_backend:create_app",
+        port=secondary_port,
+        env=backend_env,
+        workdir=ROOT,
+        health_url=f"http://127.0.0.1:{secondary_port}/__health",
+    )
+    httpx.post(f"{secondary.base_url}/__reset", timeout=5.0).raise_for_status()
+
+    config_path = tmp_path / "fallback_admission_config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "routes": {
+                    "internal/fallback-admission": {
+                        "pattern": "internal/fallback-admission",
+                        "model": "primary-model",
+                        "upstream_url": fake_backend_server.base_url,
+                        "ctx_len": 4096,
+                        "max_tokens": 1024,
+                        "summary_enabled": False,
+                        "max_concurrent": 1,
+                        "queue_timeout": 0,
+                        "fallback_chain": ["internal/fallback-admission-secondary"],
+                    },
+                    "internal/fallback-admission-secondary": {
+                        "pattern": "internal/fallback-admission-secondary",
+                        "model": "secondary-model",
+                        "upstream_url": secondary.base_url,
+                        "ctx_len": 4096,
+                        "max_tokens": 1024,
+                        "summary_enabled": False,
+                        "max_concurrent": 1,
+                        "queue_timeout": 0,
+                    },
+                }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    orchestrator_port = _free_port()
+    orchestrator_env = os.environ.copy()
+    orchestrator_env.update(
+        {
+            "CONFIG_FILE": str(config_path),
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONPATH": str(ROOT) + os.pathsep + orchestrator_env.get("PYTHONPATH", ""),
+            "PERFORMANCE_LOGS_DIR": str(tmp_path / "performance_logs"),
+            "SUMMARY_CACHE_DIR": str(tmp_path / "summary_cache"),
+            "LOG_PATH": str(tmp_path / "logs"),
+        }
+    )
+    orchestrator = _spawn_uvicorn(
+        "keeprollming.app:app",
+        port=orchestrator_port,
+        env=orchestrator_env,
+        workdir=ROOT,
+        health_url=f"http://127.0.0.1:{orchestrator_port}/docs",
+    )
+    try:
+        yield FallbackAdmissionServers(
+            orchestrator=orchestrator,
+            primary=fake_backend_server,
+            secondary=secondary,
+        )
+    finally:
+        _stop_server(orchestrator)
+        _stop_server(secondary)
+
+
+@pytest.fixture
+def balanced_routing_servers(tmp_path: Path, fake_backend_server: RunningServer):
+    """Run KRM against two independently observable upstream resources."""
+    secondary_port = _free_port()
+    backend_env = os.environ.copy()
+    backend_env["PYTHONUNBUFFERED"] = "1"
+    backend_env["PYTHONPATH"] = str(ROOT) + os.pathsep + backend_env.get("PYTHONPATH", "")
+    slow = _spawn_uvicorn(
+        "tests.e2e.fake_backend:create_app",
+        port=secondary_port,
+        env=backend_env,
+        workdir=ROOT,
+        health_url=f"http://127.0.0.1:{secondary_port}/__health",
+    )
+    httpx.post(f"{slow.base_url}/__reset", timeout=5.0).raise_for_status()
+
+    config_path = tmp_path / "balanced_routing_config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "routes": {
+                    "pool/fast": {
+                        "pattern": "pool/fast",
+                        "model": "fast-model",
+                        "upstream_url": fake_backend_server.base_url,
+                        "ctx_len": 4096,
+                        "max_tokens": 1024,
+                        "max_concurrent": 1,
+                        "summary_enabled": False,
+                        "capabilities": ["chat", "tools"],
+                    },
+                    "pool/slow": {
+                        "pattern": "pool/slow",
+                        "model": "slow-model",
+                        "upstream_url": slow.base_url,
+                        "ctx_len": 4096,
+                        "max_tokens": 1024,
+                        "max_concurrent": 1,
+                        "summary_enabled": False,
+                        "capabilities": ["chat", "tools"],
+                    },
+                    "pool/text": {
+                        "pattern": "pool/text",
+                        "model": "text-model",
+                        "upstream_url": fake_backend_server.base_url,
+                        "ctx_len": 4096,
+                        "max_tokens": 1024,
+                        "max_concurrent": 1,
+                        "summary_enabled": False,
+                        "capabilities": ["chat"],
+                    },
+                    "code/main": {
+                        "pattern": "code/main",
+                        "model": "selector",
+                        "routing_priority": 100,
+                        "summary_enabled": False,
+                        "balance": {
+                            "targets": ["pool/fast", "pool/slow"],
+                            "idle_reservation": {
+                                "mode": "session",
+                                "timeout_seconds": 30,
+                            },
+                        },
+                    },
+                    "public/main": {
+                        "pattern": "public/main",
+                        "model": "selector",
+                        "routing_priority": 0,
+                        "summary_enabled": False,
+                        "balance": {"targets": ["pool/fast", "pool/slow"]},
+                    },
+                    "warm/main": {
+                        "pattern": "warm/main",
+                        "model": "selector",
+                        "summary_enabled": False,
+                        "balance": {
+                            "targets": ["pool/fast", "pool/slow"],
+                            "idle_reservation": {
+                                "mode": "session",
+                                "timeout_seconds": 30,
+                                "min_prompt_tokens": 100,
+                            },
+                        },
+                    },
+                    "capability/advisory": {
+                        "pattern": "capability/advisory",
+                        "model": "selector",
+                        "summary_enabled": False,
+                        "balance": {"targets": ["pool/text", "pool/slow"]},
+                    },
+                    "capability/strict": {
+                        "pattern": "capability/strict",
+                        "model": "selector",
+                        "summary_enabled": False,
+                        "balance": {
+                            "targets": ["pool/text", "pool/slow"],
+                            "enforce_capabilities": True,
+                        },
+                    },
+                }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    orchestrator_port = _free_port()
+    orchestrator_env = os.environ.copy()
+    orchestrator_env.update(
+        {
+            "CONFIG_FILE": str(config_path),
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONPATH": str(ROOT) + os.pathsep + orchestrator_env.get("PYTHONPATH", ""),
+            "PERFORMANCE_LOGS_DIR": str(tmp_path / "performance_logs"),
+            "SUMMARY_CACHE_DIR": str(tmp_path / "summary_cache"),
+            "LOG_PATH": str(tmp_path / "logs"),
+        }
+    )
+    orchestrator = _spawn_uvicorn(
+        "keeprollming.app:app",
+        port=orchestrator_port,
+        env=orchestrator_env,
+        workdir=ROOT,
+        health_url=f"http://127.0.0.1:{orchestrator_port}/docs",
+    )
+    try:
+        yield BalancedRoutingServers(orchestrator=orchestrator, fast=fake_backend_server, slow=slow)
+    finally:
+        _stop_server(orchestrator)
+        _stop_server(slow)
+
+
+@pytest.fixture
 def backend_target(request: pytest.FixtureRequest) -> BackendTarget:
     mode = getattr(request, "param", "fake")
     if mode == "fake":
@@ -176,7 +413,7 @@ def backend_target(request: pytest.FixtureRequest) -> BackendTarget:
         live_model = os.getenv("E2E_LIVE_MODEL")
 
         # Enhanced logging for live backend configuration
-        print(f"\n=== E2E LIVE TEST CONFIGURATION ===")
+        print("\n=== E2E LIVE TEST CONFIGURATION ===")
         print(f"UPSTREAM_BASE_URL environment variable: {raw_base or 'NOT SET'}")
         print(f"LIVE_MODEL environment variable: {live_model or 'NOT SET'}")
         print(f"CLIENT_SUMMARY_MODEL environment variable: {os.getenv('E2E_LIVE_CLIENT_SUMMARY_MODEL', 'local/quick')}")
@@ -229,15 +466,16 @@ def orchestrator_server(tmp_path: Path, backend_target: BackendTarget):
     )
     perf_dir = tmp_path / "performance_logs"
     cache_dir = tmp_path / "summary_cache"
-    
+
     # Ensure that we create a unique cache directory for this specific test
     # This is to ensure proper isolation even when running in parallel mode
     # Also clean the cache directory before using it to prevent any cross-contamination
     if cache_dir.exists():
         import shutil
+
         shutil.rmtree(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    
+
     server = _spawn_uvicorn(
         "keeprollming.app:app",
         port=port,
@@ -287,11 +525,11 @@ def pytest_addoption(parser):
         "--degrade-lvls",
         action="store",
         default="0",
-        help="Comma-separated degradation levels to test (e.g., 0,1,2,3,4)"
+        help="Comma-separated degradation levels to test (e.g., 0,1,2,3,4)",
     )
 
 
 def get_degradation_levels(request):
     """Parse degradation levels from pytest config."""
     levels_str = request.config.getoption("--degrade-lvls")
-    return [int(l.strip()) for l in levels_str.split(",")]
+    return [int(level.strip()) for level in levels_str.split(",")]

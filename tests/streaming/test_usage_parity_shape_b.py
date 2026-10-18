@@ -11,19 +11,16 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
-
 from keeprollming.streaming.parser import StreamParser
-from keeprollming.streaming.serializer import OpenAISSESerializer
 from keeprollming.streaming.runner import run_stream
+from keeprollming.streaming.serializer import OpenAISSESerializer
 from tests.helpers.stream_client import (
-    TestFinish,
     TestDone,
-    parse_sse_events,
-    collect_assistant_text,
+    TestFinish,
     assert_stream_protocol_valid,
+    collect_assistant_text,
+    parse_sse_events,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -121,9 +118,7 @@ def test_shape_b_finish_before_usage():
     finishes = [e for e in events if isinstance(e, TestFinish)]
     assert len(finishes) == 1
     assert finishes[0].reason == "stop"
-    assert finishes[0].usage == usage, (
-        f"Shape B parity: Finish.usage must be from later chunk, got {finishes[0].usage}"
-    )
+    assert finishes[0].usage == usage, f"Shape B parity: Finish.usage must be from later chunk, got {finishes[0].usage}"
 
     # Done present
     dones = [e for e in events if isinstance(e, TestDone)]
@@ -171,9 +166,7 @@ def test_shape_b_finish_and_usage_same_chunk():
     finishes = [e for e in events if isinstance(e, TestFinish)]
     assert len(finishes) == 1
     assert finishes[0].reason == "stop"
-    assert finishes[0].usage == usage, (
-        f"Same-chunk: Finish.usage must match, got {finishes[0].usage}"
-    )
+    assert finishes[0].usage == usage, f"Same-chunk: Finish.usage must match, got {finishes[0].usage}"
 
 
 # ---------------------------------------------------------------------------
@@ -218,9 +211,7 @@ def test_shape_c_usage_before_finish():
     finishes = [e for e in events if isinstance(e, TestFinish)]
     assert len(finishes) == 1
     assert finishes[0].reason == "stop"
-    assert finishes[0].usage == usage, (
-        f"Shape C: Finish.usage must match earlier chunk, got {finishes[0].usage}"
-    )
+    assert finishes[0].usage == usage, f"Shape C: Finish.usage must match earlier chunk, got {finishes[0].usage}"
 
 
 # ---------------------------------------------------------------------------
@@ -262,9 +253,7 @@ def test_shape_b_latest_usage_wins():
     # Finish has latest usage
     finishes = [e for e in events if isinstance(e, TestFinish)]
     assert len(finishes) == 1
-    assert finishes[0].usage == usage_2, (
-        f"Latest usage wins: expected {usage_2}, got {finishes[0].usage}"
-    )
+    assert finishes[0].usage == usage_2, f"Latest usage wins: expected {usage_2}, got {finishes[0].usage}"
 
 
 # ---------------------------------------------------------------------------

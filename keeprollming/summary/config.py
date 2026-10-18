@@ -21,11 +21,16 @@ MAX_SUMMARY_BACKEND_ATTEMPTS = int(os.getenv("MAX_SUMMARY_BACKEND_ATTEMPTS", "8"
 # ---------------------------------------------------------------------
 MAX_HEAD = int(os.getenv("MAX_HEAD", "3"))
 MAX_TAIL = int(os.getenv("MAX_TAIL", "3"))
-SUMMARY_PIN_FIRST_USER = os.getenv("SUMMARY_PIN_FIRST_USER", "1").strip().lower() not in {"0", "false", "no", "off"}
+SUMMARY_PIN_FIRST_USER = os.getenv("SUMMARY_PIN_FIRST_USER", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 # ---------------------------------------------------------------------
 # Token budgeting
 # ---------------------------------------------------------------------
-from ..config import SAFETY_MARGIN_TOK, SUMMARY_MAX_TOKENS  # noqa: E402
+from ..config import SAFETY_MARGIN_TOK, SUMMARY_MAX_TOKENS  # noqa: E402,F401
 
 SUMMARY_INSERT_BUDGET_TOK = int(os.getenv("SUMMARY_INSERT_BUDGET_TOK", str(SUMMARY_MAX_TOKENS)))

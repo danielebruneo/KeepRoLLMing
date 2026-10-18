@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
-from .events import EventSource, RuntimeEvent
+from .events import RuntimeEvent
 from .routing import RoutingEngine
 
 logger = logging.getLogger(__name__)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from keeprollming.filters.timestamp.stream import TimestampFinalizer
 from keeprollming.streaming.events import (
     AssistantTextDelta,
     Done,
@@ -19,7 +20,6 @@ from keeprollming.streaming.events import (
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer, ToolCallFinalizer
-from keeprollming.filters.timestamp.stream import TimestampFinalizer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -109,9 +109,7 @@ def test_process_event_buffers_short_assistant_text():
     from keeprollming.filters.timestamp.stream import TimestampFinalizer
 
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=lambda: fixed_dt, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=lambda: fixed_dt, tail_buffer_size=1024)
 
     # Short content — stays in tail buffer
     result = finalizer.process_event(AssistantTextDelta(delta="Hello"))
@@ -141,9 +139,7 @@ def test_process_event_emits_safe_prefix_for_long_text():
 
     tail_size = 20
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
-    finalizer = TimestampFinalizer(
-        template=_DEFAULT_TEMPLATE, clock=lambda: fixed_dt, tail_buffer_size=tail_size
-    )
+    finalizer = TimestampFinalizer(template=_DEFAULT_TEMPLATE, clock=lambda: fixed_dt, tail_buffer_size=tail_size)
 
     long_content = "A" * 50  # 50 chars, well above tail buffer
     result = finalizer.process_event(AssistantTextDelta(delta=long_content))
@@ -378,10 +374,10 @@ def test_toolcall_finalizer_multiple_tool_calls_by_index():
     """Multiple tool calls (different indices) are assembled independently."""
     finalizer = ToolCallFinalizer(flush_valid_only=True)
 
-    d0 = _make_delta(index=0, id="call_0", name="echo", arguments_delta='{}')
+    d0 = _make_delta(index=0, id="call_0", name="echo", arguments_delta="{}")
     assert finalizer.process_event(d0) == []
 
-    d1 = _make_delta(index=1, id="call_1", name="calc", arguments_delta='{}')
+    d1 = _make_delta(index=1, id="call_1", name="calc", arguments_delta="{}")
     assert finalizer.process_event(d1) == []
 
     finish = _make_finish("tool_calls")
@@ -410,7 +406,7 @@ def test_toolcall_finalizer_non_tool_events_pass_through():
     assert finalizer.process_event(keepalive) == [keepalive]
 
     # Text after tool call buffering
-    d = _make_delta(index=0, id="c", name="f", arguments_delta='{}')
+    d = _make_delta(index=0, id="c", name="f", arguments_delta="{}")
     finalizer.process_event(d)  # buffered
 
     text2 = AssistantTextDelta(delta="World")
@@ -421,7 +417,7 @@ def test_toolcall_finalizer_finish_tool_calls_flushes_before_finish():
     """Finish(reason='tool_calls') emits ToolCallComplete before Finish."""
     finalizer = ToolCallFinalizer()
 
-    d = _make_delta(index=0, id="c", name="f", arguments_delta='{}')
+    d = _make_delta(index=0, id="c", name="f", arguments_delta="{}")
     finalizer.process_event(d)
 
     finish = _make_finish("tool_calls")
@@ -431,9 +427,7 @@ def test_toolcall_finalizer_finish_tool_calls_flushes_before_finish():
     finish_idx = next(i for i, e in enumerate(output) if isinstance(e, Finish))
 
     assert len(tc_indices) == 1
-    assert tc_indices[0] < finish_idx, (
-        "ToolCallComplete must appear before Finish"
-    )
+    assert tc_indices[0] < finish_idx, "ToolCallComplete must appear before Finish"
 
 
 def test_toolcall_finalizer_done_passthrough():
@@ -469,7 +463,7 @@ def test_toolcall_finalizer_no_duplicate_on_finalize_after_finish():
     """
     finalizer = ToolCallFinalizer()
 
-    d = _make_delta(index=0, id="c", name="f", arguments_delta='{}')
+    d = _make_delta(index=0, id="c", name="f", arguments_delta="{}")
     finalizer.process_event(d)
 
     finish = _make_finish("tool_calls")
@@ -482,7 +476,7 @@ def test_toolcall_finalizer_no_duplicate_on_finalize_after_finish():
 
     # Verify no duplicate when finalize called before process_event
     finalizer2 = ToolCallFinalizer()
-    d2 = _make_delta(index=0, id="c2", name="f2", arguments_delta='{}')
+    d2 = _make_delta(index=0, id="c2", name="f2", arguments_delta="{}")
     finalizer2.process_event(d2)
     complete_from_finalize = finalizer2.finalize()  # first finalize
     assert len([e for e in complete_from_finalize if isinstance(e, ToolCallComplete)]) == 1
@@ -581,9 +575,6 @@ def test_toolcall_finalizer_invalid_only_pending_no_zero_finish():
 def test_toolcall_finalizer_valid_flush_then_finish():
     """Valid ToolCallComplete + Finish(reason='tool_calls') passes strict validator."""
     from tests.helpers.stream_client import (
-        TestToolCallComplete,
-        TestFinish,
-        TestDone,
         assert_stream_protocol_valid,
     )
 
@@ -597,6 +588,7 @@ def test_toolcall_finalizer_valid_flush_then_finish():
 
     # Build a sequence: ToolCallComplete + Finish + Done
     from keeprollming.streaming.events import Done
+
     events = output + [Done()]
 
     # Serialize and parse through stream_client
@@ -617,15 +609,12 @@ def test_toolcall_finalizer_non_tool_finish_with_tc_fails_strict():
     But if we manually construct ToolCallComplete + Finish(reason='stop'),
     strict validator rejects it.
     """
+    # Direct sequence: ToolCallComplete + Finish(reason='stop') + Done
+    from keeprollming.streaming.events import Done, ToolCallComplete
     from tests.helpers.stream_client import (
-        TestToolCallComplete,
-        TestFinish,
-        TestDone,
         assert_stream_protocol_valid,
     )
 
-    # Direct sequence: ToolCallComplete + Finish(reason='stop') + Done
-    from keeprollming.streaming.events import ToolCallComplete, Done
     events = [
         ToolCallComplete(
             index=0,

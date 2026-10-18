@@ -6,16 +6,19 @@ from typing import Any, Dict, List
 # Token counting (best-effort)
 # ----------------------------
 
+
 class TokenCounter:
     """Simple token estimator.
 
     - Uses tiktoken(cl100k_base) if available
     - Fallback: chars/4
     """
+
     def __init__(self) -> None:
         self._enc = None
         try:
             import tiktoken  # type: ignore
+
             self._enc = tiktoken.get_encoding("cl100k_base")
             self.mode = "tiktoken:cl100k_base"
         except Exception:

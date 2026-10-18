@@ -1,7 +1,5 @@
-"""E2E tests for /metrics and /health endpoints.
-"""
+"""E2E tests for /metrics and /health endpoints."""
 
-import httpx
 import pytest
 
 

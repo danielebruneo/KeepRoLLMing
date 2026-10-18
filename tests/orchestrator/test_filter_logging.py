@@ -5,8 +5,6 @@ retired; all filters now use RuntimeEvent emission via orchestrator/filters/even
 This file now tests only the RuntimeEvent-based filter event emission path.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, RuntimeEvent
 from keeprollming.orchestrator.filters.events import emit_filter_event
 
@@ -146,10 +144,10 @@ class TestFilterEventEmission:
         context.event_dispatcher = dispatcher
 
         from keeprollming.orchestrator.filters.events import (
-            emit_tool_loop_detected,
+            emit_tls_fallback,
             emit_tls_intervention,
             emit_tls_retry,
-            emit_tls_fallback,
+            emit_tool_loop_detected,
         )
 
         emit_tool_loop_detected(context, "search", "hash123", attempt=1)
@@ -181,8 +179,8 @@ class TestFilterEventEmission:
 
         from keeprollming.orchestrator.filters.events import (
             emit_reasoning_loop_detected,
-            emit_rls_intervention,
             emit_rls_fallback,
+            emit_rls_intervention,
         )
 
         emit_reasoning_loop_detected(context, "Let me think about this...")
@@ -238,8 +236,8 @@ class TestFilterEventEmission:
 
         from keeprollming.orchestrator.filters.events import (
             emit_filter_chain_executed,
-            emit_filter_error,
             emit_filter_disabled,
+            emit_filter_error,
         )
 
         emit_filter_chain_executed(

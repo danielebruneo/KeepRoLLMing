@@ -55,30 +55,49 @@ from __future__ import annotations
 import httpx
 import pytest
 
-# Import e2e fixtures so pytest sees them as available for this module.
-# pytest discovers fixtures from conftest.py files in the test directory tree;
-# importing here ensures tests/e2e/conftest.py is loaded.
-from tests.e2e.conftest import (  # noqa: F401
-    fake_backend_server,
-    backend_target,
-    orchestrator_server,
-    backend_client,
-    configure_fake_backend,
-    get_fake_stats,
-)
-
+from tests.e2e.conftest import backend_client as _backend_client_fixture  # noqa: F401
+from tests.e2e.conftest import backend_target as _backend_target_fixture  # noqa: F401
+from tests.e2e.conftest import configure_fake_backend as _configure_fake_backend_fixture  # noqa: F401
+from tests.e2e.conftest import fake_backend_server as _fake_backend_server_fixture  # noqa: F401
+from tests.e2e.conftest import orchestrator_server as _orchestrator_server_fixture  # noqa: F401
 from tests.helpers.stream_client import (
     TestAssistantTextDelta,
     TestDone,
     TestFinish,
     TestToolCallComplete,
+    _count_timestamp_footers,
+    assert_stream_protocol_valid,
     collect_assistant_text,
     collect_finish_events,
     collect_tool_calls,
     parse_sse_events,
-    assert_stream_protocol_valid,
-    _count_timestamp_footers,
 )
+
+
+@pytest.fixture
+def backend_client(request):
+    return request.getfixturevalue("_backend_client_fixture")
+
+
+@pytest.fixture
+def backend_target(request):
+    return request.getfixturevalue("_backend_target_fixture")
+
+
+@pytest.fixture
+def configure_fake_backend(request):
+    return request.getfixturevalue("_configure_fake_backend_fixture")
+
+
+@pytest.fixture
+def fake_backend_server(request):
+    return request.getfixturevalue("_fake_backend_server_fixture")
+
+
+@pytest.fixture
+def orchestrator_server(request):
+    return request.getfixturevalue("_orchestrator_server_fixture")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -107,6 +126,7 @@ def _collect_raw_chunks(response: httpx.Response) -> list[str]:
 # Test 1: test_e2e_done_is_last
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 class TestE2EDoneIsLast:
@@ -126,12 +146,14 @@ class TestE2EDoneIsLast:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Hello, ", "world!"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Hello, ", "world!"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -162,6 +184,7 @@ class TestE2EDoneIsLast:
 # Test 2: test_e2e_rejects_content_after_finish
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 class TestE2EContentAfterFinish:
@@ -186,12 +209,14 @@ class TestE2EContentAfterFinish:
         # Fake backend: two stream pieces ("Hello", "World (retry)") followed
         # by finish_reason.  With local/main (no filters) the finish
         # marker is emitted after all pieces, so no content leaks past it.
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Hello", "World (retry)"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Hello", "World (retry)"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -216,15 +241,10 @@ class TestE2EContentAfterFinish:
             f"Text: {text!r}. Events: {[type(e).__name__ for e in events]}"
         )
 
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, TestFinish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
 
         # Check if there's content after finish (I4 violation)
-        content_after = [
-            e for i, e in enumerate(events)
-            if i > finish_idx and isinstance(e, TestAssistantTextDelta)
-        ]
+        content_after = [e for i, e in enumerate(events) if i > finish_idx and isinstance(e, TestAssistantTextDelta)]
 
         if content_after:
             # I4 violation — this is the expected red outcome on V1
@@ -242,6 +262,7 @@ class TestE2EContentAfterFinish:
 # ---------------------------------------------------------------------------
 # Test 3: test_e2e_timestamp_before_finish
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -266,12 +287,14 @@ class TestE2ETimestampBeforeFinish:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Timestamp test content"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Timestamp test content"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -291,12 +314,9 @@ class TestE2ETimestampBeforeFinish:
 
         # We should have exactly one finish
         assert len(finishes) == 1, (
-            f"Expected 1 finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, TestFinish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
 
         # If there's a timestamp footer, it must be before finish
         ts_count = _count_timestamp_footers(text)
@@ -328,6 +348,7 @@ class TestE2ETimestampBeforeFinish:
 # Test 4: test_e2e_stale_timestamp_footer_replaced_not_duplicated
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 class TestE2ETimestampFooterDedup:
@@ -354,12 +375,14 @@ class TestE2ETimestampFooterDedup:
     ):
         # Backend returns content that already has a timestamp footer
         stale_ts = "\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Hello" + stale_ts]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Hello" + stale_ts]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -379,10 +402,7 @@ class TestE2ETimestampFooterDedup:
 
         # I6: at most one timestamp footer
         if ts_count > 1:
-            pytest.fail(
-                "I6: Duplicate timestamp footer in downstream content. "
-                f"Count: {ts_count}. Text: {text!r}"
-            )
+            pytest.fail(f"I6: Duplicate timestamp footer in downstream content. Count: {ts_count}. Text: {text!r}")
 
         # Should still have at least one timestamp (the fresh one from KRM)
         assert ts_count >= 1, (
@@ -391,9 +411,7 @@ class TestE2ETimestampFooterDedup:
         )
 
         # I7: timestamp must appear before Finish
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, TestFinish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
         last_content_idx = -1
         for i, e in enumerate(events):
             if isinstance(e, TestAssistantTextDelta):
@@ -412,6 +430,7 @@ class TestE2ETimestampFooterDedup:
 # ---------------------------------------------------------------------------
 # Test 5: test_e2e_tool_call_finish_alignment
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -432,21 +451,23 @@ class TestE2EToolCallFinishAlignment:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "tool_calls": [
-                    {
-                        "id": "call_abc123",
-                        "type": "function",
-                        "function": {
-                            "name": "search_files",
-                            "arguments": '{"query": "important.pdf", "path": "/docs"}',
-                        },
-                    }
-                ],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "tool_calls": [
+                        {
+                            "id": "call_abc123",
+                            "type": "function",
+                            "function": {
+                                "name": "search_files",
+                                "arguments": '{"query": "important.pdf", "path": "/docs"}',
+                            },
+                        }
+                    ],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -466,8 +487,7 @@ class TestE2EToolCallFinishAlignment:
 
         # I1: exactly one finish
         assert len(finishes) == 1, (
-            f"Expected 1 finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # I9: finish_reason must be tool_calls when tool calls present
@@ -485,8 +505,7 @@ class TestE2EToolCallFinishAlignment:
         # Verify arguments are valid JSON
         for tc in tool_calls:
             assert tc.arguments_obj is not None, (
-                f"I8: Tool call '{tc.name}' has invalid JSON arguments: "
-                f"{tc.arguments_json!r}"
+                f"I8: Tool call '{tc.name}' has invalid JSON arguments: {tc.arguments_json!r}"
             )
 
         # local/main has no filters so content+tool_call may share
@@ -497,6 +516,7 @@ class TestE2EToolCallFinishAlignment:
 # ---------------------------------------------------------------------------
 # Test 6: test_v2_e2e_done_is_last
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -513,12 +533,14 @@ class TestV2E2EDoneIsLast:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Hello, ", "world!"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Hello, ", "world!"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -545,6 +567,7 @@ class TestV2E2EDoneIsLast:
 # Test 7: test_v2_e2e_stale_timestamp_footer_replaced_not_duplicated
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 class TestV2E2ETimestampFooterDedup:
@@ -564,12 +587,14 @@ class TestV2E2ETimestampFooterDedup:
         configure_fake_backend,
     ):
         stale_ts = "\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Hello" + stale_ts]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Hello" + stale_ts]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -589,10 +614,7 @@ class TestV2E2ETimestampFooterDedup:
 
         # I6: at most one timestamp footer
         if ts_count > 1:
-            pytest.fail(
-                "I6: Duplicate timestamp footer in downstream content. "
-                f"Count: {ts_count}. Text: {text!r}"
-            )
+            pytest.fail(f"I6: Duplicate timestamp footer in downstream content. Count: {ts_count}. Text: {text!r}")
 
         # Should have at least one timestamp (the fresh one from V2 finalizer)
         assert ts_count >= 1, (
@@ -603,12 +625,9 @@ class TestV2E2ETimestampFooterDedup:
         # I7: timestamp must appear before Finish
         finishes = collect_finish_events(events)
         assert len(finishes) == 1, (
-            f"Expected 1 finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, TestFinish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
         last_content_idx = -1
         for i, e in enumerate(events):
             if isinstance(e, TestAssistantTextDelta):
@@ -627,6 +646,7 @@ class TestV2E2ETimestampFooterDedup:
 # Test 8: test_v2_e2e_timestamp_before_finish
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 class TestV2E2ETimestampBeforeFinish:
@@ -643,12 +663,14 @@ class TestV2E2ETimestampBeforeFinish:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Timestamp test content"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Timestamp test content"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -667,12 +689,9 @@ class TestV2E2ETimestampBeforeFinish:
         finishes = collect_finish_events(events)
 
         assert len(finishes) == 1, (
-            f"Expected 1 finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, TestFinish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
 
         ts_count = _count_timestamp_footers(text)
         if ts_count >= 1:
@@ -699,6 +718,7 @@ class TestV2E2ETimestampBeforeFinish:
 # Test 9: test_v2_e2e_done_is_last_strict
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 class TestV2E2EDoneIsLastStrict:
@@ -715,12 +735,14 @@ class TestV2E2EDoneIsLastStrict:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Strict protocol test"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Strict protocol test"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -750,6 +772,7 @@ class TestV2E2EDoneIsLastStrict:
 # Test 10: test_v2_e2e_tool_call_assembly
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
 class TestV2E2EToolCallAssembly:
@@ -768,21 +791,23 @@ class TestV2E2EToolCallAssembly:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "tool_calls": [
-                    {
-                        "id": "call_abc123",
-                        "type": "function",
-                        "function": {
-                            "name": "search_files",
-                            "arguments": '{"query": "important.pdf", "path": "/docs"}',
-                        },
-                    }
-                ],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "tool_calls": [
+                        {
+                            "id": "call_abc123",
+                            "type": "function",
+                            "function": {
+                                "name": "search_files",
+                                "arguments": '{"query": "important.pdf", "path": "/docs"}',
+                            },
+                        }
+                    ],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -802,8 +827,7 @@ class TestV2E2EToolCallAssembly:
 
         # I1: exactly one finish
         assert len(finishes) == 1, (
-            f"Expected 1 finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # I9: finish_reason must be tool_calls when tool calls present
@@ -821,8 +845,7 @@ class TestV2E2EToolCallAssembly:
         # Verify arguments are valid JSON
         for tc in tool_calls:
             assert tc.arguments_obj is not None, (
-                f"I8: Tool call '{tc.name}' has invalid JSON arguments: "
-                f"{tc.arguments_json!r}"
+                f"I8: Tool call '{tc.name}' has invalid JSON arguments: {tc.arguments_json!r}"
             )
 
         # Full protocol validation (lenient: content+tool_call may share delta)
@@ -832,6 +855,7 @@ class TestV2E2EToolCallAssembly:
 # ---------------------------------------------------------------------------
 # Test 11: test_v2_e2e_tool_call_no_finish_synthetic
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -852,22 +876,24 @@ class TestV2E2EToolCallNoFinish:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "tool_calls": [
-                    {
-                        "id": "call_xyz789",
-                        "type": "function",
-                        "function": {
-                            "name": "get_weather",
-                            "arguments": '{"city": "Rome", "unit": "celsius"}',
-                        },
-                    }
-                ],
-                "final_finish_reason": None,  # No finish_reason — runner must synthesize
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "tool_calls": [
+                        {
+                            "id": "call_xyz789",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": '{"city": "Rome", "unit": "celsius"}',
+                            },
+                        }
+                    ],
+                    "final_finish_reason": None,  # No finish_reason — runner must synthesize
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -887,8 +913,7 @@ class TestV2E2EToolCallNoFinish:
 
         # I1: exactly one finish (synthetic)
         assert len(finishes) == 1, (
-            f"Expected 1 finish (synthetic), got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish (synthetic), got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # I9: synthetic Finish must be tool_calls when tool calls present
@@ -899,14 +924,11 @@ class TestV2E2EToolCallNoFinish:
 
         # I9: at least one complete tool call
         assert len(tool_calls) >= 1, (
-            "I9: tool calls present but no complete tool calls emitted. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"I9: tool calls present but no complete tool calls emitted. Events: {[type(e).__name__ for e in events]}"
         )
 
         # Done must be last
-        assert events and isinstance(events[-1], TestDone), (
-            "I2: [DONE] not last"
-        )
+        assert events and isinstance(events[-1], TestDone), "I2: [DONE] not last"
 
         # Full protocol validation (lenient: content+tool_call may share delta)
         assert_stream_protocol_valid(events, profile="lenient")
@@ -915,6 +937,7 @@ class TestV2E2EToolCallNoFinish:
 # ---------------------------------------------------------------------------
 # Test 12: test_v2_e2e_non_tool_normal
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -934,12 +957,14 @@ class TestV2E2ENonToolNormal:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Normal assistant response"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Normal assistant response"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -960,29 +985,24 @@ class TestV2E2ENonToolNormal:
 
         # I1: exactly one finish
         assert len(finishes) == 1, (
-            f"Expected 1 finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # Normal finish reason is "stop"
         assert finishes[0].reason == "stop", (
-            f"Expected finish_reason='stop', got {finishes[0].reason!r}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected finish_reason='stop', got {finishes[0].reason!r}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # No tool calls in a normal text response
         assert len(tool_calls) == 0, (
-            f"Expected no tool calls, got {len(tool_calls)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected no tool calls, got {len(tool_calls)}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # Text content must be present
         assert text, "Expected assistant text content"
 
         # Done must be last
-        assert events and isinstance(events[-1], TestDone), (
-            "I2: [DONE] not last"
-        )
+        assert events and isinstance(events[-1], TestDone), "I2: [DONE] not last"
 
         # Full protocol validation
         assert_stream_protocol_valid(events, profile="strict")
@@ -991,6 +1011,7 @@ class TestV2E2ENonToolNormal:
 # ---------------------------------------------------------------------------
 # Test 13: test_v2_e2e_timestamp_tool_call_coexistence
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -1016,22 +1037,24 @@ class TestV2E2ETimestampToolCallCoexistence:
         backend_client,
         configure_fake_backend,
     ):
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["Tool call with timestamp"]],
-                "tool_calls": [
-                    {
-                        "id": "call_tc001",
-                        "type": "function",
-                        "function": {
-                            "name": "list_files",
-                            "arguments": '{"path": "/tmp"}',
-                        },
-                    }
-                ],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["Tool call with timestamp"]],
+                    "tool_calls": [
+                        {
+                            "id": "call_tc001",
+                            "type": "function",
+                            "function": {
+                                "name": "list_files",
+                                "arguments": '{"path": "/tmp"}',
+                            },
+                        }
+                    ],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -1052,8 +1075,7 @@ class TestV2E2ETimestampToolCallCoexistence:
 
         # I1: exactly one finish
         assert len(finishes) == 1, (
-            f"Expected 1 finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected 1 finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # I9: finish_reason must be tool_calls
@@ -1064,36 +1086,28 @@ class TestV2E2ETimestampToolCallCoexistence:
 
         # At least one complete tool call
         assert len(tool_calls) >= 1, (
-            "I9: tool calls present but no complete tool calls. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"I9: tool calls present but no complete tool calls. Events: {[type(e).__name__ for e in events]}"
         )
 
         # Timestamp footer must be present (from TimestampFinalizer)
         ts_count = _count_timestamp_footers(text)
         assert ts_count >= 1, (
-            "Expected at least one timestamp footer. "
-            f"Text: {text!r}. Events: {[type(e).__name__ for e in events]}"
+            f"Expected at least one timestamp footer. Text: {text!r}. Events: {[type(e).__name__ for e in events]}"
         )
 
         # I6: at most one timestamp footer
         if ts_count > 1:
-            pytest.fail(
-                "I6: Duplicate timestamp footer. "
-                f"Count: {ts_count}. Text: {text!r}"
-            )
+            pytest.fail(f"I6: Duplicate timestamp footer. Count: {ts_count}. Text: {text!r}")
 
         # I9: ToolCallComplete before Finish
         has_tc_before_finish = False
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, TestFinish)
-        )
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
         for i, e in enumerate(events):
             if i < finish_idx and isinstance(e, TestToolCallComplete):
                 has_tc_before_finish = True
                 break
         assert has_tc_before_finish, (
-            "ToolCallComplete must appear before Finish. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"ToolCallComplete must appear before Finish. Events: {[type(e).__name__ for e in events]}"
         )
 
         # Full protocol validation (lenient: content+tool_call may share context)
@@ -1103,6 +1117,7 @@ class TestV2E2ETimestampToolCallCoexistence:
 # ---------------------------------------------------------------------------
 # Test 9: test_v2_tool_rewrite_valid_xml
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -1123,12 +1138,14 @@ class TestV2ToolRewriteValidXML:
         configure_fake_backend,
     ):
         # Fake backend emits valid XML pseudo-tool-call
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["<read><path>README.md</path></read>"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["<read><path>README.md</path></read>"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -1152,45 +1169,29 @@ class TestV2ToolRewriteValidXML:
             f"Events: {[type(e).__name__ for e in events]}"
         )
         tcc = tcc_events[0]
-        assert tcc.name == "read", (
-            f"Expected tool name 'read', got '{tcc.name}'."
-        )
+        assert tcc.name == "read", f"Expected tool name 'read', got '{tcc.name}'."
         assert tcc.arguments_json == '{"path":"README.md"}', (
-            f"Expected arguments '{{\"path\":\"README.md\"}}', "
-            f"got '{tcc.arguments_json}'."
+            f"Expected arguments '{{\"path\":\"README.md\"}}', got '{tcc.arguments_json}'."
         )
-        assert tcc.arguments_obj is not None, (
-            "ToolCallComplete arguments should be valid JSON."
-        )
+        assert tcc.arguments_obj is not None, "ToolCallComplete arguments should be valid JSON."
 
         # 2. Original XML is NOT downstream
-        xml_events = [
-            e for e in events
-            if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta
-        ]
+        xml_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta]
         assert len(xml_events) == 0, (
-            f"Original XML must be suppressed, but found {len(xml_events)} "
-            f"events with '<read>' content."
+            f"Original XML must be suppressed, but found {len(xml_events)} events with '<read>' content."
         )
 
         # 3. Finish.reason is "tool_calls"
         finishes = collect_finish_events(events)
         assert len(finishes) == 1, (
-            f"Expected exactly one Finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected exactly one Finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
-        assert finishes[0].reason == "tool_calls", (
-            f"Expected Finish.reason='tool_calls', got '{finishes[0].reason}'."
-        )
+        assert finishes[0].reason == "tool_calls", f"Expected Finish.reason='tool_calls', got '{finishes[0].reason}'."
 
         # 4. Done is last and exactly one Done
-        assert isinstance(events[-1], TestDone), (
-            "Done must be the last event."
-        )
+        assert isinstance(events[-1], TestDone), "Done must be the last event."
         done_events = [e for e in events if isinstance(e, TestDone)]
-        assert len(done_events) == 1, (
-            f"Expected exactly one Done event, got {len(done_events)}."
-        )
+        assert len(done_events) == 1, f"Expected exactly one Done event, got {len(done_events)}."
 
         # Full protocol validation (lenient: content+tool_call may share)
         assert_stream_protocol_valid(events, profile="lenient")
@@ -1199,6 +1200,7 @@ class TestV2ToolRewriteValidXML:
 # ---------------------------------------------------------------------------
 # Test 10: test_v2_tool_rewrite_fail_open_malformed_xml
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -1218,12 +1220,14 @@ class TestV2ToolRewriteFailOpenMalformedXML:
         configure_fake_backend,
     ):
         # Fake backend emits malformed XML: unescaped & breaks XML parsing
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["<read>path=foo&bar</read>"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["<read>path=foo&bar</read>"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -1246,33 +1250,23 @@ class TestV2ToolRewriteFailOpenMalformedXML:
         )
 
         # 2. Original text passes through (fail-open)
-        text_events = [
-            e for e in events if isinstance(e, TestAssistantTextDelta)
-        ]
-        assert len(text_events) > 0, (
-            "Expected at least one AssistantTextDelta for fail-open."
-        )
+        text_events = [e for e in events if isinstance(e, TestAssistantTextDelta)]
+        assert len(text_events) > 0, "Expected at least one AssistantTextDelta for fail-open."
         has_malformed = any("<read>" in e.delta for e in text_events)
-        assert has_malformed, (
-            "Malformed XML should pass through unchanged (fail-open)."
-        )
+        assert has_malformed, "Malformed XML should pass through unchanged (fail-open)."
 
         # 3. Finish.reason is "stop" (no tool calls)
         finishes = collect_finish_events(events)
         assert len(finishes) == 1, (
-            f"Expected exactly one Finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected exactly one Finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
         assert finishes[0].reason == "stop", (
-            f"Expected Finish.reason='stop' for malformed XML, "
-            f"got '{finishes[0].reason}'."
+            f"Expected Finish.reason='stop' for malformed XML, got '{finishes[0].reason}'."
         )
 
         # 4. No content dropped — the malformed XML should be present
         all_text = collect_assistant_text(events)
-        assert "<read>path=foo&bar</read>" in all_text, (
-            f"Malformed XML content should be preserved. Text: {all_text!r}"
-        )
+        assert "<read>path=foo&bar</read>" in all_text, f"Malformed XML content should be preserved. Text: {all_text!r}"
 
         # Full protocol validation
         assert_stream_protocol_valid(events, profile="strict")
@@ -1281,6 +1275,7 @@ class TestV2ToolRewriteFailOpenMalformedXML:
 # ---------------------------------------------------------------------------
 # Test 11: test_v2_tool_rewrite_timestamp_coexistence
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.red
 @pytest.mark.parametrize("backend_target", ["fake"], indirect=True)
@@ -1305,12 +1300,14 @@ class TestV2ToolRewriteTimestampCoexistence:
         configure_fake_backend,
     ):
         # Fake backend emits valid XML pseudo-tool-call
-        configure_fake_backend({
-            "chat": {
-                "stream_pieces": [["<read><path>README.md</path></read>"]],
-                "include_usage": True,
+        configure_fake_backend(
+            {
+                "chat": {
+                    "stream_pieces": [["<read><path>README.md</path></read>"]],
+                    "include_usage": True,
+                }
             }
-        })
+        )
 
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
@@ -1335,21 +1332,14 @@ class TestV2ToolRewriteTimestampCoexistence:
         # 2. Finish.reason is "tool_calls"
         finishes = collect_finish_events(events)
         assert len(finishes) == 1, (
-            f"Expected exactly one Finish, got {len(finishes)}. "
-            f"Events: {[type(e).__name__ for e in events]}"
+            f"Expected exactly one Finish, got {len(finishes)}. Events: {[type(e).__name__ for e in events]}"
         )
-        assert finishes[0].reason == "tool_calls", (
-            f"Expected Finish.reason='tool_calls', got '{finishes[0].reason}'."
-        )
+        assert finishes[0].reason == "tool_calls", f"Expected Finish.reason='tool_calls', got '{finishes[0].reason}'."
 
         # 3. Original XML is NOT downstream
-        xml_events = [
-            e for e in events
-            if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta
-        ]
+        xml_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta]
         assert len(xml_events) == 0, (
-            f"Original XML must be suppressed, but found {len(xml_events)} "
-            f"events with '<read>' content."
+            f"Original XML must be suppressed, but found {len(xml_events)} events with '<read>' content."
         )
 
         # 4. Tool-call-only turns must not acquire synthetic timestamp text.
@@ -1361,20 +1351,15 @@ class TestV2ToolRewriteTimestampCoexistence:
         )
 
         # 5. No assistant text may be sent before the tool-call finish.
-        finish_idx = next(
-            i for i, e in enumerate(events) if isinstance(e, TestFinish)
+        finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
+        assert not any(isinstance(event, TestAssistantTextDelta) for event in events[:finish_idx]), (
+            "A tool-call-only terminal turn must not contain assistant text"
         )
-        assert not any(
-            isinstance(event, TestAssistantTextDelta)
-            for event in events[:finish_idx]
-        ), "A tool-call-only terminal turn must not contain assistant text"
 
         # 6. Done is last and exactly one Done
         assert isinstance(events[-1], TestDone), "Done must be the last event"
         done_events = [e for e in events if isinstance(e, TestDone)]
-        assert len(done_events) == 1, (
-            f"Expected exactly one Done event, got {len(done_events)}."
-        )
+        assert len(done_events) == 1, f"Expected exactly one Done event, got {len(done_events)}."
 
         # Full protocol validation: this is now strict OpenAI-compatible SSE.
         assert_stream_protocol_valid(events, profile="strict")

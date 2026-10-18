@@ -10,7 +10,6 @@ import re
 import traceback
 from typing import Any
 
-
 # ── Server logger globals ──────────────────────────────────────────
 
 _SERVER_LOGGER: logging.Logger | None = None
@@ -41,15 +40,13 @@ def setup_server_logging() -> logging.Logger:
         )
         file_handler.setLevel(getattr(logging, _LOG_LEVEL, "INFO"))
     except Exception as e:
-        logger.warning("Could not create log file %s: %s", _LOG_FILE_PATH, e)
+        _SERVER_LOGGER.warning("Could not create log file %s: %s", _LOG_FILE_PATH, e)
         return _SERVER_LOGGER
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.ERROR)
 
-    formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
+    formatter = logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
 
@@ -87,18 +84,22 @@ def setup_debug_logging() -> logging.Logger:
         )
         file_handler.setLevel(logging.DEBUG)
     except Exception as e:
-        logger.warning("Could not create debug log file %s: %s", _DEBUG_LOG_FILE_PATH, e)
+        _DEBUG_LOGGER.warning(
+            "Could not create debug log file %s: %s",
+            _DEBUG_LOG_FILE_PATH,
+            e,
+        )
         return _DEBUG_LOGGER
 
     class DebugFormatter(logging.Formatter):
         def format(self, record):
-            if not hasattr(record, 'req_id'):
-                record.req_id = '-'
+            if not hasattr(record, "req_id"):
+                record.req_id = "-"
             return super().format(record)
 
     formatter = DebugFormatter(
         "%(asctime)s | %(levelname)-8s | REQ=%(req_id)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler.setFormatter(formatter)
 
@@ -116,6 +117,7 @@ def get_debug_logger() -> logging.Logger | None:
 
 
 # ── Server event loggers ───────────────────────────────────────────
+
 
 def log_server_event(level: str, message: str, **kwargs) -> None:
     """Log a server event to the file logger."""
@@ -139,19 +141,23 @@ def log_exception(exc: Exception, req_id: str, route: str = "-", model: str = "-
         context_parts.append(f"model={model}")
     for k, v in extra.items():
         context_parts.append(f"{k}={v}")
-    context = " | ".join(context_parts) if context_parts else ""
+    " | ".join(context_parts) if context_parts else ""
 
     tb_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
     tb_str = "".join(tb_lines)
 
-    logger.error(
-        f"EXCEPTION | {type(exc).__name__}: {str(exc)[:500]}\n{tb_str}",
-        extra={"req_id": req_id}
-    )
+    logger.error(f"EXCEPTION | {type(exc).__name__}: {str(exc)[:500]}\n{tb_str}", extra={"req_id": req_id})
 
 
-def log_body(kind: str, body: Any, req_id: str, route: str = "-", model: str = "-",
-             indent: int = 1, max_chars: int = 50000) -> None:
+def log_body(
+    kind: str,
+    body: Any,
+    req_id: str,
+    route: str = "-",
+    model: str = "-",
+    indent: int = 1,
+    max_chars: int = 50000,
+) -> None:
     """Log a request/response body to debug.log with indentation."""
     logger = get_debug_logger()
     if not logger:
@@ -173,10 +179,7 @@ def log_body(kind: str, body: Any, req_id: str, route: str = "-", model: str = "
     prefix = "  " * indent
     indented_body = "\n".join(f"{prefix}  {line}" for line in body_str.split("\n"))
 
-    logger.debug(
-        f"{kind.upper()} | {context}\n{indented_body}",
-        extra={"req_id": req_id}
-    )
+    logger.debug(f"{kind.upper()} | {context}\n{indented_body}", extra={"req_id": req_id})
 
 
 def log_config_reload(old_mtime: float, new_mtime: float) -> None:
@@ -190,6 +193,7 @@ def log_config_error(error: str) -> None:
 
 
 # ── HTTPX error categorization ─────────────────────────────────────
+
 
 def categorize_httpx_error(e: Exception) -> tuple[str, str]:
     """Categorize an httpx exception and return (error_type, error_message)."""
@@ -212,7 +216,7 @@ def categorize_httpx_error(e: Exception) -> tuple[str, str]:
         err_msg = str(e)[:200]
     elif isinstance(e, httpx.HTTPStatusError):
         err_type = "http_status_error"
-        status = getattr(e, 'response', None)
+        status = getattr(e, "response", None)
         if status:
             err_msg = f"HTTP {status.status_code}: {str(e)[:150]}"
 
@@ -221,21 +225,28 @@ def categorize_httpx_error(e: Exception) -> tuple[str, str]:
 
 def _extract_connection_target(error_str: str) -> str | None:
     """Extract target URL/host from connection error string."""
-    url_match = re.search(r'([a-zA-Z]+://[^\s\)]+)', error_str)
+    url_match = re.search(r"([a-zA-Z]+://[^\s\)]+)", error_str)
     if url_match:
         return url_match.group(1)[:200]
 
-    host_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)', error_str)
+    host_match = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)", error_str)
     if host_match:
         return host_match.group(1)
 
     return None
 
 
-def log_request_error(req_id: str, error_type: str, endpoint: str | None = None,
-                      model: str | None = None, upstream_url: str | None = None,
-                      status_code: int | None = None, elapsed_ms: float | None = None,
-                      dispatcher=None, **extra_fields) -> None:
+def log_request_error(
+    req_id: str,
+    error_type: str,
+    endpoint: str | None = None,
+    model: str | None = None,
+    upstream_url: str | None = None,
+    status_code: int | None = None,
+    elapsed_ms: float | None = None,
+    dispatcher=None,
+    **extra_fields,
+) -> None:
     """Centralized error logging function for request errors.
 
     Uses a semantic runtime event when the dispatcher is available and a
@@ -243,6 +254,7 @@ def log_request_error(req_id: str, error_type: str, endpoint: str | None = None,
     """
     try:
         from ..observability.events_request import emit_failed as emit_request_failed
+
         emit_request_failed(
             req_id=req_id,
             error=error_type,
@@ -252,21 +264,35 @@ def log_request_error(req_id: str, error_type: str, endpoint: str | None = None,
             model=model,
             upstream_url=upstream_url,
             elapsed_ms=elapsed_ms,
-            **extra_fields
+            **extra_fields,
         )
     except Exception:
         # Preserve the error signal if semantic event construction fails.
         from ..logger import log
+
         log(
-            "ERROR", "request_error", req_id=req_id, error_type=error_type, endpoint=endpoint,
-            model=model, upstream_url=upstream_url, status=status_code, elapsed_ms=elapsed_ms,
-            **extra_fields
+            "ERROR",
+            "request_error",
+            req_id=req_id,
+            error_type=error_type,
+            endpoint=endpoint,
+            model=model,
+            upstream_url=upstream_url,
+            status=status_code,
+            elapsed_ms=elapsed_ms,
+            **extra_fields,
         )
 
 
-def log_connection_error(req_id: str, error_type: str, upstream_url: str,
-                         model: str | None = None, elapsed_ms: float | None = None,
-                         dispatcher=None, **extra_fields) -> None:
+def log_connection_error(
+    req_id: str,
+    error_type: str,
+    upstream_url: str,
+    model: str | None = None,
+    elapsed_ms: float | None = None,
+    dispatcher=None,
+    **extra_fields,
+) -> None:
     """Centralized connection error logging function.
 
     Uses a semantic runtime event when the dispatcher is available and a
@@ -274,6 +300,7 @@ def log_connection_error(req_id: str, error_type: str, upstream_url: str,
     """
     try:
         from ..observability.events_upstream import emit_connection_error
+
         emit_connection_error(
             req_id=req_id,
             error_type=error_type,
@@ -281,19 +308,33 @@ def log_connection_error(req_id: str, error_type: str, upstream_url: str,
             model=model,
             elapsed_ms=elapsed_ms,
             dispatcher=dispatcher,
-            **extra_fields
+            **extra_fields,
         )
     except Exception:
         # Preserve the error signal if semantic event construction fails.
         from ..logger import log
+
         log(
-            "ERROR", "connection_error", req_id=req_id, error_type=error_type,
-            upstream_url=upstream_url, model=model, elapsed_ms=elapsed_ms, **extra_fields
+            "ERROR",
+            "connection_error",
+            req_id=req_id,
+            error_type=error_type,
+            upstream_url=upstream_url,
+            model=model,
+            elapsed_ms=elapsed_ms,
+            **extra_fields,
         )
 
 
-def log_fallback_error(req_id: str, from_model: str, to_model: str,
-                       error_type: str, err_msg: str, dispatcher=None, **extra_fields) -> None:
+def log_fallback_error(
+    req_id: str,
+    from_model: str,
+    to_model: str,
+    error_type: str,
+    err_msg: str,
+    dispatcher=None,
+    **extra_fields,
+) -> None:
     """Centralized fallback chain error logging.
 
     Uses a semantic runtime event when the dispatcher is available and a
@@ -301,6 +342,7 @@ def log_fallback_error(req_id: str, from_model: str, to_model: str,
     """
     try:
         from ..observability.events_routing import emit_fallback_error
+
         emit_fallback_error(
             req_id=req_id,
             from_model=from_model,
@@ -308,12 +350,19 @@ def log_fallback_error(req_id: str, from_model: str, to_model: str,
             error_type=error_type,
             err_msg=err_msg[:500],
             dispatcher=dispatcher,
-            **extra_fields
+            **extra_fields,
         )
     except Exception:
         # Preserve the error signal if semantic event construction fails.
         from ..logger import log
+
         log(
-            "WARN", "fallback_error", req_id=req_id, from_model=from_model, to_model=to_model,
-            error_type=error_type, err_msg=err_msg[:500], **extra_fields
+            "WARN",
+            "fallback_error",
+            req_id=req_id,
+            from_model=from_model,
+            to_model=to_model,
+            error_type=error_type,
+            err_msg=err_msg[:500],
+            **extra_fields,
         )

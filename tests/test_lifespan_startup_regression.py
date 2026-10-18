@@ -10,7 +10,7 @@ Fix: Renamed lifespan parameter from `_app` to `app`.
 """
 
 import asyncio
-import pytest
+
 from fastapi import FastAPI
 
 
@@ -65,6 +65,7 @@ class TestLifespanParameterRename:
         This is a structural check that the fix was applied correctly.
         """
         import inspect
+
         from keeprollming.app import lifespan
 
         sig = inspect.signature(lifespan)

@@ -4,7 +4,6 @@ Verifies that ``events_execution`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_execution import (
     emit_assistant,
@@ -59,9 +58,7 @@ class TestEmitExecutionEvent:
             emitted_events.append(event)
 
         dispatcher.subscribe("execution", capture)
-        event = emit_execution_event(
-            "req-2", "execution.chat.http_in", dispatcher=dispatcher
-        )
+        event = emit_execution_event("req-2", "execution.chat.http_in", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
         assert emitted_events[0].type == "execution.chat.http_in"
@@ -74,9 +71,7 @@ class TestEmitExecutionEvent:
 
     def test_custom_level(self):
         """Events can be emitted with non-default levels."""
-        event = emit_execution_event(
-            "req-4", "execution.chat.timeout", level="ERROR"
-        )
+        event = emit_execution_event("req-4", "execution.chat.timeout", level="ERROR")
         assert event.level == "ERROR"
 
 
@@ -127,10 +122,7 @@ class TestConvenienceWrappers:
         assert event.level == "ERROR"
 
     def test_emit_route_resolved(self):
-        event = emit_route_resolved(
-            "r1", "gpt-4", "default", "gpt-4", "gpt-4", "gpt-4",
-            False, 4096, 2048, []
-        )
+        event = emit_route_resolved("r1", "gpt-4", "default", "gpt-4", "gpt-4", "gpt-4", False, 4096, 2048, [])
         assert event.type == "execution.chat.route_resolved"
         assert event.data["resolved_route"] == "default"
 
@@ -140,16 +132,27 @@ class TestConvenienceWrappers:
         assert event.data["param"] == "temperature"
 
     def test_emit_repacked(self):
-        event = emit_repacked("r1", True, False, "http://x/v1/chat/completions",
-                              100, 2000)
+        event = emit_repacked("r1", True, False, "http://x/v1/chat/completions", 100, 2000)
         assert event.type == "execution.chat.repacked"
         assert event.data["did_summarize"] is True
 
     def test_emit_fallback_chain(self):
         event = emit_fallback_chain(
-            "r1", ["secondary"], [
-                {"route": "primary", "model": "model-a", "endpoint_url": "http://primary/v1/chat/completions", "request_timeout": 30},
-                {"route": "secondary", "model": "model-b", "endpoint_url": "http://secondary/v1/chat/completions", "request_timeout": 45},
+            "r1",
+            ["secondary"],
+            [
+                {
+                    "route": "primary",
+                    "model": "model-a",
+                    "endpoint_url": "http://primary/v1/chat/completions",
+                    "request_timeout": 30,
+                },
+                {
+                    "route": "secondary",
+                    "model": "model-b",
+                    "endpoint_url": "http://secondary/v1/chat/completions",
+                    "request_timeout": 45,
+                },
             ],
         )
         assert event.type == "execution.chat.fallback_chain"
@@ -175,11 +178,19 @@ class TestConvenienceWrappers:
         event = emit_fallback(
             "r1",
             {
-                "route": "primary", "model": "model-a",
+                "route": "primary",
+                "model": "model-a",
                 "endpoint_url": "http://user:secret@primary/v1/chat/completions?api_key=nope",
             },
-            {"route": "secondary", "model": "model-b", "endpoint_url": "http://secondary/v1/chat/completions"},
-            reason="http_status", attempt=1, total_attempts=2, status=404,
+            {
+                "route": "secondary",
+                "model": "model-b",
+                "endpoint_url": "http://secondary/v1/chat/completions",
+            },
+            reason="http_status",
+            attempt=1,
+            total_attempts=2,
+            status=404,
             error="model not found",
         )
         assert event.type == "execution.chat.fallback"
@@ -206,8 +217,7 @@ class TestConvenienceWrappers:
         assert event.data["tool_calls"] == ["gen_text"]
 
     def test_emit_assistant_with_reasoning(self):
-        event = emit_assistant("r1", "", 0, reasoning_content="thinking...",
-                               reasoning_length=9)
+        event = emit_assistant("r1", "", 0, reasoning_content="thinking...", reasoning_length=9)
         assert event.data["reasoning_content"] == "thinking..."
 
     def test_emit_http_out(self):
@@ -298,8 +308,12 @@ class TestDispatcherIntegration:
         emit_request_route("r1", False, "r", [], dispatcher=dispatcher)
         emit_upstream_error("r1", 500, "u", "r", "m", "e", dispatcher=dispatcher)
         emit_fallback(
-            "r1", {"route": "a", "model": "a"}, {"route": "b", "model": "b"},
-            reason="transport_error", attempt=1, total_attempts=2,
+            "r1",
+            {"route": "a", "model": "a"},
+            {"route": "b", "model": "b"},
+            reason="transport_error",
+            attempt=1,
+            total_attempts=2,
             dispatcher=dispatcher,
         )
         emit_pipeline_error("r1", "e", dispatcher=dispatcher)
@@ -311,9 +325,7 @@ class TestDispatcherIntegration:
         emit_strip_image_done("r1", 0, dispatcher=dispatcher)
         emit_strip_image_error("r1", 0, "e", dispatcher=dispatcher)
         emit_strip_image_failed("r1", 0, 500, "b", dispatcher=dispatcher)
-        emit_performance_metrics(
-            "r1", {}, "m", "route", "usage", dispatcher=dispatcher
-        )
+        emit_performance_metrics("r1", {}, "m", "route", "usage", dispatcher=dispatcher)
 
         # All should have been captured by the dispatcher
         assert len(received) == 26

@@ -3,7 +3,12 @@
 from fastapi.testclient import TestClient
 
 from keeprollming.app import app
-from keeprollming.auth import is_authorized, redact_sensitive_headers
+from keeprollming.auth import (
+    is_authorized,
+    is_client_ip_allowed,
+    redact_sensitive_headers,
+    resolve_client_ip,
+)
 from keeprollming.types import DefaultSettings, Route
 
 
@@ -16,15 +21,52 @@ def test_authentication_accepts_only_matching_bearer_key() -> None:
 
 
 def test_authentication_redacts_sensitive_headers() -> None:
-    assert redact_sensitive_headers({
-        "Authorization": "Bearer secret",
-        "X-Api-Key": "also-secret",
-        "X-Request-ID": "safe",
-    }) == {
+    assert redact_sensitive_headers(
+        {
+            "Authorization": "Bearer secret",
+            "X-Api-Key": "also-secret",
+            "X-Request-ID": "safe",
+        }
+    ) == {
         "Authorization": "[REDACTED]",
         "X-Api-Key": "[REDACTED]",
         "X-Request-ID": "safe",
     }
+
+
+def test_direct_client_cannot_spoof_forwarded_ip() -> None:
+    headers = {"X-Forwarded-For": "192.168.8.25"}
+    assert resolve_client_ip("203.0.113.10", headers, ["192.168.8.199/32"]) == "203.0.113.10"
+    assert not is_client_ip_allowed(
+        "203.0.113.10",
+        headers,
+        mode="lan",
+        lan_networks=["192.168.8.0/24"],
+        trusted_proxies=["192.168.8.199/32"],
+    )
+
+
+def test_trusted_proxy_forwarded_chain_resolves_original_client() -> None:
+    proxy_headers = {"X-Forwarded-For": "192.168.8.25"}
+    assert resolve_client_ip("192.168.8.199", proxy_headers, ["192.168.8.199/32"]) == "192.168.8.25"
+    assert is_client_ip_allowed(
+        "192.168.8.199",
+        proxy_headers,
+        mode="lan",
+        lan_networks=["192.168.8.0/24"],
+        trusted_proxies=["192.168.8.199/32"],
+    )
+    assert not is_client_ip_allowed(
+        "192.168.8.199",
+        {"X-Forwarded-For": "198.51.100.12"},
+        mode="lan",
+        lan_networks=["192.168.8.0/24"],
+        trusted_proxies=["192.168.8.199/32"],
+    )
+
+
+def test_trusted_proxy_without_forwarded_ip_fails_closed() -> None:
+    assert resolve_client_ip("192.168.8.199", {}, ["192.168.8.199/32"]) is None
 
 
 def test_route_keys_inherit_and_explicit_empty_list_clears() -> None:
@@ -32,9 +74,7 @@ def test_route_keys_inherit_and_explicit_empty_list_clears() -> None:
 
     base = Route(name="base/protected", pattern="base/protected", api_keys=["parent"])
     inherited = Route(name="chat/inherited", pattern="chat/inherited", extends="base/protected")
-    public = Route(
-        name="chat/public", pattern="chat/public", extends="base/protected", api_keys=[]
-    )
+    public = Route(name="chat/public", pattern="chat/public", extends="base/protected", api_keys=[])
     routes = {route.name: route for route in (base, inherited, public)}
 
     assert resolve_inherited_route(inherited, routes).api_keys == ["parent"]
@@ -77,12 +117,42 @@ def test_invalid_client_key_configuration_fails_without_echoing_secret() -> None
         raise AssertionError("invalid client key configuration was accepted")
 
 
+def test_public_route_requires_an_effective_api_key() -> None:
+    from keeprollming.config import validate_resolved_client_access
+
+    route = Route(name="public/chat", pattern="public/chat", client_access="public")
+    try:
+        validate_resolved_client_access([route], DefaultSettings(), {"lan_networks": []})
+    except ValueError as exc:
+        assert "client_access 'public'" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("public route without an API key was accepted")
+
+
+def test_client_access_rejects_invalid_networks_and_modes() -> None:
+    from keeprollming.config import _validate_client_access_configuration
+
+    for config in (
+        {"client_access": {"default": "lan", "lan_networks": ["not-a-cidr"]}},
+        {"client_access": {"default": "lan", "lan_networks": []}},
+        {"routes": {"chat/test": {"client_access": "internet"}}},
+    ):
+        try:
+            _validate_client_access_configuration(config)
+        except ValueError:
+            continue
+        raise AssertionError("invalid client access configuration was accepted")
+
+
 def test_protected_chat_is_rejected_before_any_upstream_work(monkeypatch) -> None:
     from keeprollming import config
 
     route = Route(
-        name="chat/protected", pattern="chat/protected", model="backend",
-        upstream_url="http://upstream.example", api_keys=["client-secret"],
+        name="chat/protected",
+        pattern="chat/protected",
+        model="backend",
+        upstream_url="http://upstream.example",
+        api_keys=["client-secret"],
     )
     monkeypatch.setattr(config, "USER_ROUTES", [route])
     monkeypatch.setattr(config, "DEFAULTS", DefaultSettings())
@@ -98,12 +168,62 @@ def test_protected_chat_is_rejected_before_any_upstream_work(monkeypatch) -> Non
     assert response.json()["error"]["code"] == "invalid_api_key"
 
 
+def test_lan_only_chat_rejects_external_client_before_upstream_work(monkeypatch) -> None:
+    from keeprollming import config
+
+    route = Route(
+        name="chat/lan",
+        pattern="chat/lan",
+        model="backend",
+        upstream_url="http://upstream.example",
+        api_keys=[],
+        client_access="lan",
+    )
+    monkeypatch.setattr(config, "USER_ROUTES", [route])
+    monkeypatch.setattr(config, "DEFAULTS", DefaultSettings())
+    monkeypatch.setattr(
+        config,
+        "CONFIG",
+        {"client_access": {"default": "any", "lan_networks": ["192.168.8.0/24"], "trusted_proxies": []}},
+    )
+
+    with TestClient(app, client=("203.0.113.7", 1234)) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={"model": "chat/lan", "messages": [], "stream": False},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "client_network_not_allowed"
+
+
+def test_private_operational_endpoints_follow_global_network_policy(monkeypatch) -> None:
+    from keeprollming import config
+
+    monkeypatch.setattr(config, "DEFAULTS", DefaultSettings(client_access="lan"))
+    monkeypatch.setattr(
+        config,
+        "CONFIG",
+        {"client_access": {"default": "lan", "lan_networks": ["192.168.8.0/24"], "trusted_proxies": []}},
+    )
+
+    with TestClient(app, client=("203.0.113.7", 1234)) as client:
+        routes_response = client.get("/routes")
+        metrics_response = client.get("/metrics")
+
+    assert routes_response.status_code == 403
+    assert metrics_response.status_code == 403
+
+
 def test_protected_embeddings_is_rejected_before_any_upstream_work(monkeypatch) -> None:
     from keeprollming import config
 
     route = Route(
-        name="embedding/protected", pattern="embedding/protected", model="backend",
-        upstream_url="http://upstream.example", api_keys=["client-secret"],
+        name="embedding/protected",
+        pattern="embedding/protected",
+        model="backend",
+        upstream_url="http://upstream.example",
+        api_keys=["client-secret"],
     )
     monkeypatch.setattr(config, "USER_ROUTES", [route])
     monkeypatch.setattr(config, "DEFAULTS", DefaultSettings())
@@ -122,7 +242,9 @@ def test_models_hides_routes_not_authorized_for_caller(monkeypatch) -> None:
     from keeprollming import config
 
     protected = Route(
-        name="chat/protected", pattern="chat/protected", model="protected",
+        name="chat/protected",
+        pattern="chat/protected",
+        model="protected",
         api_keys=["client-secret"],
     )
     public = Route(name="chat/public", pattern="chat/public", model="public", api_keys=[])
@@ -131,9 +253,46 @@ def test_models_hides_routes_not_authorized_for_caller(monkeypatch) -> None:
 
     with TestClient(app) as client:
         anonymous = client.get("/v1/models").json()["data"]
-        authorized = client.get(
-            "/v1/models", headers={"Authorization": "Bearer client-secret"}
-        ).json()["data"]
+        authorized = client.get("/v1/models", headers={"Authorization": "Bearer client-secret"}).json()["data"]
 
     assert [item["id"] for item in anonymous] == ["chat/public"]
     assert [item["id"] for item in authorized] == ["chat/protected", "chat/public"]
+
+
+def test_models_hides_lan_only_route_from_external_client(monkeypatch) -> None:
+    from keeprollming import config
+
+    lan_route = Route(name="chat/lan", pattern="chat/lan", model="lan", client_access="lan")
+    public_route = Route(
+        name="public/chat", pattern="public/chat", model="public", client_access="public", api_keys=["secret"]
+    )
+    monkeypatch.setattr(config, "USER_ROUTES", [lan_route, public_route])
+    monkeypatch.setattr(config, "DEFAULTS", DefaultSettings())
+    monkeypatch.setattr(
+        config,
+        "CONFIG",
+        {"client_access": {"default": "any", "lan_networks": ["192.168.8.0/24"], "trusted_proxies": []}},
+    )
+
+    with TestClient(app, client=("203.0.113.7", 1234)) as client:
+        response = client.get("/v1/models", headers={"Authorization": "Bearer secret"})
+
+    assert [item["id"] for item in response.json()["data"]] == ["public/chat"]
+
+
+def test_models_uses_reloaded_global_network_default(monkeypatch) -> None:
+    from keeprollming import config
+
+    route = Route(name="chat/default", pattern="chat/default", model="default", api_keys=[])
+    monkeypatch.setattr(config, "USER_ROUTES", [route])
+    monkeypatch.setattr(config, "DEFAULTS", DefaultSettings(client_access="lan"))
+    monkeypatch.setattr(
+        config,
+        "CONFIG",
+        {"client_access": {"default": "lan", "lan_networks": ["192.168.8.0/24"], "trusted_proxies": []}},
+    )
+
+    with TestClient(app, client=("203.0.113.7", 1234)) as client:
+        response = client.get("/v1/models")
+
+    assert response.json()["data"] == []

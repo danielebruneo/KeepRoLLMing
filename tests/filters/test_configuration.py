@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from keeprollming.filters import FilterConfigurationError, normalize_filters
-
+from keeprollming.filters import FilterConfigurationError, normalize_filters, request_priorities
 
 _PRIORITIES = {"system_prompt": 10, "model_nudge": 50, "timestamp": 100}
 
@@ -21,6 +20,12 @@ def test_normalize_filters_assigns_module_default_priority_without_yaml_order():
 
     assert result["timestamp"]["priority"] == 100
     assert result["model_nudge"]["priority"] == 50
+
+
+def test_builtin_request_defaults_are_unique_for_enabled_filters():
+    priorities = request_priorities()
+    assert len(priorities) == len(set(priorities.values()))
+    assert priorities["tool_rewrite"] < priorities["reasoning_loop_stopper"]
 
 
 def test_normalize_filters_accepts_explicit_route_priority_override():

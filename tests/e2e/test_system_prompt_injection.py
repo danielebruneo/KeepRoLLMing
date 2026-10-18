@@ -4,7 +4,7 @@ Test that system prompt reaches upstream via process_non_streaming_request.
 
 import copy
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -26,11 +26,11 @@ class TestSystemPromptInUpstreamPayload:
         route = MagicMock()
         route.name = "local/sp_test"
         route.filters = {
-                "system_prompt": {
-                    "enabled": True,
-                    "prompt": "/nothink reply in french",
-                    "override": False,
-                }
+            "system_prompt": {
+                "enabled": True,
+                "prompt": "/nothink reply in french",
+                "override": False,
+            }
         }
         route.summary_enabled = False
         route.ctx_len = 131072
@@ -44,14 +44,18 @@ class TestSystemPromptInUpstreamPayload:
             sent_payloads.append(copy.deepcopy(json))
             resp = MagicMock()
             resp.status_code = 200
-            resp.json = MagicMock(return_value={
-                "choices": [{
-                    "message": {"content": "OK", "role": "assistant"},
-                    "finish_reason": "stop",
-                    "index": 0,
-                }],
-                "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
-            })
+            resp.json = MagicMock(
+                return_value={
+                    "choices": [
+                        {
+                            "message": {"content": "OK", "role": "assistant"},
+                            "finish_reason": "stop",
+                            "index": 0,
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+                }
+            )
             return resp
 
         client = MagicMock()

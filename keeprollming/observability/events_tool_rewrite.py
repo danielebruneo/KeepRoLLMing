@@ -70,30 +70,45 @@ def emit_tool_rewrite_event(
 
 
 def emit_parse_error(
-    req_id: str, error: str = "", traceback: str = "",
+    req_id: str,
+    error: str = "",
+    traceback: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_tool_rewrite_event(req_id, "execution.tool_rewrite.parse_error",
-                         error=error or None,
-                         traceback=traceback or None,
-                         dispatcher=dispatcher)
+    return emit_tool_rewrite_event(
+        req_id,
+        "execution.tool_rewrite.parse_error",
+        error=error or None,
+        traceback=traceback or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_streaming_error(
-    req_id: str, error: str = "", traceback: str = "",
+    req_id: str,
+    error: str = "",
+    traceback: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_tool_rewrite_event(req_id, "execution.tool_rewrite.streaming_error",
-                         error=error or None,
-                         traceback=traceback or None,
-                         dispatcher=dispatcher)
+    return emit_tool_rewrite_event(
+        req_id,
+        "execution.tool_rewrite.streaming_error",
+        error=error or None,
+        traceback=traceback or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_body_error(
-    req_id: str, error: str = "", traceback: str = "",
+    req_id: str,
+    error: str = "",
+    traceback: str = "",
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_tool_rewrite_event(req_id, "execution.tool_rewrite.body_error",
-                         error=error or None,
-                         traceback=traceback or None,
-                         dispatcher=dispatcher)
+    return emit_tool_rewrite_event(
+        req_id,
+        "execution.tool_rewrite.body_error",
+        error=error or None,
+        traceback=traceback or None,
+        dispatcher=dispatcher,
+    )

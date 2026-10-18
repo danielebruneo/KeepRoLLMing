@@ -25,6 +25,7 @@ def _wait_for_plain_server_output(path: Path, *needles: str, timeout_s: float = 
         time.sleep(0.02)
     return text
 
+
 def resolve_perf_request_file(perf_dir: Path, client_model: str) -> Path:
     candidates = []
     upstream_model = client_model.replace("pass/", "")
@@ -43,6 +44,7 @@ def resolve_perf_request_file(perf_dir: Path, client_model: str) -> Path:
         f"Could not resolve performance log file in {perf_dir}. "
         f"Tried: {[str(c) for c in candidates]}; found: {[m.name for m in matches]}"
     )
+
 
 @pytest.mark.e2e_fake
 @pytest.mark.non_parallelizable  # Uses shared backend_target fixture that can conflict in parallel runs
@@ -176,6 +178,7 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers_with_error(
     assert "execution.chat.request_start" in stdout_text
     assert "execution.chat.http_out" in stdout_text
 
+
 @pytest.mark.e2e_fake
 @pytest.mark.e2e_live
 @pytest.mark.parametrize("backend_target", ["fake", "live"], indirect=True)
@@ -220,14 +223,14 @@ def test_e2e_nonstream_roundtrip_and_performance_logs(
         assert req_file.exists()
 
         text = req_file.read_text(encoding="utf-8")
-        assert "model: {}".format(backend_target.client_model_basic.replace("pass/","")) in text
+        assert "model: {}".format(backend_target.client_model_basic.replace("pass/", "")) in text
         assert "stream: false" in text
         assert "tps:" in text
 
         summary_file = orchestrator_server.perf_dir / "summary.yaml"
         assert summary_file.exists()
         summary_text = summary_file.read_text(encoding="utf-8")
-        assert "model: {}".format(backend_target.client_model_basic.replace("pass/","")) in summary_text
+        assert "model: {}".format(backend_target.client_model_basic.replace("pass/", "")) in summary_text
         assert "requests: 1" in summary_text
     else:
         pass
@@ -343,18 +346,18 @@ def test_e2e_summary_overflow_chunking_recovers(
         timeout=40.0,
     )
     assert resp.status_code == 200, resp.text
-    # For live mode, check that we get a valid response without expecting exact text match 
+    # For live mode, check that we get a valid response without expecting exact text match
     if backend_target.client_model_basic != "fake":
         # Live mode - don't expect exact content match but validate it's a reasonable response with some length
         assert len(resp.json()["choices"][0]["message"]["content"]) > 10
     else:
-        # Fake mode - maintain original assertion for test consistency  
+        # Fake mode - maintain original assertion for test consistency
         assert resp.json()["choices"][0]["message"]["content"] == "main response after summary"
 
     stats = get_fake_stats()
     if backend_target.client_model_basic != "fake":
         # In live mode, we just want to make sure it works without error
-        pass  # No specific assertion for fake vs live here  
+        pass  # No specific assertion for fake vs live here
     else:
         assert stats["calls_by_kind"].get("summary", 0) >= 2
         assert stats["calls_by_kind"].get("chat", 0) >= 1
@@ -450,7 +453,7 @@ def test_e2e_summary_http_retry_reduced_chunking_recovers(
 
     stats = get_fake_stats()
     if backend_target.client_model_basic != "fake":
-        # In live mode, we just want to make sure it works without error  
+        # In live mode, we just want to make sure it works without error
         pass  # No specific assertion for fake vs live here
     else:
         assert stats["calls_by_kind"].get("summary", 0) >= 2
@@ -610,14 +613,14 @@ def test_e2e_stream_abort_is_reported_cleanly(
         assert "Upstream stream exception" in body
 
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
-    
+
     # Don't expect specific mock strings for live mode - just verify the streaming functionality works
     if backend_target.client_model_basic != "fake":
         # In live mode, we only check that the stream was processed and not empty
         assert len(body) > 0
         assert body.strip() != ""
     else:
-        # For fake backend, maintain original checks  
+        # For fake backend, maintain original checks
         assert "upstream_stream_exception" in stdout_text
         assert "response_stream_reconstructed" in stdout_text
 
@@ -676,7 +679,7 @@ def test_e2e_passthrough_large_context_bypasses_summary(
         assert stats["calls_by_kind"].get("chat", 0) == 1
 
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
-    
+
     # For live mode, we check that the passthrough was properly handled
     if backend_target.client_model_basic != "fake":
         # In live mode, just verify that it's a proper result with some content
@@ -728,7 +731,7 @@ def test_e2e_summary_cache_hit_reuses_previous_summary(
             model_name = "summary-model"
         else:
             model_name = backend_target.client_model_summary
-            
+
         resp = backend_client.post(
             f"{orchestrator_server.base_url}/v1/chat/completions",
             headers=headers,
@@ -750,13 +753,13 @@ def test_e2e_summary_cache_hit_reuses_previous_summary(
     # 3. Both requests succeed and return expected response
     assert stats["calls_by_kind"].get("summary", 0) >= 1
     # Since both requests are using "summary-model" in fake mode, they're both treated as summary calls
-    # so we don't expect chat call counts to be 2, but rather just that at least one summary was made 
+    # so we don't expect chat call counts to be 2, but rather just that at least one summary was made
     assert stats["calls_by_kind"].get("chat", 0) >= 0  # No strict requirement for chat calls
-    
+
     # Check cache save - only first request should save (since both have same headers)
     # If there's no explicit cache_save log, it may be because second uses cached data
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
-    # At least one summary call was made so check we have some indication of operation 
+    # At least one summary call was made so check we have some indication of operation
     assert "summary" in stdout_text or stats["calls_by_kind"].get("summary", 0) >= 1
 
 
@@ -839,7 +842,7 @@ def test_e2e_irrecoverable_summary_failure_falls_back_passthrough(
         pass
 
     stdout_text = orchestrator_server.stdout_path.read_text(encoding="utf-8", errors="replace")
-    
+
     # For live mode, we check that the fallback was properly handled
     if backend_target.client_model_basic != "fake":
         # In live mode, just verify that it's a proper result with some content

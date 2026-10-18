@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict
 
 from .message_utils import _snip_text_active, classify_messages, extract_last_user_text
@@ -25,6 +24,7 @@ def summarize_request_payload(payload: Any) -> Dict[str, Any]:
 
     last_user = extract_last_user_text(messages)
     from ..logger import BASIC_SNIP_CHARS
+
     if last_user:
         summary["last_user"] = _snip_text_active(last_user, BASIC_SNIP_CHARS)
 
@@ -57,9 +57,7 @@ def summarize_response_payload(data: Any) -> Dict[str, Any]:
                 tool_calls = msg.get("tool_calls")
                 if isinstance(tool_calls, list):
                     out["tool_calls"] = [
-                        tc.get("function", {}).get("name")
-                        for tc in tool_calls
-                        if isinstance(tc, dict)
+                        tc.get("function", {}).get("name") for tc in tool_calls if isinstance(tc, dict)
                     ]
             finish_reason = choice0.get("finish_reason") if isinstance(choice0, dict) else None
             if finish_reason:

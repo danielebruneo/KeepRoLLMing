@@ -20,7 +20,8 @@ Test plan (13 tests total):
 """
 
 import pytest
-from keeprollming.streaming.accounting import ExecutionUsage, AttemptUsage
+
+from keeprollming.streaming.accounting import ExecutionUsage
 
 
 # Test 1: test_execution_usage_basic_aggregation
@@ -33,16 +34,22 @@ def test_execution_usage_basic_aggregation():
     usage = ExecutionUsage.empty()
 
     # Add first attempt with usage
-    usage.add_attempt(0, {
-        "prompt_tokens": 100,
-        "completion_tokens": 200,
-    })
+    usage.add_attempt(
+        0,
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+        },
+    )
 
     # Add second attempt with usage
-    usage.add_attempt(1, {
-        "prompt_tokens": 150,
-        "completion_tokens": 250,
-    })
+    usage.add_attempt(
+        1,
+        {
+            "prompt_tokens": 150,
+            "completion_tokens": 250,
+        },
+    )
 
     # Verify aggregation
     assert usage.upstream_attempts == 2
@@ -94,11 +101,14 @@ def test_execution_usage_derived_total():
     usage = ExecutionUsage.empty()
 
     # Add attempt with provider-reported total_tokens that differs from sum
-    usage.add_attempt(0, {
-        "prompt_tokens": 100,
-        "completion_tokens": 200,
-        "total_tokens": 999,  # Provider-reported, should be ignored
-    })
+    usage.add_attempt(
+        0,
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+            "total_tokens": 999,  # Provider-reported, should be ignored
+        },
+    )
 
     # Verify derivation
     assert usage.prompt_tokens == 100
@@ -117,16 +127,22 @@ def test_execution_usage_recovery_continuation():
     usage = ExecutionUsage.empty()
 
     # First attempt (recovered)
-    usage.add_attempt(0, {
-        "prompt_tokens": 100,
-        "completion_tokens": 200,
-    })
+    usage.add_attempt(
+        0,
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+        },
+    )
 
     # Recovery attempt
-    usage.add_attempt(1, {
-        "prompt_tokens": 150,
-        "completion_tokens": 250,
-    })
+    usage.add_attempt(
+        1,
+        {
+            "prompt_tokens": 150,
+            "completion_tokens": 250,
+        },
+    )
 
     # Verify cumulative accounting
     assert usage.upstream_attempts == 2
@@ -160,10 +176,13 @@ def test_execution_usage_stream_exhaustion():
     usage = ExecutionUsage.empty()
 
     # Simulate stream exhaustion with usage
-    usage.add_attempt(0, {
-        "prompt_tokens": 100,
-        "completion_tokens": 200,
-    })
+    usage.add_attempt(
+        0,
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+        },
+    )
 
     # Verify accounting
     assert usage.upstream_attempts == 1
@@ -184,10 +203,13 @@ def test_execution_usage_fallback_path():
     usage = ExecutionUsage.empty()
 
     # First attempt succeeds
-    usage.add_attempt(0, {
-        "prompt_tokens": 100,
-        "completion_tokens": 200,
-    })
+    usage.add_attempt(
+        0,
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+        },
+    )
 
     # Fallback path (exception) - should NOT add an attempt
     # (This is simulated by not calling add_attempt)
@@ -208,10 +230,13 @@ def test_execution_usage_partial_usage():
     usage = ExecutionUsage.empty()
 
     # Add attempt with partial usage (missing completion_tokens)
-    usage.add_attempt(0, {
-        "prompt_tokens": 100,
-        # completion_tokens missing
-    })
+    usage.add_attempt(
+        0,
+        {
+            "prompt_tokens": 100,
+            # completion_tokens missing
+        },
+    )
 
     # Verify partial field semantics
     assert usage.prompt_tokens == 100
@@ -229,12 +254,15 @@ def test_execution_usage_per_attempt_ledger():
     usage = ExecutionUsage.empty()
 
     # Add attempt with provider-specific fields
-    usage.add_attempt(0, {
-        "prompt_tokens": 100,
-        "completion_tokens": 200,
-        "prompt_tokens_details": {"cached_tokens": 50},
-        "completion_tokens_details": {"reasoning_tokens": 30},
-    })
+    usage.add_attempt(
+        0,
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 200,
+            "prompt_tokens_details": {"cached_tokens": 50},
+            "completion_tokens_details": {"reasoning_tokens": 30},
+        },
+    )
 
     # Verify raw usage retention
     assert usage.attempts[0].raw_usage["prompt_tokens"] == 100
@@ -353,6 +381,7 @@ def test_execution_usage_shape_b_late_usage():
 
 
 # Additional helper tests
+
 
 def test_execution_usage_empty_state():
     """Test empty ExecutionUsage state.

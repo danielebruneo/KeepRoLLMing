@@ -14,16 +14,15 @@ Tests cover:
 
 import pytest
 
-from keeprollming.orchestrator.filter import (
-    FilterConfig,
-    FilterExecutionContext,
-)
 from keeprollming.filters.multimodal_validator.request import (
     MultimodalValidatorFilter,
 )
-
+from keeprollming.orchestrator.filter import (
+    FilterExecutionContext,
+)
 
 # ── Mock Request ──────────────────────────────────────────────────────
+
 
 class MockRequest:
     def __init__(self, messages=None, model="test-model", stream=False):
@@ -35,17 +34,25 @@ class MockRequest:
 
 # ── Context factory ──────────────────────────────────────────────────
 
+
 def _make_context(req_id="test-req-001"):
     return FilterExecutionContext(req_id=req_id)
 
 
 # ── Test data ────────────────────────────────────────────────────────
 
-_TYPICAL_IMAGE_URL = {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}
-_TYPICAL_IMAGE_URL_2 = {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ="}}
+_TYPICAL_IMAGE_URL = {
+    "type": "image_url",
+    "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="},
+}
+_TYPICAL_IMAGE_URL_2 = {
+    "type": "image_url",
+    "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ="},
+}
 
 
 # ── Registration & basics ────────────────────────────────────────────
+
 
 class TestRegistration:
     """Verify the filter is properly registered."""
@@ -76,6 +83,7 @@ class TestRegistration:
 
 
 # ── String content tests ─────────────────────────────────────────────
+
 
 class TestStringContent:
     """Test messages with plain string content."""
@@ -164,6 +172,7 @@ class TestStringContent:
 
 
 # ── List content tests ───────────────────────────────────────────────
+
 
 class TestListContent:
     """Test messages with list content (structured multimodal)."""
@@ -280,6 +289,7 @@ class TestListContent:
 
 # ── Edge cases ───────────────────────────────────────────────────────
 
+
 class TestEdgeCases:
     """Edge cases and unusual inputs."""
 
@@ -357,6 +367,7 @@ class TestEdgeCases:
 
 # ── Custom config tests ──────────────────────────────────────────────
 
+
 class TestCustomConfig:
     """Custom marker patterns and configuration."""
 
@@ -405,6 +416,7 @@ class TestCustomConfig:
 
 # ── Pipeline integration tests ───────────────────────────────────────
 
+
 class TestPipelineIntegration:
     """Integration via Pipeline.from_route_config()."""
 
@@ -429,19 +441,21 @@ class TestPipelineIntegration:
         """Pipeline running multimodal_validator strips orphaned markers."""
         from keeprollming.orchestrator.pipeline import Pipeline
 
-        pipeline = Pipeline.from_route_config({
-            "multimodal_validator": {"enabled": True},
-        })
+        pipeline = Pipeline.from_route_config(
+            {
+                "multimodal_validator": {"enabled": True},
+            }
+        )
         assert pipeline is not None
 
         payload = {
-            "messages": [
-                {"role": "user", "content": "What is in <image> this image?"}
-            ],
+            "messages": [{"role": "user", "content": "What is in <image> this image?"}],
             "model": "test-model",
         }
         result = await pipeline.process_request(
-            payload, req_id="test-001", upstream_model="test-model",
+            payload,
+            req_id="test-001",
+            upstream_model="test-model",
         )
         assert "<image>" not in result["messages"][0]["content"]
 
@@ -464,13 +478,15 @@ class TestPipelineIntegration:
             "model": "test-model",
         }
         result = await pipeline.process_request(
-            payload, req_id="test-002",
+            payload,
+            req_id="test-002",
             upstream_model="test-model",
         )
         assert result["messages"][0]["content"] == content
 
 
 # ── Max images enforcement tests ────────────────────────────────────
+
 
 class TestMaxImagesEnforcement:
     """Max images limit enforcement."""
@@ -528,10 +544,12 @@ class TestMaxImagesEnforcement:
     @pytest.mark.asyncio
     async def test_strip_latest_retains_oldest_images(self):
         """The explicit compatibility policy strips newer image parts."""
-        f = MultimodalValidatorFilter(config={
-            "max_images": 2,
-            "max_images_policy": "strip_latest",
-        })
+        f = MultimodalValidatorFilter(
+            config={
+                "max_images": 2,
+                "max_images_policy": "strip_latest",
+            }
+        )
         msgs = [
             {"role": "tool", "content": [dict(_TYPICAL_IMAGE_URL)]},
             {"role": "tool", "content": [dict(_TYPICAL_IMAGE_URL)]},
@@ -549,11 +567,14 @@ class TestMaxImagesEnforcement:
         """Multiple images obey the default newest-images retention policy."""
         f = MultimodalValidatorFilter(config={"max_images": 2})
         msgs = [
-            {"role": "tool", "content": [
-                dict(_TYPICAL_IMAGE_URL),
-                dict(_TYPICAL_IMAGE_URL),
-                dict(_TYPICAL_IMAGE_URL),
-            ]},
+            {
+                "role": "tool",
+                "content": [
+                    dict(_TYPICAL_IMAGE_URL),
+                    dict(_TYPICAL_IMAGE_URL),
+                    dict(_TYPICAL_IMAGE_URL),
+                ],
+            },
         ]
         req = MockRequest(messages=msgs)
         result = await f.process_request(req, _make_context())
@@ -565,10 +586,12 @@ class TestMaxImagesEnforcement:
     @pytest.mark.asyncio
     async def test_custom_replacement_text(self):
         """Custom replacement text used instead of default."""
-        f = MultimodalValidatorFilter(config={
-            "max_images": 1,
-            "max_images_replacement_text": "[skipped]",
-        })
+        f = MultimodalValidatorFilter(
+            config={
+                "max_images": 1,
+                "max_images_replacement_text": "[skipped]",
+            }
+        )
         msgs = [
             {"role": "tool", "content": [dict(_TYPICAL_IMAGE_URL)]},
             {"role": "tool", "content": [dict(_TYPICAL_IMAGE_URL)]},
@@ -584,12 +607,15 @@ class TestMaxImagesEnforcement:
         """Non-image content items preserved when image stripped."""
         f = MultimodalValidatorFilter(config={"max_images": 1})
         msgs = [
-            {"role": "tool", "content": [
-                {"type": "text", "text": "Result:"},
-                dict(_TYPICAL_IMAGE_URL),
-                {"type": "text", "text": "End"},
-                dict(_TYPICAL_IMAGE_URL),
-            ]},
+            {
+                "role": "tool",
+                "content": [
+                    {"type": "text", "text": "Result:"},
+                    dict(_TYPICAL_IMAGE_URL),
+                    {"type": "text", "text": "End"},
+                    dict(_TYPICAL_IMAGE_URL),
+                ],
+            },
         ]
         req = MockRequest(messages=msgs)
         result = await f.process_request(req, _make_context())
@@ -632,12 +658,14 @@ class TestMaxImagesEnforcement:
 
 # ── Process_response passthrough ─────────────────────────────────────
 
+
 class TestResponsePassthrough:
     """Response phase should pass through unchanged."""
 
     @pytest.mark.asyncio
     async def test_response_unchanged(self):
         """process_response returns the response unchanged."""
+
         class MockResp:
             content = "test response"
             model = "test-model"
@@ -654,11 +682,13 @@ class TestResponsePassthrough:
 
 # ── strip_last_image_url tests ──────────────────────────────────────
 
+
 class TestStripLastImageUrl:
     """Tests for _strip_last_image_url helper."""
 
     def test_strip_last_image_from_single_msg(self):
         from keeprollming.endpoints.streaming_handlers import _strip_last_image_url
+
         msgs = [{"role": "tool", "content": [dict(_TYPICAL_IMAGE_URL)]}]
         result = _strip_last_image_url(msgs)
         assert result == 1
@@ -666,6 +696,7 @@ class TestStripLastImageUrl:
 
     def test_strip_last_image_multiple_msgs(self):
         from keeprollming.endpoints.streaming_handlers import _strip_last_image_url
+
         msgs = [
             {"role": "tool", "content": [dict(_TYPICAL_IMAGE_URL)]},
             {"role": "tool", "content": [dict(_TYPICAL_IMAGE_URL)]},
@@ -680,10 +711,16 @@ class TestStripLastImageUrl:
 
     def test_strip_last_image_multiple_per_msg(self):
         from keeprollming.endpoints.streaming_handlers import _strip_last_image_url
-        msgs = [{"role": "tool", "content": [
-            dict(_TYPICAL_IMAGE_URL),
-            dict(_TYPICAL_IMAGE_URL),
-        ]}]
+
+        msgs = [
+            {
+                "role": "tool",
+                "content": [
+                    dict(_TYPICAL_IMAGE_URL),
+                    dict(_TYPICAL_IMAGE_URL),
+                ],
+            }
+        ]
         result = _strip_last_image_url(msgs)
         assert result == 1
         assert msgs[0]["content"][0]["type"] == "image_url"
@@ -691,17 +728,24 @@ class TestStripLastImageUrl:
 
     def test_strip_last_image_no_images(self):
         from keeprollming.endpoints.streaming_handlers import _strip_last_image_url
+
         msgs = [{"role": "user", "content": "Hello"}]
         result = _strip_last_image_url(msgs)
         assert result == 0
 
     def test_strip_last_image_mixed_content(self):
         from keeprollming.endpoints.streaming_handlers import _strip_last_image_url
-        msgs = [{"role": "tool", "content": [
-            {"type": "text", "text": "Result:"},
-            dict(_TYPICAL_IMAGE_URL),
-            {"type": "text", "text": "End"},
-        ]}]
+
+        msgs = [
+            {
+                "role": "tool",
+                "content": [
+                    {"type": "text", "text": "Result:"},
+                    dict(_TYPICAL_IMAGE_URL),
+                    {"type": "text", "text": "End"},
+                ],
+            }
+        ]
         result = _strip_last_image_url(msgs)
         assert result == 1
         # Text items preserved, image replaced

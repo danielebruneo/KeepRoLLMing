@@ -10,12 +10,6 @@ This module provides:
 - OpenAISSESerializer: serializer for canonical events → downstream SSE
 """
 
-from .sse_handler import SSEStreamHandler, transform_reasoning_to_content
-from .reasoning_transformer import (
-    inject_placeholder_if_only_reasoning,
-    should_transform_delta,
-)
-from .tool_call_handler import ToolCallAccumulator
 from .events import (
     AssistantTextDelta,
     Done,
@@ -28,9 +22,15 @@ from .events import (
     ToolCallDelta,
 )
 from .finalizers import StreamFinalizer, ToolCallFinalizer
-from .serializer import OpenAISSESerializer, serialize_event, serialize_events
 from .parser import StreamParser
-from .runner import run_stream, collect_stream_events
+from .reasoning_transformer import (
+    inject_placeholder_if_only_reasoning,
+    should_transform_delta,
+)
+from .runner import collect_stream_events, run_stream
+from .serializer import OpenAISSESerializer, serialize_event, serialize_events
+from .sse_handler import SSEStreamHandler, transform_reasoning_to_content
+from .tool_call_handler import ToolCallAccumulator
 
 __all__ = [
     "SSEStreamHandler",

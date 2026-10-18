@@ -39,31 +39,23 @@ def normalize_filters(
         if name not in default_priorities:
             raise FilterConfigurationError(f"unknown filter '{name}'")
         if not isinstance(raw_config, Mapping):
-            raise FilterConfigurationError(
-                f"filter '{name}' configuration must be a mapping"
-            )
+            raise FilterConfigurationError(f"filter '{name}' configuration must be a mapping")
 
         config = deepcopy(dict(raw_config))
         enabled = config.get("enabled", True)
         if not isinstance(enabled, bool):
-            raise FilterConfigurationError(
-                f"filter '{name}'.enabled must be a boolean"
-            )
+            raise FilterConfigurationError(f"filter '{name}'.enabled must be a boolean")
         config["enabled"] = enabled
 
         priority = config.get("priority", default_priorities[name])
         if isinstance(priority, bool) or not isinstance(priority, int):
-            raise FilterConfigurationError(
-                f"filter '{name}'.priority must be an integer"
-            )
+            raise FilterConfigurationError(f"filter '{name}'.priority must be an integer")
         config["priority"] = priority
         if enabled:
             conflict = enabled_priorities.get(priority)
             if conflict is not None:
                 raise FilterConfigurationError(
-                    "filters "
-                    f"'{conflict}' and '{name}' have the same effective priority "
-                    f"({priority})"
+                    f"filters '{conflict}' and '{name}' have the same effective priority ({priority})"
                 )
             enabled_priorities[priority] = name
         normalized[name] = config

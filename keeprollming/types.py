@@ -7,7 +7,6 @@ here, we can break cycles like: config -> routing -> config
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
@@ -34,6 +33,7 @@ class DefaultSettings:
         request_timeout: Default timeout in seconds
         performance_logs_dir: Directory for performance metrics logs
     """
+
     ctx_len: int = 8192
     max_tokens: int = 4096
     summary_enabled: bool = True
@@ -45,17 +45,20 @@ class DefaultSettings:
     # Accepted client credentials for routes that do not override this value.
     # This differs from Route.api_key, which authenticates KRM to upstream.
     api_keys: tuple[str, ...] = ()
+    # Network access mode inherited by routes unless explicitly overridden.
+    client_access: str = "any"
 
 
 @dataclass(frozen=True)
 class ModelConfig:
     """Configuration specific to a model - can override defaults.
-    
+
     Attributes:
         ctx_len: Context length (uses _UNSET if inheriting from default)
         max_tokens: Max completion tokens (uses _UNSET if inheriting)
         summary_enabled: Summary flag (uses _UNSET if inheriting)
     """
+
     ctx_len: int | None = None
     max_tokens: int | None = None
     summary_enabled: bool | None = None
@@ -64,7 +67,7 @@ class ModelConfig:
 @dataclass(frozen=True)
 class Route:
     """Represents a routing rule with model settings and fallback chain.
-    
+
     Attributes:
         name: Route identifier
         pattern: Pattern to match (e.g., "local/quick", "pass/*")
@@ -93,6 +96,7 @@ class Route:
         _is_private: Whether this is a private/internal route
         _route_hierarchy: Full route path for logging/debugging
     """
+
     name: str
     pattern: str  # Pattern to match (e.g., "local/quick", "pass/*")
 
@@ -126,6 +130,8 @@ class Route:
     api_key: Optional[str] = None  # Bearer token for upstream auth (fluisce nei filtri)
     # Accepted client credentials. None inherits; [] explicitly makes public.
     api_keys: Optional[List[str]] = None
+    # Client network policy: "lan", "public", or "any". None inherits.
+    client_access: str | None = None
 
     # Fallback chain for automatic rerouting - use sentinel
     fallback_chain: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
@@ -139,10 +145,20 @@ class Route:
     request_timeout: float | None = None
     request_timeout_inherited: bool = False  # Track if timeout was inherited from parent
 
-    # Route-level work admission. ``None`` means unlimited; a positive value
-    # caps concurrent logical requests before they consume upstream capacity.
+    # Route-level work admission. ``None`` inherits the resolver default
+    # (currently one concurrent request); a positive value overrides it.
     max_concurrent: int | None = None
     queue_timeout: float | None = None
+    # Client/service-class priority for shared backend admission. Higher wins
+    # only between queued requests; it never interrupts a live stream.
+    # ``None`` inherits and resolves to zero.
+    routing_priority: int | None = None
+    # Optional bounded promotion while a request waits at a saturated shared
+    # backend. None disables it; route inheritance applies to the mapping.
+    queue_aging: Optional[Dict[str, Any]] = None
+    # Optional server-owned first-token scheduling target. None disables the
+    # policy; route inheritance applies to the mapping.
+    deadline_policy: Optional[Dict[str, Any]] = None
 
     # Performance logs directory override for this route (optional)
     performance_logs_dir: Optional[str] = None
@@ -153,6 +169,11 @@ class Route:
     # Static route capabilities for clients and operational status. None means
     # inherit; an explicit empty list intentionally clears a parent's value.
     capabilities: Optional[List[str]] = None
+
+    # Runtime target-selection policy. ``None`` inherits through ``extends``;
+    # an explicit mapping with ``targets: []`` clears a parent's balance policy.
+    # The mapping is normalized and validated by ``routing.balancing``.
+    balance: Optional[Dict[str, Any]] = None
 
     # Route composition - extend another route and override settings
     extends: Optional[str] = None
@@ -173,12 +194,13 @@ class Route:
 @dataclass(frozen=True)
 class RouteMatch:
     """Result of route matching - contains matched route and extracted model.
-    
+
     Attributes:
         route: The matched Route object
         model: The actual model to use (extracted from pattern if needed)
         capture_groups: Named groups captured from the regex match
     """
+
     route: Route
     model: str  # The actual model to use (extracted from pattern if needed)
     capture_groups: Dict[str, str] = field(default_factory=dict)
@@ -194,7 +216,7 @@ DEFAULT_FALLBACK_ROUTE = Route(
     passthrough_enabled=False,
 )
 __all__ = [
-        "DefaultSettings",
+    "DefaultSettings",
     "ModelConfig",
     "Route",
     "RouteMatch",

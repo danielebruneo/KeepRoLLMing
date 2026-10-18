@@ -14,41 +14,42 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Union
 
 import pytest
 
+from keeprollming.filters.nudge.stream import (
+    NudgeContinuationFinalizer,
+    RecoveryDecision,
+)
+from keeprollming.filters.timestamp.stream import TimestampFinalizer
+from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
+from keeprollming.streaming.accounting import ExecutionUsage
 from keeprollming.streaming.events import (
     AssistantTextDelta,
     Done,
     Error,
     Finish,
+    StreamEvent,
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer, ToolCallFinalizer
-from keeprollming.filters.nudge.stream import (
-    NudgeContinuationFinalizer,
-    RecoveryDecision,
-)
 from keeprollming.streaming.parser import StreamParser
-from keeprollming.streaming.accounting import ExecutionUsage
-from keeprollming.streaming.serializer import OpenAISSESerializer
-from keeprollming.filters.timestamp.stream import TimestampFinalizer
-from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 from keeprollming.streaming.runner import (
     collect_stream_events,
     run_stream,
 )
+from keeprollming.streaming.serializer import OpenAISSESerializer
 from tests.helpers.stream_client import (
     TestAssistantTextDelta,
     TestDone,
     TestFinish,
     TestStreamEvent,
     TestToolCallComplete,
-    parse_sse_events,
-    collect_assistant_text,
     assert_stream_protocol_valid,
+    collect_assistant_text,
+    parse_sse_events,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -155,20 +156,26 @@ def test_runner_progressive_exact_tls_yields_distinct_tool_before_finish():
     """Exact TLS does not make a provably distinct call wait for Finish."""
     import json
 
-    tool_payload = json.dumps({
-        "choices": [{
-            "delta": {
-                "tool_calls": [{
-                    "index": 0,
-                    "id": "call-read",
-                    "function": {
-                        "name": "read_file",
-                        "arguments": '{"path":"README.md"}',
+    tool_payload = json.dumps(
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call-read",
+                                "function": {
+                                    "name": "read_file",
+                                    "arguments": '{"path":"README.md"}',
+                                },
+                            }
+                        ],
                     },
-                }],
-            },
-        }],
-    })
+                }
+            ],
+        }
+    )
     tool_frame = f"data: {tool_payload}\n\n".encode()
     finish_frame = _make_finish_chunk("tool_calls")
 
@@ -185,13 +192,15 @@ def test_runner_progressive_exact_tls_yields_distinct_tool_before_finish():
             ToolCallFinalizer(flush_valid_only=True, stream_deltas=True),
             TLSFinalizer(
                 progressive_exact=True,
-                conversation_tool_calls=[{
-                    "id": "previous-write",
-                    "function": {
-                        "name": "write_file",
-                        "arguments": '{"path":"output.txt"}',
-                    },
-                }],
+                conversation_tool_calls=[
+                    {
+                        "id": "previous-write",
+                        "function": {
+                            "name": "write_file",
+                            "arguments": '{"path":"output.txt"}',
+                        },
+                    }
+                ],
             ),
         ]
         stream = run_stream(
@@ -228,9 +237,7 @@ def test_runner_timestamp_finalizer_replaces_stale_footer():
     template = "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
 
-    finalizer = TimestampFinalizer(
-        template=template, clock=lambda: fixed_dt, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=template, clock=lambda: fixed_dt, tail_buffer_size=1024)
 
     content_with_stale = "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
 
@@ -280,9 +287,7 @@ def test_runner_long_content_tail_buffer_no_loss():
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
     tail_size = 20
 
-    finalizer = TimestampFinalizer(
-        template=template, clock=lambda: fixed_dt, tail_buffer_size=tail_size
-    )
+    finalizer = TimestampFinalizer(template=template, clock=lambda: fixed_dt, tail_buffer_size=tail_size)
 
     # 50-char content: 30 chars emitted immediately, 20 in tail buffer
     long_content = "A" * 50
@@ -331,7 +336,7 @@ def test_runner_timestamp_and_nudge_preserve_long_response_order():
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
     original = "".join(chr(65 + (index % 26)) for index in range(1600))
     chunks = _make_chunks(
-        *[_make_text_chunk(original[index:index + 13]) for index in range(0, len(original), 13)],
+        *[_make_text_chunk(original[index : index + 13]) for index in range(0, len(original), 13)],
         _make_finish_chunk(),
         _make_done_chunk(),
     )
@@ -405,12 +410,14 @@ async def test_live_nudge_with_timestamp_streams_text_once_then_footer():
     """Timestamp must not re-emit the nudge text it observed live."""
     fixed_dt = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
     stream = run_stream(
-        upstream_chunks=iter(_make_chunks(
-            _make_text_chunk("Primo "),
-            _make_text_chunk("secondo."),
-            _make_finish_chunk(),
-            _make_done_chunk(),
-        )),
+        upstream_chunks=iter(
+            _make_chunks(
+                _make_text_chunk("Primo "),
+                _make_text_chunk("secondo."),
+                _make_finish_chunk(),
+                _make_done_chunk(),
+            )
+        ),
         finalizers=[
             TimestampFinalizer(
                 template="\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC",
@@ -441,9 +448,7 @@ def test_runner_finalizers_run_before_finish():
     template = "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
 
-    finalizer = TimestampFinalizer(
-        template=template, clock=lambda: fixed_dt, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=template, clock=lambda: fixed_dt, tail_buffer_size=1024)
 
     content = "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
 
@@ -516,9 +521,7 @@ def test_runner_done_is_last():
 
     # Done must be last
     assert len(events) > 0, "No events produced"
-    assert isinstance(events[-1], TestDone), (
-        f"Last event is {type(events[-1]).__name__}, expected TestDone"
-    )
+    assert isinstance(events[-1], TestDone), f"Last event is {type(events[-1]).__name__}, expected TestDone"
 
 
 # ---------------------------------------------------------------------------
@@ -621,8 +624,7 @@ def test_runner_collect_stream_events_sync():
 def test_runner_propagates_embedded_upstream_error_without_synthetic_finish():
     """An SSE error envelope reaches the client instead of empty assistant."""
     chunks = _make_chunks(
-        b'data: {"error":{"message":"sampling parameter unsupported",'
-        b'"type":"BadRequestError","code":400}}\n\n',
+        b'data: {"error":{"message":"sampling parameter unsupported","type":"BadRequestError","code":400}}\n\n',
         _make_done_chunk(),
     )
 
@@ -638,8 +640,7 @@ def test_runner_propagates_embedded_upstream_error_without_synthetic_finish():
 def test_run_stream_serializes_embedded_upstream_error_and_done():
     """The async runner emits the upstream error and terminal DONE frame."""
     chunks = _make_chunks(
-        b'data: {"error":{"message":"sampling parameter unsupported",'
-        b'"type":"BadRequestError","code":400}}\n\n',
+        b'data: {"error":{"message":"sampling parameter unsupported","type":"BadRequestError","code":400}}\n\n',
         _make_done_chunk(),
     )
 
@@ -727,9 +728,7 @@ def test_collect_stream_events_with_finalizer():
     template = "\n\n---\nTimestamp: %Y-%m-%d %H:%M:%S UTC"
     fixed_dt = datetime(2026, 6, 29, 12, 0, 0, tzinfo=timezone.utc)
 
-    finalizer = TimestampFinalizer(
-        template=template, clock=lambda: fixed_dt, tail_buffer_size=1024
-    )
+    finalizer = TimestampFinalizer(template=template, clock=lambda: fixed_dt, tail_buffer_size=1024)
 
     content_with_stale = "Hello\n\n---\nTimestamp: 2020-01-01 00:00:00 UTC"
 
@@ -742,9 +741,7 @@ def test_collect_stream_events_with_finalizer():
     events = collect_stream_events(chunks, finalizers=[finalizer])
 
     # Collect assistant text
-    text = "".join(
-        e.delta for e in events if isinstance(e, AssistantTextDelta)
-    )
+    text = "".join(e.delta for e in events if isinstance(e, AssistantTextDelta))
 
     # Stale footer gone
     assert "Timestamp: 2020-01-01" not in text
@@ -789,9 +786,7 @@ def test_collect_stream_events_drops_after_finish():
 
     events = collect_stream_events(chunks)
 
-    text = "".join(
-        e.delta for e in events if isinstance(e, AssistantTextDelta)
-    )
+    text = "".join(e.delta for e in events if isinstance(e, AssistantTextDelta))
     assert text == "Before", f"Expected 'Before', got {text!r}"
 
     # Finish present
@@ -873,31 +868,39 @@ def test_runner_preserves_final_tool_arguments_in_finish_frame():
     args = '{"file_path":"report.json","content":"complete"}'
     first_fragment, final_fragment = args[:-2], args[-2:]
     first_frame = {
-        "choices": [{
-            "delta": {
-                "tool_calls": [{
-                    "index": 0,
-                    "id": "call_write",
-                    "type": "function",
-                    "function": {
-                        "name": "write_file",
-                        "arguments": first_fragment,
-                    },
-                }],
-            },
-            "finish_reason": None,
-        }],
+        "choices": [
+            {
+                "delta": {
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "id": "call_write",
+                            "type": "function",
+                            "function": {
+                                "name": "write_file",
+                                "arguments": first_fragment,
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": None,
+            }
+        ],
     }
     terminal_frame = {
-        "choices": [{
-            "delta": {
-                "tool_calls": [{
-                    "index": 0,
-                    "function": {"arguments": final_fragment},
-                }],
-            },
-            "finish_reason": "tool_calls",
-        }],
+        "choices": [
+            {
+                "delta": {
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "function": {"arguments": final_fragment},
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
     }
     chunks = _make_chunks(
         f"data: {json.dumps(first_frame)}\n\n",
@@ -915,10 +918,7 @@ def test_runner_preserves_final_tool_arguments_in_finish_frame():
             yield chunk
 
     events = parse_sse_events(_collect_chunks(_run()))
-    tool_call = next(
-        event for event in events
-        if isinstance(event, TestToolCallComplete)
-    )
+    tool_call = next(event for event in events if isinstance(event, TestToolCallComplete))
     assert tool_call.arguments_json == args
     assert tool_call.arguments_obj == json.loads(args)
     assert_stream_protocol_valid(events, profile="strict")
@@ -1161,9 +1161,7 @@ def test_runner_nudge_lazy_prefix_exactly_once():
 
     # Count "Here is the list:" in the text (excluding timestamp footer)
     content_text = text.split("\n\n---\n")[0] if "\n\n---\n" in text else text
-    assert content_text.count("Here is the list:") == 1, (
-        f"Lazy prefix must appear exactly once: {content_text!r}"
-    )
+    assert content_text.count("Here is the list:") == 1, f"Lazy prefix must appear exactly once: {content_text!r}"
 
 
 def test_runner_nudge_continuation_exactly_once():
@@ -1217,9 +1215,7 @@ def test_runner_nudge_continuation_exactly_once():
     text = collect_assistant_text(events)
     content_text = text.split("\n\n---\n")[0] if "\n\n---\n" in text else text
 
-    assert content_text.count("item 1, item 2.") == 1, (
-        f"Continuation must appear exactly once: {content_text!r}"
-    )
+    assert content_text.count("item 1, item 2.") == 1, f"Continuation must appear exactly once: {content_text!r}"
 
 
 def test_runner_nudge_message_not_downstream():
@@ -1272,9 +1268,7 @@ def test_runner_nudge_message_not_downstream():
     frames = _collect_chunks(_run())
     all_text = b"".join(frames).decode("utf-8", errors="replace")
 
-    assert nudge_msg not in all_text, (
-        f"Nudge message '{nudge_msg}' must not appear downstream"
-    )
+    assert nudge_msg not in all_text, f"Nudge message '{nudge_msg}' must not appear downstream"
 
 
 def test_runner_nudge_first_attempt_finish_suppressed():
@@ -1410,21 +1404,27 @@ def test_runner_nudge_tool_call_skip():
     import json
 
     def _make_tc_chunk():
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{
-                        "index": 0,
-                        "id": "call_1",
-                        "type": "function",
-                        "function": {
-                            "name": "echo",
-                            "arguments": "{}",
+        payload = json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "echo",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ],
                         },
-                    }],
-                },
-            }],
-        })
+                    }
+                ],
+            }
+        )
         return f"data: {payload}\n\n".encode("utf-8")
 
     chunks = _make_chunks(
@@ -1604,9 +1604,7 @@ def test_runner_nudge_timestamp_and_nudge_continuation():
 
     # 4. Continuation appears exactly once
     continuation_count = text.count(" This is the rest.")
-    assert continuation_count == 1, (
-        f"Continuation appeared {continuation_count} times, expected 1"
-    )
+    assert continuation_count == 1, f"Continuation appeared {continuation_count} times, expected 1"
 
     # 5. Timestamp appears exactly once
     ts_count = text.count("Timestamp:")
@@ -1615,9 +1613,7 @@ def test_runner_nudge_timestamp_and_nudge_continuation():
     # 6. Timestamp appears AFTER continuation
     ts_pos = text.find("Timestamp:")
     continuation_pos = text.find(" This is the rest.")
-    assert ts_pos > continuation_pos, (
-        "Timestamp should appear after continuation"
-    )
+    assert ts_pos > continuation_pos, "Timestamp should appear after continuation"
 
     # 7. Nudge message does NOT appear in text (nudge privacy)
     assert "Continue." not in text, "Nudge message leaked downstream"
@@ -2051,9 +2047,7 @@ class _FakeRecoveryFinalizer(StreamFinalizer):
         origin_finalizer: str = "FakeRecoveryFinalizer",
     ):
         self.priority = priority
-        self._patch_messages = patch_messages or [
-            {"role": "user", "content": "intervention"}
-        ]
+        self._patch_messages = patch_messages or [{"role": "user", "content": "intervention"}]
         self._origin_finalizer = origin_finalizer
         self.decision_count = 0
         self._decision = None
@@ -2163,9 +2157,7 @@ def test_runner_request_payload_patch_reaches_upstream_factory():
     }
     patch_messages = [{"role": "user", "content": "intervention"}]
 
-    fake_fin = _FakeRecoveryFinalizer(
-        priority=50, patch_messages=patch_messages
-    )
+    fake_fin = _FakeRecoveryFinalizer(priority=50, patch_messages=patch_messages)
 
     # Track what payload the factory receives
     received_payloads = []
@@ -2173,11 +2165,13 @@ def test_runner_request_payload_patch_reaches_upstream_factory():
     def _upstream_factory(p):
         received_payloads.append(p)
         # Return chunks that will produce Finish+Done
-        return _sync_iter([
-            _make_text_chunk("Hello"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Hello"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_text_chunk("Hello"),
@@ -2200,9 +2194,7 @@ def test_runner_request_payload_patch_reaches_upstream_factory():
 
     # The factory should have been called at least once with the augmented
     # payload (initial attempt + recovery attempt)
-    assert len(received_payloads) >= 2, (
-        f"Expected at least 2 factory calls, got {len(received_payloads)}"
-    )
+    assert len(received_payloads) >= 2, f"Expected at least 2 factory calls, got {len(received_payloads)}"
 
     # The last call should be the recovery attempt with augmented payload
     last_payload = received_payloads[-1]
@@ -2214,9 +2206,7 @@ def test_runner_request_payload_patch_reaches_upstream_factory():
     )
 
     # Original payload should NOT have been mutated
-    assert len(initial_payload["messages"]) == 1, (
-        f"Original payload was mutated: {initial_payload}"
-    )
+    assert len(initial_payload["messages"]) == 1, f"Original payload was mutated: {initial_payload}"
 
 
 # ---------------------------------------------------------------------------
@@ -2236,19 +2226,19 @@ def test_runner_request_payload_patch_preserves_other_payload_keys():
     }
     patch_messages = [{"role": "user", "content": "intervention"}]
 
-    fake_fin = _FakeRecoveryFinalizer(
-        priority=50, patch_messages=patch_messages
-    )
+    fake_fin = _FakeRecoveryFinalizer(priority=50, patch_messages=patch_messages)
 
     received_payloads = []
 
     def _upstream_factory(p):
         received_payloads.append(p)
-        return _sync_iter([
-            _make_text_chunk("Hello"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Hello"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_text_chunk("Hello"),
@@ -2293,11 +2283,13 @@ def test_runner_recovery_without_patch_unchanged():
 
     def _upstream_factory(p):
         received_payloads.append(p)
-        return _sync_iter([
-            _make_text_chunk("Hello"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Hello"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_text_chunk("Hello"),
@@ -2352,16 +2344,16 @@ def test_runner_request_payload_patch_finish_done_once():
     }
     patch_messages = [{"role": "user", "content": "intervention"}]
 
-    fake_fin = _FakeRecoveryFinalizer(
-        priority=50, patch_messages=patch_messages
-    )
+    fake_fin = _FakeRecoveryFinalizer(priority=50, patch_messages=patch_messages)
 
     def _upstream_factory(p):
-        return _sync_iter([
-            _make_text_chunk("Hello"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Hello"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_text_chunk("Hello"),
@@ -2429,11 +2421,13 @@ def test_runner_request_payload_patch_arbitration_lowest_priority():
 
     def _upstream_factory(p):
         received_payloads.append(p)
-        return _sync_iter([
-            _make_text_chunk("Hello"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Hello"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_text_chunk("Hello"),
@@ -2458,9 +2452,7 @@ def test_runner_request_payload_patch_arbitration_lowest_priority():
     # Only the last call matters — it should have patch_A
     last_payload = received_payloads[-1]
     last_msg = last_payload["messages"][-1]
-    assert last_msg == {"role": "user", "content": "patch_A"}, (
-        f"Expected patch_A to win, got {last_msg}"
-    )
+    assert last_msg == {"role": "user", "content": "patch_A"}, f"Expected patch_A to win, got {last_msg}"
 
 
 # ---------------------------------------------------------------------------
@@ -2472,44 +2464,42 @@ def test_runner_tls_finalizer_wired_when_enabled():
     """TLSFinalizer appears in finalizer list when model_tool_loop_stopper
     is enabled in route config."""
     from keeprollming.orchestrator.pipeline import Pipeline
-    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 
     # Build pipeline with TLS enabled
-    pipeline = Pipeline.from_route_config({
-        "model_tool_loop_stopper": {
-            "enabled": True,
+    pipeline = Pipeline.from_route_config(
+        {
+            "model_tool_loop_stopper": {
+                "enabled": True,
+            }
         }
-    })
+    )
     assert pipeline is not None
 
     finalizers = pipeline._build_stream_finalizers()
     finalizer_names = [type(f).__name__ for f in finalizers]
 
-    assert "TLSFinalizer" in finalizer_names, (
-        f"TLSFinalizer missing from finalizers: {finalizer_names}"
-    )
+    assert "TLSFinalizer" in finalizer_names, f"TLSFinalizer missing from finalizers: {finalizer_names}"
 
 
 def test_runner_rls_finalizer_wired_when_enabled():
     """RLSFinalizer appears in finalizer list when reasoning_loop_stopper
     is enabled in route config."""
     from keeprollming.orchestrator.pipeline import Pipeline
-    from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
 
     # Build pipeline with RLS enabled
-    pipeline = Pipeline.from_route_config({
-        "reasoning_loop_stopper": {
-            "enabled": True,
+    pipeline = Pipeline.from_route_config(
+        {
+            "reasoning_loop_stopper": {
+                "enabled": True,
+            }
         }
-    })
+    )
     assert pipeline is not None
 
     finalizers = pipeline._build_stream_finalizers()
     finalizer_names = [type(f).__name__ for f in finalizers]
 
-    assert "RLSFinalizer" in finalizer_names, (
-        f"RLSFinalizer missing from finalizers: {finalizer_names}"
-    )
+    assert "RLSFinalizer" in finalizer_names, f"RLSFinalizer missing from finalizers: {finalizer_names}"
 
 
 def test_runner_tls_finalizer_absent_when_disabled():
@@ -2520,29 +2510,31 @@ def test_runner_tls_finalizer_absent_when_disabled():
     """
     from keeprollming.orchestrator.pipeline import Pipeline
 
-    pipeline = Pipeline.from_route_config({
-        "model_tool_loop_stopper": {
-            "enabled": False,
+    pipeline = Pipeline.from_route_config(
+        {
+            "model_tool_loop_stopper": {
+                "enabled": False,
+            }
         }
-    })
+    )
     # When the only filter is disabled, pipeline is None (no filters enabled)
     # This is expected behavior — no pipeline needed.
     # To test absence, we build a pipeline with TLS disabled alongside another
     # enabled filter, then verify TLS is not in the finalizer list.
     if pipeline is None:
         # Build with another filter enabled to get a non-None pipeline
-        pipeline = Pipeline.from_route_config({
-            "timestamp": {"enabled": True},
-            "model_tool_loop_stopper": {"enabled": False},
-        })
+        pipeline = Pipeline.from_route_config(
+            {
+                "timestamp": {"enabled": True},
+                "model_tool_loop_stopper": {"enabled": False},
+            }
+        )
 
     assert pipeline is not None
     finalizers = pipeline._build_stream_finalizers()
     finalizer_names = [type(f).__name__ for f in finalizers]
 
-    assert "TLSFinalizer" not in finalizer_names, (
-        f"TLSFinalizer should not be present: {finalizer_names}"
-    )
+    assert "TLSFinalizer" not in finalizer_names, f"TLSFinalizer should not be present: {finalizer_names}"
 
 
 def test_runner_rls_finalizer_absent_when_disabled():
@@ -2553,29 +2545,31 @@ def test_runner_rls_finalizer_absent_when_disabled():
     """
     from keeprollming.orchestrator.pipeline import Pipeline
 
-    pipeline = Pipeline.from_route_config({
-        "reasoning_loop_stopper": {
-            "enabled": False,
+    pipeline = Pipeline.from_route_config(
+        {
+            "reasoning_loop_stopper": {
+                "enabled": False,
+            }
         }
-    })
+    )
     # When the only filter is disabled, pipeline is None (no filters enabled)
     # This is expected behavior — no pipeline needed.
     # To test absence, we build a pipeline with RLS disabled alongside another
     # enabled filter, then verify RLS is not in the finalizer list.
     if pipeline is None:
         # Build with another filter enabled to get a non-None pipeline
-        pipeline = Pipeline.from_route_config({
-            "timestamp": {"enabled": True},
-            "reasoning_loop_stopper": {"enabled": False},
-        })
+        pipeline = Pipeline.from_route_config(
+            {
+                "timestamp": {"enabled": True},
+                "reasoning_loop_stopper": {"enabled": False},
+            }
+        )
 
     assert pipeline is not None
     finalizers = pipeline._build_stream_finalizers()
     finalizer_names = [type(f).__name__ for f in finalizers]
 
-    assert "RLSFinalizer" not in finalizer_names, (
-        f"RLSFinalizer should not be present: {finalizer_names}"
-    )
+    assert "RLSFinalizer" not in finalizer_names, f"RLSFinalizer should not be present: {finalizer_names}"
 
 
 def test_runner_finalizer_ordering_by_priority():
@@ -2583,36 +2577,38 @@ def test_runner_finalizer_ordering_by_priority():
     Nudge(50) < TLS(55) < RLS(60)."""
     from keeprollming.orchestrator.pipeline import Pipeline
 
-    pipeline = Pipeline.from_route_config({
-        "timestamp": {"enabled": True},
-        "model_nudge": {"enabled": True},
-        "model_tool_loop_stopper": {"enabled": True},
-        "reasoning_loop_stopper": {"enabled": True},
-    })
+    pipeline = Pipeline.from_route_config(
+        {
+            "timestamp": {"enabled": True},
+            "model_nudge": {"enabled": True},
+            "model_tool_loop_stopper": {"enabled": True},
+            "reasoning_loop_stopper": {"enabled": True},
+        }
+    )
     assert pipeline is not None
 
     finalizers = pipeline._build_stream_finalizers()
     priorities = [f.priority for f in finalizers]
 
     # Expected order: Timestamp(20), ToolCall(40), Nudge(50), TLS(55), RLS(60)
-    assert priorities == [20, 40, 50, 55, 60], (
-        f"Expected [20, 40, 50, 55, 60], got {priorities}"
-    )
+    assert priorities == [20, 40, 50, 55, 60], f"Expected [20, 40, 50, 55, 60], got {priorities}"
 
 
 def test_runner_nudge_priority_beats_tls():
     """NudgeContinuationFinalizer (50) has lower numeric priority than
     TLSFinalizer (55), so Nudge wins arbitration."""
-    from keeprollming.orchestrator.pipeline import Pipeline
     from keeprollming.filters.nudge.stream import (
         NudgeContinuationFinalizer,
     )
     from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
+    from keeprollming.orchestrator.pipeline import Pipeline
 
-    pipeline = Pipeline.from_route_config({
-        "model_nudge": {"enabled": True},
-        "model_tool_loop_stopper": {"enabled": True},
-    })
+    pipeline = Pipeline.from_route_config(
+        {
+            "model_nudge": {"enabled": True},
+            "model_tool_loop_stopper": {"enabled": True},
+        }
+    )
     assert pipeline is not None
 
     finalizers = pipeline._build_stream_finalizers()
@@ -2634,14 +2630,16 @@ def test_runner_nudge_priority_beats_tls():
 def test_runner_tls_priority_beats_rls():
     """TLSFinalizer (55) has lower numeric priority than RLSFinalizer (60),
     so TLS wins arbitration."""
-    from keeprollming.orchestrator.pipeline import Pipeline
-    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
     from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
+    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
+    from keeprollming.orchestrator.pipeline import Pipeline
 
-    pipeline = Pipeline.from_route_config({
-        "model_tool_loop_stopper": {"enabled": True},
-        "reasoning_loop_stopper": {"enabled": True},
-    })
+    pipeline = Pipeline.from_route_config(
+        {
+            "model_tool_loop_stopper": {"enabled": True},
+            "reasoning_loop_stopper": {"enabled": True},
+        }
+    )
     assert pipeline is not None
 
     finalizers = pipeline._build_stream_finalizers()
@@ -2660,20 +2658,22 @@ def test_runner_tls_priority_beats_rls():
     )
 
 
-def test_runner_tls_config_mapping_from_v1():
+def test_runner_tls_config_mapping():
     """TLS finalizer config is correctly mapped from V1 filter config."""
-    from keeprollming.orchestrator.pipeline import Pipeline
     from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
+    from keeprollming.orchestrator.pipeline import Pipeline
 
-    pipeline = Pipeline.from_route_config({
-        "model_tool_loop_stopper": {
-            "enabled": True,
-            "max_repeats": 5,
-            "tls_message": "Custom TLS message",
-            "send_user_message": True,
-            "ab_loop_detection": True,
+    pipeline = Pipeline.from_route_config(
+        {
+            "model_tool_loop_stopper": {
+                "enabled": True,
+                "max_repeats": 5,
+                "tls_message": "Custom TLS message",
+                "send_user_message": True,
+                "ab_loop_detection": True,
+            }
         }
-    })
+    )
     assert pipeline is not None
 
     finalizers = pipeline._build_stream_finalizers()
@@ -2684,30 +2684,27 @@ def test_runner_tls_config_mapping_from_v1():
             break
 
     assert tls_fin is not None, "TLSFinalizer not found"
-    assert tls_fin.max_attempts == 5, f"Expected max_attempts=5, got {tls_fin.max_attempts}"
-    assert tls_fin.tls_message == "Custom TLS message", (
-        f"Expected custom TLS message, got {tls_fin.tls_message}"
-    )
-    assert tls_fin.detect_ab_loop is True, (
-        f"Expected detect_ab_loop=True, got {tls_fin.detect_ab_loop}"
-    )
-    assert tls_fin.nudge_message != "", (
-        f"Expected non-empty nudge_message when send_user_message=True"
-    )
+    assert tls_fin.max_attempts == 2
+    assert tls_fin.max_repeats == 5
+    assert tls_fin.tls_message == "Custom TLS message", f"Expected custom TLS message, got {tls_fin.tls_message}"
+    assert tls_fin.detect_ab_loop is True, f"Expected detect_ab_loop=True, got {tls_fin.detect_ab_loop}"
+    assert tls_fin.nudge_message != "", "Expected non-empty nudge_message when send_user_message=True"
 
 
-def test_runner_rls_config_mapping_from_v1():
+def test_runner_rls_config_mapping():
     """RLS finalizer config is correctly mapped from V1 filter config."""
-    from keeprollming.orchestrator.pipeline import Pipeline
     from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
+    from keeprollming.orchestrator.pipeline import Pipeline
 
-    pipeline = Pipeline.from_route_config({
-        "reasoning_loop_stopper": {
-            "enabled": True,
-            "max_repeats": 4,
-            "rls_message": "Custom RLS message",
+    pipeline = Pipeline.from_route_config(
+        {
+            "reasoning_loop_stopper": {
+                "enabled": True,
+                "max_repeats": 4,
+                "rls_message": "Custom RLS message",
+            }
         }
-    })
+    )
     assert pipeline is not None
 
     finalizers = pipeline._build_stream_finalizers()
@@ -2718,10 +2715,9 @@ def test_runner_rls_config_mapping_from_v1():
             break
 
     assert rls_fin is not None, "RLSFinalizer not found"
-    assert rls_fin.max_attempts == 4, f"Expected max_attempts=4, got {rls_fin.max_attempts}"
-    assert rls_fin.nudge_message == "Custom RLS message", (
-        f"Expected custom nudge_message, got {rls_fin.nudge_message}"
-    )
+    assert rls_fin.max_attempts == 2
+    assert rls_fin.max_repeats == 4
+    assert rls_fin.nudge_message == "Custom RLS message", f"Expected custom nudge_message, got {rls_fin.nudge_message}"
 
 
 # ---------------------------------------------------------------------------
@@ -2745,25 +2741,15 @@ def test_runner_tls_real_finalizer_recovery():
     def _make_tool_call_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call delta."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     def _make_tool_call_complete_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call complete."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     initial_payload = {
@@ -2777,11 +2763,13 @@ def test_runner_tls_real_finalizer_recovery():
         # Return chunks for the recovery attempt (success case)
         # No tool calls in recovery attempt to avoid stream_client
         # accumulator conflicts across attempts.
-        return _sync_iter([
-            _make_text_chunk("Result: 2"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Result: 2"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     # Tool calls with same signature but different indices to avoid
     # stream_client accumulator combining them. TLS detects loop based
@@ -2789,7 +2777,7 @@ def test_runner_tls_real_finalizer_recovery():
     tool_call_a = {
         "id": "call_1",
         "type": "function",
-        "function": {"name": "search", "arguments": '{"query": "test"}'}
+        "function": {"name": "search", "arguments": '{"query": "test"}'},
     }
 
     # Attempt 1: tool call loop (same tool called twice with different indices)
@@ -2817,9 +2805,7 @@ def test_runner_tls_real_finalizer_recovery():
     events = parse_sse_events(frames)
 
     # Verify recovery happened (factory called for recovery attempt)
-    assert len(received_payloads) >= 1, (
-        f"Expected at least 1 factory call (recovery), got {len(received_payloads)}"
-    )
+    assert len(received_payloads) >= 1, f"Expected at least 1 factory call (recovery), got {len(received_payloads)}"
 
     # Verify augmented payload reached upstream_factory
     last_payload = received_payloads[-1]
@@ -2840,14 +2826,10 @@ def test_runner_tls_real_finalizer_recovery():
     assert isinstance(events[-1], TestDone), "Done must be the last event"
 
     # I4: No assistant text after Finish
-    finish_idx = next(
-        i for i, e in enumerate(events) if isinstance(e, TestFinish)
-    )
+    finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
     for i, e in enumerate(events):
         if i > finish_idx and isinstance(e, TestAssistantTextDelta):
-            raise AssertionError(
-                f"I4: Assistant text after finish at index {i}"
-            )
+            raise AssertionError(f"I4: Assistant text after finish at index {i}")
 
 
 # ---------------------------------------------------------------------------
@@ -2865,7 +2847,7 @@ def test_runner_rls_finalizer_observer_semantics_in_runner():
     directly (observer semantics verification).
     """
     from keeprollming.filters.reasoning_loop_stopper.stream import RLSFinalizer
-    from keeprollming.streaming.events import ReasoningTextDelta, Finish
+    from keeprollming.streaming.events import ReasoningTextDelta
 
     # Enable within-stream loop detection (experimental, opt-in)
     rls_fin = RLSFinalizer(max_attempts=3, detect_within_stream_loop=True)
@@ -2879,14 +2861,14 @@ def test_runner_rls_finalizer_observer_semantics_in_runner():
     assert rls_fin.process_event(r2) == [r2]
 
     # Finalize should detect loop (within-stream repetition)
-    result = rls_fin.finalize()
+    rls_fin.finalize()
     assert rls_fin.decision is not None
     assert rls_fin.decision.kind == "intervention"
     assert rls_fin.decision.merge_strategy == "intervention_specific"
     assert rls_fin.decision.request_payload_patch is not None
     assert "messages" in rls_fin.decision.request_payload_patch
     # Should have nudge message
-    nudge_msg = rls_fin.decision.request_payload_patch["messages"][0]
+    nudge_msg = rls_fin.decision.request_payload_patch["messages"][-1]
     assert nudge_msg["role"] == "user"
 
 
@@ -2899,11 +2881,7 @@ def _make_reasoning_chunk(reasoning: str) -> bytes:
     """Build a single SSE chunk with reasoning_content."""
     import json
 
-    payload = json.dumps({
-        "choices": [{
-            "delta": {"reasoning_content": reasoning}
-        }]
-    })
+    payload = json.dumps({"choices": [{"delta": {"reasoning_content": reasoning}}]})
     return f"data: {payload}\n\n".encode("utf-8")
 
 
@@ -2940,7 +2918,11 @@ def test_runner_rls_real_finalizer_recovery():
     initial_payload = {
         "messages": [
             {"role": "user", "content": "What is 6*7?"},
-            {"role": "assistant", "content": None, "reasoning": "I think the answer is 42 because..."},
+            {
+                "role": "assistant",
+                "content": None,
+                "reasoning": "I think the answer is 42 because...",
+            },
         ],
         "model": "test-model",
     }
@@ -2950,11 +2932,13 @@ def test_runner_rls_real_finalizer_recovery():
     def _upstream_factory(p):
         received_payloads.append(p)
         # Return chunks for the recovery attempt (success case with different reasoning)
-        return _sync_iter([
-            _make_reasoning_chunk("The answer is 42."),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_reasoning_chunk("The answer is 42."),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     # Attempt 1: Reasoning loop (same reasoning as cache)
     # The parser will emit ReasoningTextDelta for this
@@ -2979,9 +2963,7 @@ def test_runner_rls_real_finalizer_recovery():
     events = parse_sse_events(frames)
 
     # 1. Verify recovery happened (factory called for recovery)
-    assert len(received_payloads) >= 1, (
-        f"Expected at least 1 factory call (recovery), got {len(received_payloads)}"
-    )
+    assert len(received_payloads) >= 1, f"Expected at least 1 factory call (recovery), got {len(received_payloads)}"
 
     # 2. Verify augmented payload reached upstream_factory
     last_payload = received_payloads[-1]
@@ -2992,9 +2974,7 @@ def test_runner_rls_real_finalizer_recovery():
 
     # 3. Verify RLS nudge message is in the augmented payload
     last_msg = last_payload["messages"][-1]
-    assert last_msg["role"] == "user", (
-        f"Expected user message in patch, got {last_msg}"
-    )
+    assert last_msg["role"] == "user", f"Expected user message in patch, got {last_msg}"
     assert "reasoning" in last_msg["content"].lower() or "repeat" in last_msg["content"].lower(), (
         f"Expected RLS nudge message, got {last_msg['content']}"
     )
@@ -3019,9 +2999,7 @@ def test_runner_rls_real_finalizer_recovery():
         "Rejected attempt reasoning must NOT be downstream in C2D attempt-level buffering"
     )
     # The accepted attempt's reasoning/output IS downstream
-    assert "The answer is 42." in all_text, (
-        "Accepted attempt reasoning should be present"
-    )
+    assert "The answer is 42." in all_text, "Accepted attempt reasoning should be present"
 
 
 def test_runner_rls_no_loop_passthrough():
@@ -3056,18 +3034,14 @@ def test_runner_rls_no_loop_passthrough():
     events = parse_sse_events(frames)
 
     # Verify no recovery decision was made
-    assert rls_fin.decision is None, (
-        f"Expected no recovery decision for non-loop reasoning, got {rls_fin.decision}"
-    )
+    assert rls_fin.decision is None, f"Expected no recovery decision for non-loop reasoning, got {rls_fin.decision}"
 
     # Verify protocol invariants
     assert_stream_protocol_valid(events, profile="strict")
 
     # Verify reasoning is present
     all_text = b"".join(frames).decode("utf-8", errors="replace")
-    assert "Let me think about this..." in all_text, (
-        f"Reasoning should be preserved, got: {all_text}"
-    )
+    assert "Let me think about this..." in all_text, f"Reasoning should be preserved, got: {all_text}"
 
     # Verify exactly one Finish and one Done
     finishes = [e for e in events if isinstance(e, TestFinish)]
@@ -3096,11 +3070,13 @@ def test_runner_rls_rejected_reasoning_not_downstream_on_recovery():
     def _upstream_factory(p):
         received_payloads.append(p)
         # Recovery attempt with different reasoning
-        return _sync_iter([
-            _make_reasoning_chunk("Different reasoning here."),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_reasoning_chunk("Different reasoning here."),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     # Attempt 1: Loop detected
     chunks = _make_chunks(
@@ -3134,9 +3110,7 @@ def test_runner_rls_rejected_reasoning_not_downstream_on_recovery():
         "Rejected attempt reasoning must NOT be downstream in C2D attempt-level buffering"
     )
     # The accepted attempt's reasoning IS downstream
-    assert "Different reasoning here." in all_text, (
-        "Accepted attempt reasoning should be present"
-    )
+    assert "Different reasoning here." in all_text, "Accepted attempt reasoning should be present"
 
     # Verify protocol invariants
     assert_stream_protocol_valid(events, profile="strict")
@@ -3178,19 +3152,14 @@ def test_runner_tls_recovery_timestamp_once_final_end():
     This test proves I8 (timestamp appears at most once) is satisfied
     even when recovery occurs and the accepted attempt contains a stale footer.
     """
-    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
     from keeprollming.filters.timestamp.stream import TimestampFinalizer
+    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 
     def _make_tool_call_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call delta."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     fixed_dt = datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -3211,26 +3180,30 @@ def test_runner_tls_recovery_timestamp_once_final_end():
     _tool_call_a = {
         "id": "call_1",
         "type": "function",
-        "function": {"name": "search", "arguments": '{"query": "test"}'}
+        "function": {"name": "search", "arguments": '{"query": "test"}'},
     }
 
     def _upstream_factory(p):
         received_payloads.append(p)
         # Attempt 1: tool call loop
         if len(received_payloads) == 1:
-            return _sync_iter([
-                _make_tool_call_chunk(0, _tool_call_a),
-                _make_tool_call_chunk(1, _tool_call_a),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_tool_call_chunk(0, _tool_call_a),
+                    _make_tool_call_chunk(1, _tool_call_a),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
         else:
             # Attempt 2: text with stale timestamp footer (simulating upstream behavior)
-            return _sync_iter([
-                _make_text_chunk_with_footer("Result: 2", ""),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_text_chunk_with_footer("Result: 2", ""),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
 
     chunks = _make_chunks(
         _make_tool_call_chunk(0, _tool_call_a),
@@ -3269,30 +3242,22 @@ def test_runner_tls_recovery_timestamp_once_final_end():
     assert isinstance(events[-1], TestDone), "Done must be the last event"
 
     # I4: No assistant text after Finish
-    finish_idx = next(
-        i for i, e in enumerate(events) if isinstance(e, TestFinish)
-    )
+    finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
     for i, e in enumerate(events):
         if i > finish_idx and isinstance(e, TestAssistantTextDelta):
-            raise AssertionError(
-                f"I4: Assistant text after finish at index {i}"
-            )
+            raise AssertionError(f"I4: Assistant text after finish at index {i}")
 
     # Verify timestamp appears exactly once
     all_text = b"".join(frames).decode("utf-8", errors="replace")
     ts_count = all_text.count("Timestamp:")
-    assert ts_count == 1, (
-        f"Timestamp appeared {ts_count} times, expected 1. Output:\n{all_text}"
-    )
+    assert ts_count == 1, f"Timestamp appeared {ts_count} times, expected 1. Output:\n{all_text}"
 
     # Verify timestamp appears at final end (after all content)
     # Find the position of the timestamp footer
     ts_pos = all_text.rfind("Timestamp:")
     # Find the position of the last non-timestamp content
     content_pos = all_text.rfind("Result: 2")
-    assert ts_pos > content_pos, (
-        f"Timestamp should appear after content. ts_pos={ts_pos}, content_pos={content_pos}"
-    )
+    assert ts_pos > content_pos, f"Timestamp should appear after content. ts_pos={ts_pos}, content_pos={content_pos}"
 
 
 def test_runner_rls_recovery_timestamp_once_final_end():
@@ -3335,18 +3300,22 @@ def test_runner_rls_recovery_timestamp_once_final_end():
         received_payloads.append(p)
         # Attempt 1: reasoning loop
         if len(received_payloads) == 1:
-            return _sync_iter([
-                _make_reasoning_chunk("REPEATED_REASONING"),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_reasoning_chunk("REPEATED_REASONING"),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
         else:
             # Attempt 2: text with stale timestamp footer
-            return _sync_iter([
-                _make_text_chunk_with_footer("The answer is 42.", ""),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_text_chunk_with_footer("The answer is 42.", ""),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
 
     chunks = _make_chunks(
         _make_reasoning_chunk("REPEATED_REASONING"),
@@ -3379,16 +3348,12 @@ def test_runner_rls_recovery_timestamp_once_final_end():
     # Verify timestamp appears exactly once
     all_text = b"".join(frames).decode("utf-8", errors="replace")
     ts_count = all_text.count("Timestamp:")
-    assert ts_count == 1, (
-        f"Timestamp appeared {ts_count} times, expected 1. Output:\n{all_text}"
-    )
+    assert ts_count == 1, f"Timestamp appeared {ts_count} times, expected 1. Output:\n{all_text}"
 
     # Verify timestamp appears at final end (after all content)
     ts_pos = all_text.rfind("Timestamp:")
     content_pos = all_text.rfind("The answer is 42.")
-    assert ts_pos > content_pos, (
-        f"Timestamp should appear after content. ts_pos={ts_pos}, content_pos={content_pos}"
-    )
+    assert ts_pos > content_pos, f"Timestamp should appear after content. ts_pos={ts_pos}, content_pos={content_pos}"
 
     # Verify exactly one Finish and one Done
     finishes = [e for e in events if isinstance(e, TestFinish)]
@@ -3412,19 +3377,14 @@ def test_runner_recovered_attempt_stale_timestamp_not_leaked():
     Uses a small tail_buffer_size to trigger pass-through of stale footer
     from the rejected attempt, which should still be suppressed on recovery.
     """
-    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
     from keeprollming.filters.timestamp.stream import TimestampFinalizer
+    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 
     def _make_tool_call_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call delta."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     fixed_dt = datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -3446,7 +3406,7 @@ def test_runner_recovered_attempt_stale_timestamp_not_leaked():
     _tool_call_a = {
         "id": "call_1",
         "type": "function",
-        "function": {"name": "search", "arguments": '{"query": "test"}'}
+        "function": {"name": "search", "arguments": '{"query": "test"}'},
     }
 
     # Create a long text that exceeds tail_buffer_size to trigger pass-through
@@ -3456,21 +3416,25 @@ def test_runner_recovered_attempt_stale_timestamp_not_leaked():
         received_payloads.append(p)
         # Attempt 1: tool call loop with stale timestamp in content
         if len(received_payloads) == 1:
-            return _sync_iter([
-                _make_text_chunk_with_footer(long_text, ""),
-                _make_tool_call_chunk(0, _tool_call_a),
-                _make_tool_call_chunk(1, _tool_call_a),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_text_chunk_with_footer(long_text, ""),
+                    _make_tool_call_chunk(0, _tool_call_a),
+                    _make_tool_call_chunk(1, _tool_call_a),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
         else:
             # Attempt 2: clean result (no stale footer in source, but
             # TimestampFinalizer should still produce exactly one fresh footer)
-            return _sync_iter([
-                _make_text_chunk("Attempt 2 result"),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_text_chunk("Attempt 2 result"),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
 
     chunks = _make_chunks(
         _make_text_chunk_with_footer(long_text, ""),
@@ -3509,33 +3473,23 @@ def test_runner_recovered_attempt_stale_timestamp_not_leaked():
     assert isinstance(events[-1], TestDone), "Done must be the last event"
 
     # I4: No assistant text after Finish
-    finish_idx = next(
-        i for i, e in enumerate(events) if isinstance(e, TestFinish)
-    )
+    finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
     for i, e in enumerate(events):
         if i > finish_idx and isinstance(e, TestAssistantTextDelta):
-            raise AssertionError(
-                f"I4: Assistant text after finish at index {i}"
-            )
+            raise AssertionError(f"I4: Assistant text after finish at index {i}")
 
     # Verify stale timestamp from rejected attempt does NOT leak
     all_text = b"".join(frames).decode("utf-8", errors="replace")
 
     # Count timestamp footers - should be exactly one (the fresh one from accepted attempt)
     ts_count = all_text.count("Timestamp:")
-    assert ts_count == 1, (
-        f"Timestamp appeared {ts_count} times, expected 1 (stale footer leaked). Output:\n{all_text}"
-    )
+    assert ts_count == 1, f"Timestamp appeared {ts_count} times, expected 1 (stale footer leaked). Output:\n{all_text}"
 
     # Verify the timestamp is from the accepted attempt (not the stale one)
     # The stale timestamp should be "2020-01-01" (from the rejected attempt)
     # The fresh timestamp should be "2026-07-01" (from TimestampFinalizer)
-    assert "2020-01-01 00:00:00 UTC" not in all_text, (
-        "Stale timestamp from rejected attempt leaked downstream"
-    )
-    assert "2026-07-01 12:00:00 UTC" in all_text, (
-        "Fresh timestamp from accepted attempt not found"
-    )
+    assert "2020-01-01 00:00:00 UTC" not in all_text, "Stale timestamp from rejected attempt leaked downstream"
+    assert "2026-07-01 12:00:00 UTC" in all_text, "Fresh timestamp from accepted attempt not found"
 
 
 # ---------------------------------------------------------------------------
@@ -3543,7 +3497,9 @@ def test_runner_recovered_attempt_stale_timestamp_not_leaked():
 # ---------------------------------------------------------------------------
 
 
-def _make_fallback_chunks(fallback_message: str = "An error occurred. Please try again.") -> list[bytes]:
+def _make_fallback_chunks(
+    fallback_message: str = "An error occurred. Please try again.",
+) -> list[bytes]:
     """Build chunks that produce a fallback message + Finish + Done."""
     return _make_chunks(
         _make_text_chunk(fallback_message),
@@ -3570,13 +3526,8 @@ def test_runner_tls_max_attempts_exhausted_emits_fallback_once():
     def _make_tool_call_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call delta."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     tls_fin = TLSFinalizer(max_attempts=3)
@@ -3589,19 +3540,21 @@ def test_runner_tls_max_attempts_exhausted_emits_fallback_once():
         tool_call_a = {
             "id": "call_1",
             "type": "function",
-            "function": {"name": "search", "arguments": '{"query": "test"}'}
+            "function": {"name": "search", "arguments": '{"query": "test"}'},
         }
-        return _sync_iter([
-            _make_tool_call_chunk(0, tool_call_a),
-            _make_tool_call_chunk(1, tool_call_a),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_tool_call_chunk(0, tool_call_a),
+                _make_tool_call_chunk(1, tool_call_a),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     tool_call_a = {
         "id": "call_1",
         "type": "function",
-        "function": {"name": "search", "arguments": '{"query": "test"}'}
+        "function": {"name": "search", "arguments": '{"query": "test"}'},
     }
 
     chunks = _make_chunks(
@@ -3685,11 +3638,13 @@ def test_runner_rls_max_attempts_exhausted_emits_fallback_once():
     def _upstream_factory(p):
         received_payloads.append(p)
         # Always return the same failing chunks (reasoning loop)
-        return _sync_iter([
-            _make_reasoning_chunk("REPEATED_REASONING"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_reasoning_chunk("REPEATED_REASONING"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_reasoning_chunk("REPEATED_REASONING"),
@@ -3871,14 +3826,12 @@ def test_runner_fallback_with_timestamp_finalizer_timestamp_once():
             yield chunk
 
     frames = _collect_chunks(_run())
-    events = parse_sse_events(frames)
+    parse_sse_events(frames)
 
     # Verify timestamp appears exactly once
     all_text = b"".join(frames).decode("utf-8", errors="replace")
     ts_count = all_text.count("Timestamp:")
-    assert ts_count == 1, (
-        f"Timestamp appeared {ts_count} times, expected 1. Output:\n{all_text}"
-    )
+    assert ts_count == 1, f"Timestamp appeared {ts_count} times, expected 1. Output:\n{all_text}"
 
     # Verify timestamp appears at final end
     ts_pos = all_text.rfind("Timestamp:")
@@ -3965,13 +3918,8 @@ def test_runner_rejected_attempt_content_does_not_leak_on_fallback():
     def _make_tool_call_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call delta."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     tls_fin = TLSFinalizer(max_attempts=3)
@@ -3984,19 +3932,21 @@ def test_runner_rejected_attempt_content_does_not_leak_on_fallback():
         tool_call_a = {
             "id": "call_1",
             "type": "function",
-            "function": {"name": "search", "arguments": '{"query": "test"}'}
+            "function": {"name": "search", "arguments": '{"query": "test"}'},
         }
-        return _sync_iter([
-            _make_tool_call_chunk(0, tool_call_a),
-            _make_tool_call_chunk(1, tool_call_a),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_tool_call_chunk(0, tool_call_a),
+                _make_tool_call_chunk(1, tool_call_a),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     tool_call_a = {
         "id": "call_1",
         "type": "function",
-        "function": {"name": "search", "arguments": '{"query": "test"}'}
+        "function": {"name": "search", "arguments": '{"query": "test"}'},
     }
 
     chunks = _make_chunks(
@@ -4019,21 +3969,17 @@ def test_runner_rejected_attempt_content_does_not_leak_on_fallback():
             yield chunk
 
     frames = _collect_chunks(_run())
-    events = parse_sse_events(frames)
+    parse_sse_events(frames)
 
     # Verify rejected attempt content does NOT leak
     all_text = b"".join(frames).decode("utf-8", errors="replace")
 
     # The rejected attempt's tool call signature should not be in the output
     # (only the fallback message should be present)
-    assert "search" not in all_text or "An error occurred" in all_text, (
-        f"Rejected attempt content leaked: {all_text}"
-    )
+    assert "search" not in all_text or "An error occurred" in all_text, f"Rejected attempt content leaked: {all_text}"
 
     # Verify fallback message is present
-    assert "An error occurred" in all_text or "fallback" in all_text.lower(), (
-        f"Expected fallback message: {all_text}"
-    )
+    assert "An error occurred" in all_text or "fallback" in all_text.lower(), f"Expected fallback message: {all_text}"
 
 
 def test_runner_b2_nudge_still_passes():
@@ -4138,11 +4084,13 @@ def test_runner_c2a_payload_patch_still_works():
 
     def _upstream_factory(p):
         received_payloads.append(p)
-        return _sync_iter([
-            _make_text_chunk("Hello"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Hello"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_text_chunk("Hello"),
@@ -4169,9 +4117,7 @@ def test_runner_c2a_payload_patch_still_works():
 
     # The factory should have been called at least once with the augmented
     # payload (initial attempt + recovery attempt)
-    assert len(received_payloads) >= 2, (
-        f"Expected at least 2 factory calls, got {len(received_payloads)}"
-    )
+    assert len(received_payloads) >= 2, f"Expected at least 2 factory calls, got {len(received_payloads)}"
 
     # The last call should be the recovery attempt with augmented payload
     last_payload = received_payloads[-1]
@@ -4192,13 +4138,8 @@ def test_runner_c2b_tls_proof_still_works():
     def _make_tool_call_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call delta."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     initial_payload = {
@@ -4209,16 +4150,18 @@ def test_runner_c2b_tls_proof_still_works():
 
     def _upstream_factory(p):
         received_payloads.append(p)
-        return _sync_iter([
-            _make_text_chunk("Result: 2"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Result: 2"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     tool_call_a = {
         "id": "call_1",
         "type": "function",
-        "function": {"name": "search", "arguments": '{"query": "test"}'}
+        "function": {"name": "search", "arguments": '{"query": "test"}'},
     }
 
     chunks = _make_chunks(
@@ -4271,7 +4214,11 @@ def test_runner_c2c_rls_proof_still_works():
     initial_payload = {
         "messages": [
             {"role": "user", "content": "What is 6*7?"},
-            {"role": "assistant", "content": None, "reasoning": "I think the answer is 42 because..."},
+            {
+                "role": "assistant",
+                "content": None,
+                "reasoning": "I think the answer is 42 because...",
+            },
         ],
     }
 
@@ -4279,11 +4226,13 @@ def test_runner_c2c_rls_proof_still_works():
 
     def _upstream_factory(p):
         received_payloads.append(p)
-        return _sync_iter([
-            _make_reasoning_chunk("The answer is 42."),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_reasoning_chunk("The answer is 42."),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     attempt1_chunks = _make_chunks(
         _make_reasoning_chunk("I think the answer is 42 because..."),
@@ -4322,19 +4271,14 @@ def test_runner_c2d_stale_timestamp_not_leaked_still_works():
 
     Regression test: ensure C2E fallback/exhaustion does not break C2D.
     """
-    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
     from keeprollming.filters.timestamp.stream import TimestampFinalizer
+    from keeprollming.filters.tool_loop_stopper.stream import TLSFinalizer
 
     def _make_tool_call_chunk(index: int, tool_call: dict) -> bytes:
         """Build SSE chunk with tool call delta."""
         import json
-        payload = json.dumps({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{**tool_call, "index": index}]
-                }
-            }]
-        })
+
+        payload = json.dumps({"choices": [{"delta": {"tool_calls": [{**tool_call, "index": index}]}}]})
         return f"data: {payload}\n\n".encode("utf-8")
 
     fixed_dt = datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -4354,7 +4298,7 @@ def test_runner_c2d_stale_timestamp_not_leaked_still_works():
     _tool_call_a = {
         "id": "call_1",
         "type": "function",
-        "function": {"name": "search", "arguments": '{"query": "test"}'}
+        "function": {"name": "search", "arguments": '{"query": "test"}'},
     }
 
     long_text = "A" * 100 + " Attempt 1 result"
@@ -4362,19 +4306,23 @@ def test_runner_c2d_stale_timestamp_not_leaked_still_works():
     def _upstream_factory(p):
         received_payloads.append(p)
         if len(received_payloads) == 1:
-            return _sync_iter([
-                _make_text_chunk_with_footer(long_text, ""),
-                _make_tool_call_chunk(0, _tool_call_a),
-                _make_tool_call_chunk(1, _tool_call_a),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_text_chunk_with_footer(long_text, ""),
+                    _make_tool_call_chunk(0, _tool_call_a),
+                    _make_tool_call_chunk(1, _tool_call_a),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
         else:
-            return _sync_iter([
-                _make_text_chunk("Attempt 2 result"),
-                _make_finish_chunk("stop"),
-                b"data: [DONE]\n\n",
-            ])
+            return _sync_iter(
+                [
+                    _make_text_chunk("Attempt 2 result"),
+                    _make_finish_chunk("stop"),
+                    b"data: [DONE]\n\n",
+                ]
+            )
 
     chunks = _make_chunks(
         _make_text_chunk_with_footer(long_text, ""),
@@ -4396,19 +4344,15 @@ def test_runner_c2d_stale_timestamp_not_leaked_still_works():
             yield chunk
 
     frames = _collect_chunks(_run())
-    events = parse_sse_events(frames)
+    parse_sse_events(frames)
 
     # Verify recovery happened
     assert len(received_payloads) >= 2
 
     # Verify stale timestamp does NOT leak
     all_text = b"".join(frames).decode("utf-8", errors="replace")
-    assert "2020-01-01 00:00:00 UTC" not in all_text, (
-        "Stale timestamp from rejected attempt leaked downstream"
-    )
-    assert "2026-07-01 12:00:00 UTC" in all_text, (
-        "Fresh timestamp from accepted attempt not found"
-    )
+    assert "2020-01-01 00:00:00 UTC" not in all_text, "Stale timestamp from rejected attempt leaked downstream"
+    assert "2026-07-01 12:00:00 UTC" in all_text, "Fresh timestamp from accepted attempt not found"
 
 
 def test_runner_global_recovery_limit_exhausted_accepts_current_attempt_no_fallback():
@@ -4443,11 +4387,13 @@ def test_runner_global_recovery_limit_exhausted_accepts_current_attempt_no_fallb
 
     def _upstream_factory(p):
         received_payloads.append(p)
-        return _sync_iter([
-            _make_text_chunk("Global limit test output"),
-            _make_finish_chunk("stop"),
-            b"data: [DONE]\n\n",
-        ])
+        return _sync_iter(
+            [
+                _make_text_chunk("Global limit test output"),
+                _make_finish_chunk("stop"),
+                b"data: [DONE]\n\n",
+            ]
+        )
 
     chunks = _make_chunks(
         _make_text_chunk("Global limit test output"),
@@ -4471,20 +4417,14 @@ def test_runner_global_recovery_limit_exhausted_accepts_current_attempt_no_fallb
     events = parse_sse_events(frames)
 
     # Verify upstream_factory was called (at least once for initial attempt)
-    assert len(received_payloads) >= 1, (
-        f"Expected at least 1 factory call, got {len(received_payloads)}"
-    )
+    assert len(received_payloads) >= 1, f"Expected at least 1 factory call, got {len(received_payloads)}"
 
     # Verify fallback message is NOT present
     all_text = b"".join(frames).decode("utf-8", errors="replace")
-    assert "An error occurred" not in all_text, (
-        f"Fallback message should not be present. Output:\n{all_text}"
-    )
+    assert "An error occurred" not in all_text, f"Fallback message should not be present. Output:\n{all_text}"
 
     # Verify current attempt content is present
-    assert "Global limit test output" in all_text, (
-        f"Current attempt content should be present. Output:\n{all_text}"
-    )
+    assert "Global limit test output" in all_text, f"Current attempt content should be present. Output:\n{all_text}"
 
     # Verify recovery nudge/payload patch is not used to restart upstream
     # (global limit reached, so no second call)
@@ -4581,14 +4521,10 @@ def test_runner_finalizer_output_is_chained_to_later_finalizers():
     events = parse_sse_events(frames)
 
     # Verify ToolCallDelta was produced by fake producer
-    tool_call_deltas = [
-        e for e in events if isinstance(e, TestStreamEvent) and hasattr(e, "tool_calls")
-    ]
+    [e for e in events if isinstance(e, TestStreamEvent) and hasattr(e, "tool_calls")]
 
     # Verify ToolCallComplete was emitted (proves ToolCallFinalizer received the ToolCallDelta)
-    tool_call_completes = [
-        e for e in events if isinstance(e, TestStreamEvent) and hasattr(e, "tool_calls")
-    ]
+    [e for e in events if isinstance(e, TestStreamEvent) and hasattr(e, "tool_calls")]
 
     # Verify Finish.reason is "tool_calls" (I9 alignment)
     finish_events = [e for e in events if isinstance(e, TestFinish)]
@@ -4604,10 +4540,8 @@ def test_runner_finalizer_output_is_chained_to_later_finalizers():
 
     # Verify no content after Finish
     finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
-    for e in events[finish_idx + 1:]:
-        assert not isinstance(e, TestAssistantTextDelta), (
-            "No assistant text after Finish"
-        )
+    for e in events[finish_idx + 1 :]:
+        assert not isinstance(e, TestAssistantTextDelta), "No assistant text after Finish"
 
 
 def test_runner_chaining_multiple_emitted_events_processed_independently():
@@ -4638,6 +4572,7 @@ def test_runner_chaining_multiple_emitted_events_processed_independently():
 
     class _FakeProducerMultiFinalizer(StreamFinalizer):
         """Fake finalizer that emits two events from an AssistantTextDelta."""
+
         priority: int = 30
 
         def process_event(self, event: StreamEvent) -> list[StreamEvent]:
@@ -4680,10 +4615,7 @@ def test_runner_chaining_multiple_emitted_events_processed_independently():
     # Verify ToolCallComplete was emitted (proves ToolCallFinalizer received the ToolCallDelta)
     # This is the key proof that multi-event chaining works: if the ToolCallDelta
     # was skipped by the processed set, ToolCallComplete would not be emitted.
-    tool_call_completes = [
-        e for e in events
-        if isinstance(e, TestToolCallComplete)
-    ]
+    tool_call_completes = [e for e in events if isinstance(e, TestToolCallComplete)]
     assert len(tool_call_completes) == 1, (
         f"Expected exactly one ToolCallComplete, got {len(tool_call_completes)}. "
         f"This proves the ToolCallDelta was processed by ToolCallFinalizer "
@@ -4691,33 +4623,23 @@ def test_runner_chaining_multiple_emitted_events_processed_independently():
     )
 
     # Verify original "xml" content is NOT downstream (replacement semantics)
-    xml_events = [
-        e for e in events
-        if isinstance(e, TestAssistantTextDelta) and "xml" in e.delta.lower()
-    ]
+    xml_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and "xml" in e.delta.lower()]
     assert len(xml_events) == 0, (
         f"Original 'xml' content must be suppressed by replacement, "
         f"but found {len(xml_events)} events with 'xml' content."
     )
 
     # Verify cleaned content is downstream exactly once
-    cleaned_events = [
-        e for e in events
-        if isinstance(e, TestAssistantTextDelta) and e.delta == "cleaned"
-    ]
+    cleaned_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and e.delta == "cleaned"]
     assert len(cleaned_events) == 1, (
-        f"Cleaned content must be emitted exactly once, "
-        f"but found {len(cleaned_events)} events."
+        f"Cleaned content must be emitted exactly once, but found {len(cleaned_events)} events."
     )
 
     # Verify Finish.reason is "tool_calls" (I9 alignment)
     finish_events = [e for e in events if isinstance(e, TestFinish)]
-    assert len(finish_events) == 1, (
-        f"Expected exactly one Finish event, got {len(finish_events)}."
-    )
+    assert len(finish_events) == 1, f"Expected exactly one Finish event, got {len(finish_events)}."
     assert finish_events[0].reason == "tool_calls", (
-        f"Expected Finish.reason='tool_calls' due to ToolCallComplete, "
-        f"got '{finish_events[0].reason}'."
+        f"Expected Finish.reason='tool_calls' due to ToolCallComplete, got '{finish_events[0].reason}'."
     )
 
     # Verify Done is last
@@ -4725,10 +4647,8 @@ def test_runner_chaining_multiple_emitted_events_processed_independently():
 
     # Verify no content after Finish
     finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
-    for e in events[finish_idx + 1:]:
-        assert not isinstance(e, TestAssistantTextDelta), (
-            "No assistant text after Finish"
-        )
+    for e in events[finish_idx + 1 :]:
+        assert not isinstance(e, TestAssistantTextDelta), "No assistant text after Finish"
 
 
 def test_runner_tool_rewrite_finalizer_reaches_toolcall_finalizer():
@@ -4778,10 +4698,7 @@ def test_runner_tool_rewrite_finalizer_reaches_toolcall_finalizer():
     events = parse_sse_events(frames)
 
     # Verify ToolCallComplete was emitted (proves ToolCallFinalizer received the ToolCallDelta)
-    tool_call_completes = [
-        e for e in events
-        if isinstance(e, TestToolCallComplete)
-    ]
+    tool_call_completes = [e for e in events if isinstance(e, TestToolCallComplete)]
     assert len(tool_call_completes) == 1, (
         f"Expected exactly one ToolCallComplete (proves ToolRewriteFinalizer -> "
         f"ToolCallFinalizer chain works), got {len(tool_call_completes)}. "
@@ -4790,19 +4707,13 @@ def test_runner_tool_rewrite_finalizer_reaches_toolcall_finalizer():
 
     # Verify ToolCallComplete has correct tool name and arguments
     tool_call_complete = tool_call_completes[0]
-    assert tool_call_complete.name == "read", (
-        f"Expected tool name 'read', got '{tool_call_complete.name}'."
-    )
+    assert tool_call_complete.name == "read", f"Expected tool name 'read', got '{tool_call_complete.name}'."
     assert tool_call_complete.arguments_json == '{"path":"README.md"}', (
-        f"Expected arguments '{{\"path\":\"README.md\"}}', "
-        f"got '{tool_call_complete.arguments_json}'."
+        f"Expected arguments '{{\"path\":\"README.md\"}}', got '{tool_call_complete.arguments_json}'."
     )
 
     # Verify original XML is NOT downstream (replacement semantics)
-    xml_events = [
-        e for e in events
-        if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta
-    ]
+    xml_events = [e for e in events if isinstance(e, TestAssistantTextDelta) and "<read>" in e.delta]
     assert len(xml_events) == 0, (
         f"Original XML must be suppressed by ToolRewriteFinalizer, "
         f"but found {len(xml_events)} events with '<read>' content."
@@ -4810,12 +4721,9 @@ def test_runner_tool_rewrite_finalizer_reaches_toolcall_finalizer():
 
     # Verify Finish.reason is "tool_calls" (I9 alignment)
     finish_events = [e for e in events if isinstance(e, TestFinish)]
-    assert len(finish_events) == 1, (
-        f"Expected exactly one Finish event, got {len(finish_events)}."
-    )
+    assert len(finish_events) == 1, f"Expected exactly one Finish event, got {len(finish_events)}."
     assert finish_events[0].reason == "tool_calls", (
-        f"Expected Finish.reason='tool_calls' due to ToolCallComplete, "
-        f"got '{finish_events[0].reason}'."
+        f"Expected Finish.reason='tool_calls' due to ToolCallComplete, got '{finish_events[0].reason}'."
     )
 
     # Verify Done is last
@@ -4823,16 +4731,12 @@ def test_runner_tool_rewrite_finalizer_reaches_toolcall_finalizer():
 
     # Verify exactly one Done
     done_events = [e for e in events if isinstance(e, TestDone)]
-    assert len(done_events) == 1, (
-        f"Expected exactly one Done event, got {len(done_events)}."
-    )
+    assert len(done_events) == 1, f"Expected exactly one Done event, got {len(done_events)}."
 
     # Verify no content/tool after Finish
     finish_idx = next(i for i, e in enumerate(events) if isinstance(e, TestFinish))
-    for e in events[finish_idx + 1:]:
-        assert not isinstance(e, TestAssistantTextDelta), (
-            "No assistant text after Finish"
-        )
+    for e in events[finish_idx + 1 :]:
+        assert not isinstance(e, TestAssistantTextDelta), "No assistant text after Finish"
 
 
 def test_runner_recovery_does_not_leak_pending_usage_across_attempts():
@@ -4914,10 +4818,7 @@ def test_runner_recovery_does_not_leak_pending_usage_across_attempts():
 
     assert len(finishes) == 1, f"Expected exactly one Finish, got {len(finishes)}"
     assert len(dones) == 1, f"Expected exactly one Done, got {len(dones)}"
-    assert finishes[0].usage is None, (
-        f"Finish.usage must be None (no leakage from attempt 1), "
-        f"got {finishes[0].usage}"
-    )
+    assert finishes[0].usage is None, f"Finish.usage must be None (no leakage from attempt 1), got {finishes[0].usage}"
     assert finishes[0].reason == "stop"
 
 
@@ -4969,7 +4870,9 @@ def test_runner_recovery_uses_usage_from_accepted_attempt():
     # Attempt 2: content + finish_reason + usage
     attempt2_chunks = _make_chunks(
         _make_text_chunk(" — continued."),
-        f"data: {json.dumps({'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}], 'usage': usage_u2})}\n\n".encode("utf-8"),
+        f"data: {json.dumps({'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}], 'usage': usage_u2})}\n\n".encode(
+            "utf-8"
+        ),
         "data: [DONE]\n\n",
     )
 
@@ -5000,10 +4903,6 @@ def test_runner_recovery_uses_usage_from_accepted_attempt():
 
     assert len(finishes) == 1, f"Expected exactly one Finish, got {len(finishes)}"
     assert len(dones) == 1, f"Expected exactly one Done, got {len(dones)}"
-    assert finishes[0].usage == usage_u2, (
-        f"Finish.usage must be U2 from accepted attempt, got {finishes[0].usage}"
-    )
-    assert finishes[0].usage != usage_u1, (
-        f"Finish.usage must not be U1 from rejected attempt"
-    )
+    assert finishes[0].usage == usage_u2, f"Finish.usage must be U2 from accepted attempt, got {finishes[0].usage}"
+    assert finishes[0].usage != usage_u1, "Finish.usage must not be U1 from rejected attempt"
     assert finishes[0].reason == "stop"

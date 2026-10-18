@@ -8,12 +8,11 @@ the fix prevents regression.
 import asyncio
 import copy
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
 from keeprollming.filters.nudge.request import ModelNudgeFilter
+from keeprollming.orchestrator.filter import FilterConfig, FilterExecutionContext
 
 
 class MockResponse:
@@ -26,6 +25,7 @@ class MockResponse:
 # ──────────────────────────────────────────────────────────────
 # BUG 1: messages_count non cresceva (retry_content mai accumulato)
 # ──────────────────────────────────────────────────────────────
+
 
 class TestMessagesCountGrowsAcrossRetries:
     """
@@ -46,10 +46,12 @@ class TestMessagesCountGrowsAcrossRetries:
         f._max_nudge_attempts = 2
         f._upstream_url = ""  # no actual HTTP call
 
-        ctx = FilterExecutionContext(upstream_payload={
-            "model": "local/deep",
-            "messages": [{"role": "user", "content": "Say OK:"}],
-        })
+        ctx = FilterExecutionContext(
+            upstream_payload={
+                "model": "local/deep",
+                "messages": [{"role": "user", "content": "Say OK:"}],
+            }
+        )
         response = MockResponse(content="OK:")
 
         result = asyncio.run(f.process_response(response, ctx))
@@ -69,10 +71,12 @@ class TestConversationAccumulation:
         f._max_nudge_attempts = 2
         f._upstream_url = ""
 
-        ctx = FilterExecutionContext(upstream_payload={
-            "model": "test",
-            "messages": [{"role": "user", "content": "Hi"}],
-        })
+        ctx = FilterExecutionContext(
+            upstream_payload={
+                "model": "test",
+                "messages": [{"role": "user", "content": "Hi"}],
+            }
+        )
 
         # Simulate what the filter does: build conversation, append assistant
         conversation = copy.deepcopy(ctx.upstream_payload.get("messages", []))
@@ -107,10 +111,12 @@ class TestConversationAccumulation:
         f._max_nudge_attempts = 1
         f._upstream_url = ""
 
-        ctx = FilterExecutionContext(upstream_payload={
-            "model": "test",
-            "messages": [{"role": "user", "content": "Hi"}],
-        })
+        ctx = FilterExecutionContext(
+            upstream_payload={
+                "model": "test",
+                "messages": [{"role": "user", "content": "Hi"}],
+            }
+        )
 
         # Build conversation as filter does
         conv = copy.deepcopy(ctx.upstream_payload.get("messages", []))  # [user]
@@ -127,6 +133,7 @@ class TestConversationAccumulation:
 # ──────────────────────────────────────────────────────────────
 # BUG 2: upstream_model per retry routing
 # ──────────────────────────────────────────────────────────────
+
 
 class TestUpstreamModelForRetry:
     """
@@ -186,6 +193,7 @@ class TestUpstreamModelForRetry:
 # BUG 3: Streaming final chunk included already-sent lazy content
 # ──────────────────────────────────────────────────────────────
 
+
 class TestStreamingRetryContentOnly:
     """
     BUG: The streaming handler's final chunk included the full accumulator
@@ -238,6 +246,7 @@ class TestStreamingRetryContentOnly:
 # BUG 4: finish_reason detection at choice level
 # ──────────────────────────────────────────────────────────────
 
+
 class TestFinishReasonDetection:
     """
     BUG: The streaming handler only checked delta.finish_reason for the final
@@ -250,13 +259,7 @@ class TestFinishReasonDetection:
 
     def test_choice_level_finish_reason_detected(self):
         """Finish reason at choice level should be detected."""
-        chunk = {
-            "choices": [{
-                "finish_reason": "stop",
-                "index": 0,
-                "delta": {"role": "assistant"}
-            }]
-        }
+        chunk = {"choices": [{"finish_reason": "stop", "index": 0, "delta": {"role": "assistant"}}]}
 
         is_final = False
         for choice in chunk.get("choices", []):
@@ -273,12 +276,7 @@ class TestFinishReasonDetection:
 
     def test_delta_level_finish_reason_detected(self):
         """Finish reason inside delta should also be detected."""
-        chunk = {
-            "choices": [{
-                "index": 0,
-                "delta": {"role": "assistant", "finish_reason": "stop"}
-            }]
-        }
+        chunk = {"choices": [{"index": 0, "delta": {"role": "assistant", "finish_reason": "stop"}}]}
 
         is_final = False
         for choice in chunk.get("choices", []):
@@ -295,12 +293,7 @@ class TestFinishReasonDetection:
 
     def test_no_finish_reason_not_final(self):
         """Chunk without finish_reason should NOT be final."""
-        chunk = {
-            "choices": [{
-                "index": 0,
-                "delta": {"content": "Hello"}
-            }]
-        }
+        chunk = {"choices": [{"index": 0, "delta": {"content": "Hello"}}]}
 
         is_final = False
         for choice in chunk.get("choices", []):
@@ -352,6 +345,7 @@ class TestNudgeAttemptsCounter:
 # BUG 7: Accumulator content correctness
 # ──────────────────────────────────────────────────────────────
 
+
 class TestAccumulatorContent:
     """
     Verify that the accumulator correctly builds the final response
@@ -391,6 +385,7 @@ class TestAccumulatorContent:
 # Integration: full filter chain with mock upstream
 # ──────────────────────────────────────────────────────────────
 
+
 class TestFilterIntegrationWithMockRetry:
     """Integration tests using a mocked _make_http_retry."""
 
@@ -410,10 +405,12 @@ class TestFilterIntegrationWithMockRetry:
 
         f._make_http_retry = mock_retry
 
-        ctx = FilterExecutionContext(upstream_payload={
-            "model": "test",
-            "messages": [{"role": "user", "content": "Hi"}],
-        })
+        ctx = FilterExecutionContext(
+            upstream_payload={
+                "model": "test",
+                "messages": [{"role": "user", "content": "Hi"}],
+            }
+        )
         response = MockResponse(content="Now I will:")
 
         result = asyncio.run(f.process_response(response, ctx))
@@ -447,10 +444,12 @@ class TestFilterIntegrationWithMockRetry:
 
         f._make_http_retry = mock_retry
 
-        ctx = FilterExecutionContext(upstream_payload={
-            "model": "test",
-            "messages": [{"role": "user", "content": "Hi"}],
-        })
+        ctx = FilterExecutionContext(
+            upstream_payload={
+                "model": "test",
+                "messages": [{"role": "user", "content": "Hi"}],
+            }
+        )
         response = MockResponse(content="Now I will:")
 
         result = asyncio.run(f.process_response(response, ctx))

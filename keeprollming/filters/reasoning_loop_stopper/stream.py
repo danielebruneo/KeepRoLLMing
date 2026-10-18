@@ -15,22 +15,16 @@ in isolation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, List, Mapping, Optional, Sequence
 
+from keeprollming.filters.nudge.stream import RecoveryDecision
 from keeprollming.streaming.events import (
-    AssistantTextDelta,
-    Done,
-    Error,
-    Finish,
-    Keepalive,
     ReasoningTextDelta,
     StreamEvent,
     ToolCallComplete,
     ToolCallDelta,
 )
 from keeprollming.streaming.finalizers import StreamFinalizer
-from keeprollming.filters.nudge.stream import RecoveryDecision
 
 
 class RLSFinalizer(StreamFinalizer):
@@ -91,30 +85,38 @@ class RLSFinalizer(StreamFinalizer):
     def __init__(
         self,
         max_attempts: int = 5,
-        nudge_message: str = (
-            "Your reasoning is repeating. Think differently or provide "
-            "a direct answer."
-        ),
+        nudge_message: str = ("Your reasoning is repeating. Think differently or provide a direct answer."),
         detect_within_stream_loop: bool = False,
         conversation_reasoning: Optional[str] = None,
         conversation_tool_calls: Sequence[Mapping[str, Any]] | None = None,
         fallback_message: Optional[str] = None,
+        max_repeats: int = 1,
+        conversation_reasonings: Sequence[str] | None = None,
+        send_user_message: bool = True,
+        intervention_message: str = "I notice I'm repeating the same reasoning. I will try a different approach.",
+        retry_timeout: float | None = None,
     ) -> None:
         super().__init__()
         self.max_attempts = max_attempts
         self.nudge_message = nudge_message
         self.detect_within_stream_loop = detect_within_stream_loop
         self.fallback_message = fallback_message
+        self.max_repeats = max_repeats
+        self._conversation_reasonings = list(
+            conversation_reasonings or ([conversation_reasoning] if conversation_reasoning else [])
+        )
+        self.send_user_message = send_user_message
+        self.intervention_message = intervention_message
+        self.retry_timeout = retry_timeout
 
         # Local state
         self._reasoning_buffer: str = ""
         self._reasoning_deltas: List[str] = []
         self._conversation_reasoning = conversation_reasoning
         self._last_reasoning_from_conversation: Optional[str] = conversation_reasoning
-        self._conversation_tool_signatures = self._signatures_from_history(
-            conversation_tool_calls or ()
-        )
+        self._conversation_tool_signatures = self._signatures_from_history(conversation_tool_calls or ())
         self._tool_call_signatures: List[str] = []
+        self._tool_parts: dict[int, dict] = {}
         self._has_tool_call = False
         self._decision: Optional[RecoveryDecision] = None
         self._finalized = False
@@ -139,6 +141,7 @@ class RLSFinalizer(StreamFinalizer):
         self._reasoning_deltas.clear()
         self._last_reasoning_from_conversation = self._conversation_reasoning
         self._tool_call_signatures.clear()
+        self._tool_parts.clear()
         self._has_tool_call = False
         self._decision = None
         self._finalized = False
@@ -225,9 +228,7 @@ class RLSFinalizer(StreamFinalizer):
     @property
     def recovery_exhausted(self) -> bool:
         """Whether a detected reasoning loop exhausted this finalizer's budget."""
-        return self._finalized and self._detect_loop() and (
-            self._attempt_index >= self.max_attempts
-        )
+        return self._finalized and self._detect_loop() and (self._attempt_index >= self.max_attempts)
 
     @property
     def reasoning_buffer(self) -> str:
@@ -253,9 +254,23 @@ class RLSFinalizer(StreamFinalizer):
             ToolCallDelta or ToolCallComplete event.
         """
         from keeprollming.filters.tool_loop_stopper.stream import _tool_call_signature
-        sig = _tool_call_signature(event)
-        if sig is not None:
-            self._tool_call_signatures.append(sig)
+
+        if isinstance(event, ToolCallDelta):
+            import json
+
+            part = self._tool_parts.setdefault(event.index, {"name": "", "arguments": ""})
+            part["name"] = event.name or part["name"]
+            part["arguments"] += event.arguments_delta or ""
+            try:
+                arguments = json.loads(part["arguments"])
+            except (TypeError, ValueError):
+                return
+            complete = ToolCallComplete(index=event.index, name=part["name"], arguments_obj=arguments)
+            part["signature"] = _tool_call_signature(complete)
+        else:
+            part = self._tool_parts.setdefault(event.index, {})
+            part["signature"] = _tool_call_signature(event)
+        self._tool_call_signatures = [part["signature"] for part in self._tool_parts.values() if part.get("signature")]
 
     @staticmethod
     def _signatures_from_history(
@@ -272,6 +287,7 @@ class RLSFinalizer(StreamFinalizer):
             if not isinstance(name, str) or not isinstance(arguments, str):
                 continue
             from keeprollming.filters.tool_loop_stopper.stream import _tool_call_signature
+
             signature = _tool_call_signature(
                 ToolCallComplete(
                     index=int(tool_call.get("index", 0)),
@@ -302,7 +318,7 @@ class RLSFinalizer(StreamFinalizer):
         bool
             True if a loop is detected, False otherwise.
         """
-        if not self._reasoning_buffer:
+        if not self._reasoning_buffer or self.max_repeats <= 0:
             return False
 
         current_reasoning = self._reasoning_buffer
@@ -315,10 +331,11 @@ class RLSFinalizer(StreamFinalizer):
                 second_half = current_reasoning[half:].strip()
                 if first_half and first_half == second_half:
                     # Check tool-call disambiguation
-                    if not (self._has_tool_call and
-                            self._tool_call_signatures and
-                            not self._reasoning_matches_with_tool_disambiguation(
-                                current_reasoning, first_half)):
+                    if not (
+                        self._has_tool_call
+                        and self._tool_call_signatures
+                        and not self._reasoning_matches_with_tool_disambiguation(current_reasoning, first_half)
+                    ):
                         return True
 
         # Get the last reasoning from the current conversation history.
@@ -328,14 +345,17 @@ class RLSFinalizer(StreamFinalizer):
             # Tool-call disambiguation: same reasoning + different tool calls
             # = not a loop
             if self._has_tool_call and self._tool_call_signatures:
-                if not self._reasoning_matches_with_tool_disambiguation(
-                    current_reasoning, last_reasoning
-                ):
+                if not self._reasoning_matches_with_tool_disambiguation(current_reasoning, last_reasoning):
                     return False
 
             # Check for identical reasoning
-            if current_reasoning == last_reasoning:
-                return True
+            if current_reasoning.strip() == last_reasoning.strip():
+                count = 0
+                for reasoning in reversed(self._conversation_reasonings):
+                    if reasoning.strip() != current_reasoning.strip():
+                        break
+                    count += 1
+                return count >= self.max_repeats
 
         return False
 
@@ -373,7 +393,7 @@ class RLSFinalizer(StreamFinalizer):
             True if the reasoning matches AND tool calls are the same
             (indicating a loop), False otherwise.
         """
-        if reasoning1 != reasoning2:
+        if reasoning1.strip() != reasoning2.strip():
             return False
 
         # Reasoning is identical — check tool calls for disambiguation
@@ -385,9 +405,7 @@ class RLSFinalizer(StreamFinalizer):
         # current call set with that turn.  Same reasoning for a different
         # action is legitimate; same reasoning for the same action is a loop.
         if self._conversation_tool_signatures:
-            return set(self._tool_call_signatures) == set(
-                self._conversation_tool_signatures
-            )
+            return set(self._tool_call_signatures) == set(self._conversation_tool_signatures)
 
         # Without historical tool calls, multiple distinct calls in this
         # response disambiguate an otherwise repeated reasoning block.
@@ -415,25 +433,21 @@ class RLSFinalizer(StreamFinalizer):
         RecoveryDecision
             Intervention decision with reasoning nudge.
         """
+        messages = [{"role": "assistant", "content": self.intervention_message}]
+        if self.send_user_message:
+            messages.append({"role": "user", "content": self.nudge_message})
         return RecoveryDecision(
             kind="intervention",
             reason=(
-                "Reasoning-loop detected: identical reasoning text repeated. "
-                "Injecting user nudge to break the loop."
+                "Reasoning-loop detected: identical reasoning text repeated. Injecting user nudge to break the loop."
             ),
             priority=self.priority,
             origin_finalizer="RLSFinalizer",
             attempt_index=self._attempt_index,
             max_attempts=self.max_attempts,
             global_attempt_index=global_attempt_index,
-            request_payload_patch={
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": self.nudge_message,
-                    },
-                ],
-            },
+            request_payload_patch={"messages": messages},
+            request_timeout=self.retry_timeout,
             preserve_output_so_far=True,
             merge_strategy="intervention_specific",
             diagnostics={

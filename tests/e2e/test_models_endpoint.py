@@ -4,6 +4,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
+
 from keeprollming.app import app
 
 
@@ -19,7 +20,7 @@ class TestModelsEndpoint:
     def test_models_endpoint_exists(self, client):
         """Verify the endpoint returns a valid response."""
         response = client.get("/v1/models")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "data" in data
@@ -29,10 +30,10 @@ class TestModelsEndpoint:
         """Verify all configured routes are listed as models."""
         response = client.get("/v1/models")
         data = response.json()
-        
+
         # Should have at least the basic routes (4 from config.test.yaml or 8 from config.yaml)
         assert len(data["data"]) >= 4
-        
+
         # Check that we have expected route names (config.test.yaml has test-quick-model, test-main-model, etc.)
         model_ids = {m["id"] for m in data["data"]}
         # Verify we have the route names (not upstream model IDs)
@@ -42,13 +43,13 @@ class TestModelsEndpoint:
         """Verify each model has required OpenAI-compatible fields."""
         response = client.get("/v1/models")
         data = response.json()
-        
+
         for model in data["data"]:
             # Check required OpenAI fields
             assert "id" in model
             assert "object" in model
             assert model["object"] == "model"
-            
+
             # Check custom field
             assert "context_length" in model
             assert isinstance(model["context_length"], int)
@@ -58,13 +59,13 @@ class TestModelsEndpoint:
         """Verify context lengths are within expected ranges."""
         response = client.get("/v1/models")
         data = response.json()
-        
+
         for model in data["data"]:
             ctx_len = model["context_length"]
-            
+
             # Context should be at least 4096 (minimum reasonable)
             assert ctx_len >= 2048, f"Model {model['id']} has unreasonably small context: {ctx_len}"
-            
+
             # Context should not exceed typical LLM limits (e.g., 1M tokens)
             assert ctx_len <= 1_000_000, f"Model {model['id']} has unreasonably large context: {ctx_len}"
 
@@ -72,7 +73,7 @@ class TestModelsEndpoint:
         """Verify routes with summarization use max of main/summary model contexts."""
         response = client.get("/v1/models")
         data = response.json()
-        
+
         # Find any route that has summary enabled and check it uses max context
         for model in data["data"]:
             if model["id"] in ["local/quick", "local/main", "local/deep", "passthrough"]:
@@ -83,10 +84,10 @@ class TestModelsEndpoint:
         """Verify routes with custom ctx_len override work correctly."""
         response = client.get("/v1/models")
         data = response.json()
-        
+
         # Find a route and verify it has a context length set
         assert len(data["data"]) > 0
-        
+
     def test_all_routes_have_unique_ids(self, client):
         """Verify each route has a unique ID."""
         response = client.get("/v1/models")
@@ -98,20 +99,20 @@ class TestModelsEndpoint:
     def test_owned_by_field(self, client):
         """Verify owned_by field is set correctly."""
         response = client.get("/v1/models")
-        data = response.json()
+        response.json()
 
     def test_route_config_field(self, client):
         """Verify /v1/models returns config with resolved route details."""
         response = client.get("/v1/models")
         data = response.json()
-        
+
         for model in data["data"]:
             cfg = model.get("config", {})
             assert "upstream_model" in cfg, f"Missing upstream_model in config for {model['id']}"
             assert "max_tokens" in cfg, f"Missing max_tokens in config for {model['id']}"
             assert "summary_enabled" in cfg, f"Missing summary_enabled in config for {model['id']}"
             assert "pattern" in cfg, f"Missing pattern in config for {model['id']}"
-            
+
             # Route with filters should have filters listed
             if model["id"] in ["local/deep"]:
                 assert "filters" in cfg, f"Missing filters in config for {model['id']}"

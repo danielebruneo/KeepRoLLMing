@@ -1,6 +1,5 @@
 """Unit tests for ExecutionUsage integration in performance module (Phase 12)."""
 
-import pytest
 import sys
 from pathlib import Path
 

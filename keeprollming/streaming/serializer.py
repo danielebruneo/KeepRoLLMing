@@ -46,6 +46,7 @@ from .events import (
 # Lazy import to avoid circular dependency
 try:
     from ..observability.events import EventSource, RuntimeEvent
+
     _OBSERVABILITY_AVAILABLE = True
 except ImportError:
     _OBSERVABILITY_AVAILABLE = False
@@ -54,6 +55,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # SSE frame helpers
 # ---------------------------------------------------------------------------
+
 
 def _sse_frame(data: str) -> bytes:
     """Build a single SSE data frame: ``data: <payload>\\n\\n``.
@@ -71,6 +73,7 @@ def _json_sse_payload(obj: object) -> str:
 # ---------------------------------------------------------------------------
 # Per-event serializers
 # ---------------------------------------------------------------------------
+
 
 def _serialize_assistant_text_delta(event: AssistantTextDelta) -> bytes:
     """``AssistantTextDelta`` -> SSE with ``choices[0].delta.content``."""
@@ -260,6 +263,7 @@ def _serialize_event(event: StreamEvent) -> bytes:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 class OpenAISSESerializer:
     """Serializes canonical canonical ``StreamEvent`` objects to OpenAI-compatible SSE.
 
@@ -308,9 +312,7 @@ class OpenAISSESerializer:
             event.event_id = self._event_id
 
         if event.metadata:
-            self._metadata.update(
-                {key: value for key, value in event.metadata.items() if not key.startswith("_")}
-            )
+            self._metadata.update({key: value for key, value in event.metadata.items() if not key.startswith("_")})
         for key, value in self._metadata.items():
             event.metadata.setdefault(key, value)
 

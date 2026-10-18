@@ -12,18 +12,15 @@ Tests cover:
 
 import asyncio
 import re
-from unittest.mock import patch
 
-import pytest
-
+from keeprollming.filters.timestamp.request import TimestampFilter
 from keeprollming.orchestrator.filter import (
     FilterConfig,
     FilterExecutionContext,
 )
-from keeprollming.filters.timestamp.request import TimestampFilter
-
 
 # ── Mock Request ──────────────────────────────────────────────────────
+
 
 class MockRequest:
     def __init__(self, messages=None, model="test-model", stream=False):
@@ -34,8 +31,17 @@ class MockRequest:
 
 # ── Mock Response ─────────────────────────────────────────────────────
 
+
 class MockResponse:
-    def __init__(self, content="", model="test-model", finish_reason=None, tool_calls=None, usage=None, reasoning_content=""):
+    def __init__(
+        self,
+        content="",
+        model="test-model",
+        finish_reason=None,
+        tool_calls=None,
+        usage=None,
+        reasoning_content="",
+    ):
         self.content = content or ""
         self.model = model
         self.finish_reason = finish_reason
@@ -46,12 +52,11 @@ class MockResponse:
 
 # ── Helper: match default template footer ────────────────────────────
 
-_DEFAULT_FOOTER_RE = re.compile(
-    r"\n\n---\nTimestamp: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC"
-)
+_DEFAULT_FOOTER_RE = re.compile(r"\n\n---\nTimestamp: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC")
 
 
 # ── Default behavior tests ────────────────────────────────────────────
+
 
 class TestTimestampFilterDefault:
     """Test default behavior: UTC timezone, default template."""
@@ -98,14 +103,16 @@ class TestTimestampFilterDefault:
     def test_process_request_appends_after_all_messages(self):
         """Request phase: system message goes at the END of messages list."""
         f = TimestampFilter()
-        req = MockRequest(messages=[
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there"},
-            {"role": "user", "content": "Second question"},
-        ])
+        req = MockRequest(
+            messages=[
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there"},
+                {"role": "user", "content": "Second question"},
+            ]
+        )
         ctx = FilterExecutionContext(req_id="test-req")
 
-        result = asyncio.run(f.process_request(req, ctx))
+        asyncio.run(f.process_request(req, ctx))
 
         assert len(req.messages) == 4
         assert req.messages[3]["role"] == "system"
@@ -178,14 +185,17 @@ class TestTimestampFilterDefault:
 
 # ── Custom template/timezone tests ────────────────────────────────────
 
+
 class TestTimestampFilterCustomConfig:
     """Test custom template and timezone configuration."""
 
     def test_custom_template(self):
         """Custom template string is used."""
-        f = TimestampFilter(config={
-            "template": "\n\n---\n[%H:%M:%S]",
-        })
+        f = TimestampFilter(
+            config={
+                "template": "\n\n---\n[%H:%M:%S]",
+            }
+        )
         ctx = FilterExecutionContext(req_id="test-req")
         response = MockResponse(content="Response")
         result = asyncio.run(f.process_response(response, ctx))
@@ -194,10 +204,12 @@ class TestTimestampFilterCustomConfig:
 
     def test_custom_timezone(self):
         """Custom timezone is used."""
-        f = TimestampFilter(config={
-            "template": "\n\n---\n%Z",
-            "timezone": "Europe/Rome",
-        })
+        f = TimestampFilter(
+            config={
+                "template": "\n\n---\n%Z",
+                "timezone": "Europe/Rome",
+            }
+        )
         ctx = FilterExecutionContext(req_id="test-req")
         response = MockResponse(content="Response")
         result = asyncio.run(f.process_response(response, ctx))
@@ -207,10 +219,12 @@ class TestTimestampFilterCustomConfig:
 
     def test_custom_emoji_template(self):
         """Template with emoji and different timezone."""
-        f = TimestampFilter(config={
-            "template": "\n\n---\n🕐 %d/%m/%Y %H:%M",
-            "timezone": "Europe/Rome",
-        })
+        f = TimestampFilter(
+            config={
+                "template": "\n\n---\n🕐 %d/%m/%Y %H:%M",
+                "timezone": "Europe/Rome",
+            }
+        )
         ctx = FilterExecutionContext(req_id="test-req")
         response = MockResponse(content="Response")
         result = asyncio.run(f.process_response(response, ctx))
@@ -220,9 +234,11 @@ class TestTimestampFilterCustomConfig:
 
     def test_bare_format_extracted(self):
         """_bare_format is correctly extracted from template."""
-        f = TimestampFilter(config={
-            "template": "\n\n---\nUTC: %Y-%m-%d %H:%M:%S",
-        })
+        f = TimestampFilter(
+            config={
+                "template": "\n\n---\nUTC: %Y-%m-%d %H:%M:%S",
+            }
+        )
         assert f._bare_format == "%Y-%m-%d %H:%M:%S"
 
     def test_bare_format_used_for_request(self):
@@ -249,7 +265,9 @@ class TestTimestampFilterCustomConfig:
         result = asyncio.run(f.process_response(response, ctx))
         assert result is response
 
- # ── Pipeline integration tests ────────────────────────────────────────
+
+# ── Pipeline integration tests ────────────────────────────────────────
+
 
 class TestTimestampFilterPipeline:
     """Test TimestampFilter integration with Pipeline."""
@@ -275,8 +293,8 @@ class TestTimestampFilterPipeline:
 
     def test_pipeline_timestamp_runs_last(self):
         """Timestamp filter has highest priority (runs last)."""
-        from keeprollming.orchestrator.pipeline import Pipeline
         from keeprollming.filters.system_prompt.request import SystemPromptFilter
+        from keeprollming.orchestrator.pipeline import Pipeline
 
         route_config = {
             "system_prompt": {"enabled": True, "prompt": "You are helpful."},
@@ -291,6 +309,7 @@ class TestTimestampFilterPipeline:
 
 
 # ── Edge case tests ───────────────────────────────────────────────────
+
 
 class TestTimestampFilterEdgeCases:
     """Test edge cases and error handling."""
@@ -309,10 +328,12 @@ class TestTimestampFilterEdgeCases:
     def test_existing_system_message(self):
         """Request with existing system message: new timestamp system message is appended."""
         f = TimestampFilter()
-        req = MockRequest(messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Hello"},
-        ])
+        req = MockRequest(
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello"},
+            ]
+        )
         ctx = FilterExecutionContext(req_id="test-req")
 
         result = asyncio.run(f.process_request(req, ctx))
@@ -343,10 +364,12 @@ class TestTimestampFilterEdgeCases:
     def test_request_updates_existing_timestamp_in_place(self):
         """Request phase: existing 'Current UTC time:' system message is updated in place."""
         f = TimestampFilter()
-        req = MockRequest(messages=[
-            {"role": "system", "content": "Current UTC time: 2026-01-01 00:00:00 UTC"},
-            {"role": "user", "content": "Hello"},
-        ])
+        req = MockRequest(
+            messages=[
+                {"role": "system", "content": "Current UTC time: 2026-01-01 00:00:00 UTC"},
+                {"role": "user", "content": "Hello"},
+            ]
+        )
         ctx = FilterExecutionContext(req_id="test-req")
 
         result = asyncio.run(f.process_request(req, ctx))
@@ -361,10 +384,12 @@ class TestTimestampFilterEdgeCases:
     def test_request_does_not_update_non_timestamp_system_message(self):
         """Request phase: non-timestamp system messages are not updated."""
         f = TimestampFilter()
-        req = MockRequest(messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Hello"},
-        ])
+        req = MockRequest(
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello"},
+            ]
+        )
         ctx = FilterExecutionContext(req_id="test-req")
 
         result = asyncio.run(f.process_request(req, ctx))
@@ -379,11 +404,13 @@ class TestTimestampFilterEdgeCases:
         """Request phase: only the first 'Current UTC time:' system message is updated."""
         f = TimestampFilter()
         # Two timestamp system messages (shouldn't happen but handle it)
-        req = MockRequest(messages=[
-            {"role": "system", "content": "Current UTC time: 2026-01-01 00:00:00 UTC"},
-            {"role": "system", "content": "Current UTC time: 2026-01-02 00:00:00 UTC"},
-            {"role": "user", "content": "Hello"},
-        ])
+        req = MockRequest(
+            messages=[
+                {"role": "system", "content": "Current UTC time: 2026-01-01 00:00:00 UTC"},
+                {"role": "system", "content": "Current UTC time: 2026-01-02 00:00:00 UTC"},
+                {"role": "user", "content": "Hello"},
+            ]
+        )
         ctx = FilterExecutionContext(req_id="test-req")
 
         result = asyncio.run(f.process_request(req, ctx))

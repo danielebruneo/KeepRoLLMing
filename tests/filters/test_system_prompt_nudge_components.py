@@ -6,7 +6,12 @@ import asyncio
 
 import pytest
 
-from tests.e2e.conftest import fake_backend_server  # noqa: F401
+from tests.e2e.conftest import fake_backend_server as _fake_backend_server_fixture  # noqa: F401
+
+
+@pytest.fixture
+def fake_backend_server(request):
+    return request.getfixturevalue("_fake_backend_server_fixture")
 
 
 @pytest.fixture
@@ -16,20 +21,24 @@ def fake_backend(fake_backend_server):
 
 
 class TestSystemPromptE2E:
-
     def test_system_prompt_reaches_upstream(self, fake_backend):
         """Fake backend receives the injected system prompt."""
         import httpx
-        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
+
         from keeprollming.filters.system_prompt.request import SystemPromptFilter
+        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
 
         # Configure fake backend to echo back the first message as content
-        httpx.post(f"{fake_backend}/__scenario", json={
-            "scenario": {
-                "models": {"test": {"context_length": 4096}},
-                "chat": {"content": "OK", "include_usage": False},
-            }
-        }, timeout=5)
+        httpx.post(
+            f"{fake_backend}/__scenario",
+            json={
+                "scenario": {
+                    "models": {"test": {"context_length": 4096}},
+                    "chat": {"content": "OK", "include_usage": False},
+                }
+            },
+            timeout=5,
+        )
 
         f = SystemPromptFilter({"enabled": True, "prompt": "BE_HELPFUL", "override": False})
         chain = FilterChain(filters=[f], execution_order=["system_prompt"])
@@ -52,29 +61,37 @@ class TestSystemPromptE2E:
 
 
 class TestNudgeE2E:
-
     def test_nudge_fires_on_lazy_response(self, fake_backend):
         """Nudge triggers TLS on response ending with colon."""
         import httpx
-        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
+
         from keeprollming.filters.nudge.request import ModelNudgeFilter
+        from keeprollming.orchestrator.filter import FilterChain, FilterExecutionContext
 
         # Scenario: first call returns lazy "OK:", retry returns full response
-        httpx.post(f"{fake_backend}/__scenario", json={
-            "scenario": {
-                "models": {"test": {"context_length": 4096}},
-                "chat": {
-                    "content": "Actually, let me continue: this is the full response.",
-                    "include_usage": False,
-                },
-            }
-        }, timeout=5)
+        httpx.post(
+            f"{fake_backend}/__scenario",
+            json={
+                "scenario": {
+                    "models": {"test": {"context_length": 4096}},
+                    "chat": {
+                        "content": "Actually, let me continue: this is the full response.",
+                        "include_usage": False,
+                    },
+                }
+            },
+            timeout=5,
+        )
 
-        f = ModelNudgeFilter({
-            "enabled": True, "trigger_patterns": [":$"],
-            "nudge_message": "Continue.", "max_attempts": 1,
-            "upstream_url": fake_backend,
-        })
+        f = ModelNudgeFilter(
+            {
+                "enabled": True,
+                "trigger_patterns": [":$"],
+                "nudge_message": "Continue.",
+                "max_attempts": 1,
+                "upstream_url": fake_backend,
+            }
+        )
         chain = FilterChain(filters=[f], execution_order=["model_nudge"])
 
         ctx = FilterExecutionContext(req_id="nudge_test", upstream_model="test", upstream_url=fake_backend)
@@ -96,8 +113,9 @@ class TestNudgeE2E:
 
         # After nudge retry, content should be longer than original
         assert result is not resp, "Nudge did not modify response"
-        assert len(result.content) > len("I will now a colon:"), \
+        assert len(result.content) > len("I will now a colon:"), (
             f"Nudge retry didn't extend content: {result.content[:100]}"
+        )
         print(f"Nudge result: {result.content[:200]}")
         print("Nudge E2E PASSED")
 

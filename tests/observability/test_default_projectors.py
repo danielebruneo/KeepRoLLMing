@@ -11,7 +11,6 @@ Verifies:
 
 import os
 import tempfile
-from typing import Any, Dict, List
 
 import pytest
 
@@ -74,11 +73,14 @@ class TestStructuredProjector:
         assert sink._path == os.path.join(temp_log_dir, "keeprollming.log.json")
 
     def test_projector_configuration_overrides_defaults(self, temp_log_dir):
-        projectors = create_default_projectors(temp_log_dir, {
-            "json": {"enabled": False},
-            "plain": {"level": "DEBUG", "stdout": False, "path": "debug.log"},
-            "server": {"enabled": False},
-        })
+        projectors = create_default_projectors(
+            temp_log_dir,
+            {
+                "json": {"enabled": False},
+                "plain": {"level": "DEBUG", "stdout": False, "path": "debug.log"},
+                "server": {"enabled": False},
+            },
+        )
         assert len(projectors) == 1
         assert projectors[0].name == "main"
         assert projectors[0].level == "DEBUG"
@@ -113,7 +115,7 @@ def test_rotating_file_sink_retains_bounded_backups(tmp_path):
         log_path = os.path.join(temp_log_dir, "keeprollming.log.json")
         assert os.path.exists(log_path)
         with open(log_path, "r") as f:
-            lines = [l for l in f.readlines() if l.strip()]
+            lines = [line for line in f.readlines() if line.strip()]
 
         assert len(lines) == 4  # INFO, BASIC, WARN, ERROR
 
@@ -189,7 +191,7 @@ class TestMainProjector:
             content = f.read()
 
         # Should contain events at/above BASIC level (check event type presence)
-        lines = [l for l in content.strip().split("\n") if l.strip()]
+        lines = [line for line in content.strip().split("\n") if line.strip()]
         assert len(lines) == 3  # BASIC, WARN, ERROR events only
         # All captured lines should be execution.test.main.level events
         for line in lines:
@@ -254,16 +256,19 @@ class TestServerProjector:
             )
 
         # A terminal request summary is the only eligible event.
-        dispatcher.emit(RuntimeEvent(
-            type="execution.performance.request_complete",
-            source=EventSource(domain="execution", component="performance"),
-            data={"route_name": "chat/main", "model": "test", "elapsed_ms": 12},
-            level="BASIC", req_id="request-1",
-        ))
+        dispatcher.emit(
+            RuntimeEvent(
+                type="execution.performance.request_complete",
+                source=EventSource(domain="execution", component="performance"),
+                data={"route_name": "chat/main", "model": "test", "elapsed_ms": 12},
+                level="BASIC",
+                req_id="request-1",
+            )
+        )
         log_path = os.path.join(temp_log_dir, "server.log")
         assert os.path.exists(log_path)
         with open(log_path, "r") as f:
-            lines = [l for l in f.readlines() if l.strip()]
+            lines = [line for line in f.readlines() if line.strip()]
 
         assert len(lines) == 1
         assert "req_id=request-1" in lines[0]

@@ -18,13 +18,11 @@ from __future__ import annotations
 
 import pytest
 
+from keeprollming.filters.tool_rewrite.stream import ToolRewriteFinalizer
 from keeprollming.streaming.events import (
     AssistantTextDelta,
-    Finish,
     ToolCallDelta,
 )
-from keeprollming.filters.tool_rewrite.stream import ToolRewriteFinalizer
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,7 +45,7 @@ class TestToolRewriteFinalizerBasic:
     def test_nested_xml_rewritten(self):
         """Nested XML <read><path>README.md</path></read> → structured tool call."""
         finalizer = ToolRewriteFinalizer()
-        event = _make_text_delta('<read><path>README.md</path></read>')
+        event = _make_text_delta("<read><path>README.md</path></read>")
 
         result = finalizer.process_event(event)
 
@@ -64,7 +62,7 @@ class TestToolRewriteFinalizerBasic:
     def test_separate_xml_rewritten(self):
         """Separate XML <name>search</name><query>test</query> → structured tool call."""
         finalizer = ToolRewriteFinalizer()
-        event = _make_text_delta('<name>search</name><query>test</query>')
+        event = _make_text_delta("<name>search</name><query>test</query>")
 
         result = finalizer.process_event(event)
 
@@ -81,11 +79,7 @@ class TestToolRewriteFinalizerBasic:
     def test_function_xml_rewritten(self):
         """Function-param XML <function=ReactJudgeOutput><parameter=has_issue>False</parameter></function> → structured tool call."""
         finalizer = ToolRewriteFinalizer()
-        event = _make_text_delta(
-            '<function=ReactJudgeOutput>'
-            '<parameter=has_issue>False</parameter>'
-            '</function>'
-        )
+        event = _make_text_delta("<function=ReactJudgeOutput><parameter=has_issue>False</parameter></function>")
 
         result = finalizer.process_event(event)
 
@@ -157,7 +151,7 @@ class TestToolRewriteFinalizerMultiChunk:
         finalizer = ToolRewriteFinalizer()
 
         # First chunk: starts XML
-        event1 = _make_text_delta('<read><path>')
+        event1 = _make_text_delta("<read><path>")
         result1 = finalizer.process_event(event1)
 
         # Should buffer (return [])
@@ -165,7 +159,7 @@ class TestToolRewriteFinalizerMultiChunk:
         assert finalizer.is_buffering
 
         # Second chunk: completes XML
-        event2 = _make_text_delta('README.md</path></read>')
+        event2 = _make_text_delta("README.md</path></read>")
         result2 = finalizer.process_event(event2)
 
         # Should emit replacement events
@@ -183,7 +177,7 @@ class TestToolRewriteFinalizerMultiChunk:
         finalizer = ToolRewriteFinalizer()
 
         # First chunk: starts XML
-        event1 = _make_text_delta('<read>')
+        event1 = _make_text_delta("<read>")
         result1 = finalizer.process_event(event1)
 
         # Should buffer (return [])
@@ -191,7 +185,7 @@ class TestToolRewriteFinalizerMultiChunk:
         assert finalizer.is_buffering
 
         # Second chunk: continues XML
-        event2 = _make_text_delta('<path>README.md</path>')
+        event2 = _make_text_delta("<path>README.md</path>")
         result2 = finalizer.process_event(event2)
 
         # Should continue buffering (return [])
@@ -199,7 +193,7 @@ class TestToolRewriteFinalizerMultiChunk:
         assert finalizer.is_buffering
 
         # Third chunk: completes XML
-        event3 = _make_text_delta('</read>')
+        event3 = _make_text_delta("</read>")
         result3 = finalizer.process_event(event3)
 
         # Should emit replacement events
@@ -217,7 +211,7 @@ class TestToolRewriteFinalizerMultiChunk:
         finalizer = ToolRewriteFinalizer()
 
         # Event with complete XML
-        event = _make_text_delta('<read><path>README.md</path></read>')
+        event = _make_text_delta("<read><path>README.md</path></read>")
         result = finalizer.process_event(event)
 
         # Should emit replacement events
@@ -235,7 +229,7 @@ class TestToolRewriteFinalizerMultiChunk:
         finalizer = ToolRewriteFinalizer()
 
         # Event with incomplete XML
-        event = _make_text_delta('<read><path>README.md</path>')
+        event = _make_text_delta("<read><path>README.md</path>")
         result = finalizer.process_event(event)
 
         # Should buffer (return [])
@@ -248,14 +242,14 @@ class TestToolRewriteFinalizerMultiChunk:
         # Should emit buffered content as-is
         assert len(finalize_result) == 1
         assert isinstance(finalize_result[0], AssistantTextDelta)
-        assert finalize_result[0].delta == '<read><path>README.md</path>'
+        assert finalize_result[0].delta == "<read><path>README.md</path>"
 
     def test_surrounding_text_before_after_xml_emitted_exactly_once(self):
         """Surrounding text before/after XML emitted exactly once."""
         finalizer = ToolRewriteFinalizer()
 
         # Event with XML and surrounding text
-        event = _make_text_delta('Let me run this:\n<read><path>README.md</path></read>\nDone.')
+        event = _make_text_delta("Let me run this:\n<read><path>README.md</path></read>\nDone.")
 
         result = finalizer.process_event(event)
 
@@ -288,7 +282,7 @@ class TestToolRewriteFinalizerEdgeCases:
     def test_xml_with_cleaned_content(self):
         """XML with surrounding text → cleaned content + tool_calls."""
         finalizer = ToolRewriteFinalizer()
-        event = _make_text_delta('Let me run this:\n<read><path>README.md</path></read>\nDone.')
+        event = _make_text_delta("Let me run this:\n<read><path>README.md</path></read>\nDone.")
 
         result = finalizer.process_event(event)
 
@@ -315,19 +309,19 @@ class TestToolRewriteFinalizerEdgeCases:
         Future phase may add safe parser hardening if needed.
         """
         finalizer = ToolRewriteFinalizer()
-        event = _make_text_delta('<read><path>README.md with spaces & special chars</path></read>')
+        event = _make_text_delta("<read><path>README.md with spaces & special chars</path></read>")
 
         result = finalizer.process_event(event)
 
         # Invalid XML → pass through unchanged (no rewrite)
         assert len(result) == 1, f"Expected 1 event (pass-through), got {len(result)}: {result}"
         assert isinstance(result[0], AssistantTextDelta)
-        assert result[0].delta == '<read><path>README.md with spaces & special chars</path></read>'
+        assert result[0].delta == "<read><path>README.md with spaces & special chars</path></read>"
 
     def test_xml_with_unicode(self):
         """XML with Unicode characters → cleaned content + tool_calls."""
         finalizer = ToolRewriteFinalizer()
-        event = _make_text_delta('<read><path>README.md with unicode: 你好世界</path></read>')
+        event = _make_text_delta("<read><path>README.md with unicode: 你好世界</path></read>")
 
         result = finalizer.process_event(event)
 
@@ -352,15 +346,15 @@ class TestToolRewriteFinalizerIntegration:
 
     def test_tool_call_assembly_after_rewrite(self):
         """ToolCallDelta from ToolRewrite → ToolCallComplete via ToolCallFinalizer."""
-        from keeprollming.streaming.finalizers import ToolCallFinalizer
         from keeprollming.streaming.events import ToolCallComplete
+        from keeprollming.streaming.finalizers import ToolCallFinalizer
 
         # Set up finalizers
         tool_rewrite = ToolRewriteFinalizer()
         tool_call = ToolCallFinalizer()
 
         # Emit AssistantTextDelta with XML content
-        event = _make_text_delta('<read><path>README.md</path></read>')
+        event = _make_text_delta("<read><path>README.md</path></read>")
         rewrite_result = tool_rewrite.process_event(event)
 
         # ToolRewrite should emit ToolCallDelta (no surrounding text)
@@ -382,8 +376,8 @@ class TestToolRewriteFinalizerIntegration:
 
     def test_tool_call_json_validation(self):
         """Invalid JSON in XML args → dropped by ToolCallFinalizer."""
-        from keeprollming.streaming.finalizers import ToolCallFinalizer
         from keeprollming.streaming.events import ToolCallComplete
+        from keeprollming.streaming.finalizers import ToolCallFinalizer
 
         # Set up finalizers
         tool_rewrite = ToolRewriteFinalizer()
@@ -391,7 +385,7 @@ class TestToolRewriteFinalizerIntegration:
 
         # Emit AssistantTextDelta with XML content with invalid JSON
         # Use a value that is not valid JSON (e.g., a bare string without quotes)
-        event = _make_text_delta('<read><path>not valid json</path></read>')
+        event = _make_text_delta("<read><path>not valid json</path></read>")
         rewrite_result = tool_rewrite.process_event(event)
 
         # ToolRewrite should emit ToolCallDelta (no surrounding text)
@@ -444,7 +438,7 @@ class TestToolRewriteFinalizerFinalize:
         finalizer = ToolRewriteFinalizer()
 
         # Emit incomplete XML
-        event = _make_text_delta('<read><path>README.md</path>')
+        event = _make_text_delta("<read><path>README.md</path>")
         result = finalizer.process_event(event)
 
         # Should buffer (return [])
@@ -457,7 +451,7 @@ class TestToolRewriteFinalizerFinalize:
         # Should emit buffered content as-is
         assert len(finalize_result) == 1
         assert isinstance(finalize_result[0], AssistantTextDelta)
-        assert finalize_result[0].delta == '<read><path>README.md</path>'
+        assert finalize_result[0].delta == "<read><path>README.md</path>"
 
     def test_finalize_idempotent(self):
         """finalize() safe to call multiple times (raises RuntimeError on second call)."""
@@ -488,8 +482,8 @@ class TestToolRewriteFinalizerState:
         assert not finalizer.is_buffering
 
         # Emit incomplete XML
-        event = _make_text_delta('<read><path>README.md</path>')
-        result = finalizer.process_event(event)
+        event = _make_text_delta("<read><path>README.md</path>")
+        finalizer.process_event(event)
 
         # Should be buffering
         assert finalizer.is_buffering
@@ -508,8 +502,8 @@ class TestToolRewriteFinalizerState:
         assert finalizer.rewritten_tool_call_id is None
 
         # Emit complete XML
-        event = _make_text_delta('<read><path>README.md</path></read>')
-        result = finalizer.process_event(event)
+        event = _make_text_delta("<read><path>README.md</path></read>")
+        finalizer.process_event(event)
 
         # Should have rewritten_tool_call_id
         assert finalizer.rewritten_tool_call_id is not None
@@ -524,8 +518,8 @@ class TestToolRewriteFinalizerState:
         finalizer = ToolRewriteFinalizer()
 
         # Emit incomplete XML
-        event = _make_text_delta('<read><path>README.md</path>')
-        result = finalizer.process_event(event)
+        event = _make_text_delta("<read><path>README.md</path>")
+        finalizer.process_event(event)
 
         # Should be buffering
         assert finalizer.is_buffering
@@ -542,8 +536,8 @@ class TestToolRewriteFinalizerState:
         finalizer = ToolRewriteFinalizer()
 
         # Emit incomplete XML
-        event = _make_text_delta('<read><path>README.md</path>')
-        result = finalizer.process_event(event)
+        event = _make_text_delta("<read><path>README.md</path>")
+        finalizer.process_event(event)
 
         # Should be buffering
         assert finalizer.is_buffering

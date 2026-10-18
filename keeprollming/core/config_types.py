@@ -13,15 +13,16 @@ Usage:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..types import DefaultSettings, Route
+    pass
 
 
 @dataclass(frozen=True)
 class FilterConfig:
     """Configuration for a single filter in the pipeline."""
+
     enabled: bool = True
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -64,6 +65,7 @@ class RouteSettings:
     upstream_headers: dict[str, str] = field(default_factory=dict)
     api_key: str | None = None
     client_api_keys: list[str] = field(default_factory=list)
+    client_access: str = "any"
     fallback_chain: list[dict[str, str]] = field(default_factory=list)
     capabilities: list[str] = field(default_factory=list)
 
@@ -112,9 +114,7 @@ class RouteSettings:
         resolved_max_tokens = route.max_tokens if route.max_tokens is not None else m_max_tokens
         resolved_timeout = route.request_timeout if route.request_timeout is not None else m_timeout
         resolved_summary_enabled = (
-            bool(route.summary_enabled)
-            if route.summary_enabled is not None
-            else m_summary_enabled
+            bool(route.summary_enabled) if route.summary_enabled is not None else m_summary_enabled
         )
         resolved_upstream_url = route.upstream_url if route.upstream_url is not None else m_upstream_url
 
@@ -135,10 +135,8 @@ class RouteSettings:
             upstream_url=resolved_upstream_url,
             upstream_headers=dict(route.upstream_headers or {}),
             api_key=route.api_key,
-            client_api_keys=list(
-                route.api_keys if route.api_keys is not None
-                else getattr(defaults, "api_keys", ())
-            ),
+            client_api_keys=list(route.api_keys if route.api_keys is not None else getattr(defaults, "api_keys", ())),
+            client_access=route.client_access or getattr(defaults, "client_access", "any"),
             fallback_chain=list(route.fallback_chain or []),
             capabilities=list(route.capabilities or []),
             filters=route.filters,
@@ -165,13 +163,10 @@ class RouteSettings:
             upstream_headers=dict(route.upstream_headers or {}),
             api_key=route.api_key,
             client_api_keys=list(route.api_keys or []),
+            client_access=route.client_access or "any",
             fallback_chain=list(route.fallback_chain or []),
             capabilities=list(route.capabilities or []),
-            request_timeout=(
-                route.request_timeout
-                if route.request_timeout is not None
-                else 120.0
-            ),
+            request_timeout=(route.request_timeout if route.request_timeout is not None else 120.0),
             filters=route.filters,
         )
 

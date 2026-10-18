@@ -4,14 +4,18 @@ Verifies that ``events_routing`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_routing import (
-    emit_routing_event,
-    emit_started as emit_routing_started,
-    emit_resolved as emit_routing_resolved,
     emit_failed as emit_routing_failed,
+)
+from keeprollming.observability.events_routing import (
+    emit_resolved as emit_routing_resolved,
+)
+from keeprollming.observability.events_routing import (
+    emit_routing_event,
+)
+from keeprollming.observability.events_routing import (
+    emit_started as emit_routing_started,
 )
 
 
@@ -30,9 +34,7 @@ class TestEmitRoutingEvent:
         dispatcher = EventDispatcher()
         emitted_events: list[RuntimeEvent] = []
         dispatcher.subscribe("routing", emitted_events.append)
-        event = emit_routing_event(
-            "req-2", "routing.resolution.started", dispatcher=dispatcher
-        )
+        event = emit_routing_event("req-2", "routing.resolution.started", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
         assert emitted_events[0].type == "routing.resolution.started"
@@ -51,9 +53,7 @@ class TestConvenienceWrappers:
         assert event.data["client_model"] == "gpt-4"
 
     def test_emit_resolved(self):
-        event = emit_routing_resolved(
-            "r1", "gpt-4", "default", "gpt-4", "gpt-4"
-        )
+        event = emit_routing_resolved("r1", "gpt-4", "default", "gpt-4", "gpt-4")
         assert event.type == "routing.resolution.resolved"
         assert event.data["resolved_route"] == "default"
 

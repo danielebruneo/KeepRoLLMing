@@ -70,39 +70,55 @@ def emit_execution_accounting_event(
 
 
 def emit_usage_captured(
-    req_id: str, prompt_tokens: int = 0, completion_tokens: int = 0,
+    req_id: str,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
     total_tokens: int = 0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_execution_accounting_event(req_id, "execution.accounting.usage.captured",
-                         prompt_tokens=prompt_tokens or None,
-                         completion_tokens=completion_tokens or None,
-                         total_tokens=total_tokens or None,
-                         dispatcher=dispatcher)
+    return emit_execution_accounting_event(
+        req_id,
+        "execution.accounting.usage.captured",
+        prompt_tokens=prompt_tokens or None,
+        completion_tokens=completion_tokens or None,
+        total_tokens=total_tokens or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_attempt_recorded(
-    req_id: str, model: str = "", attempt: int = 0,
-    tokens: int = 0, cost: float = 0.0,
+    req_id: str,
+    model: str = "",
+    attempt: int = 0,
+    tokens: int = 0,
+    cost: float = 0.0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_execution_accounting_event(req_id, "execution.accounting.usage.attempt_recorded",
-                         model=model or None,
-                         attempt=attempt or None,
-                         tokens=tokens or None,
-                         cost=cost or None,
-                         dispatcher=dispatcher)
+    return emit_execution_accounting_event(
+        req_id,
+        "execution.accounting.usage.attempt_recorded",
+        model=model or None,
+        attempt=attempt or None,
+        tokens=tokens or None,
+        cost=cost or None,
+        dispatcher=dispatcher,
+    )
 
 
 def emit_usage_finalized(
-    req_id: str, total_attempts: int = 0,
-    total_prompt_tokens: int = 0, total_completion_tokens: int = 0,
+    req_id: str,
+    total_attempts: int = 0,
+    total_prompt_tokens: int = 0,
+    total_completion_tokens: int = 0,
     total_cost: float = 0.0,
     dispatcher: Optional[Any] = None,
 ) -> None:
-    return emit_execution_accounting_event(req_id, "execution.accounting.usage.finalized",
-                         total_attempts=total_attempts or None,
-                         total_prompt_tokens=total_prompt_tokens or None,
-                         total_completion_tokens=total_completion_tokens or None,
-                         total_cost=total_cost or None,
-                         dispatcher=dispatcher)
+    return emit_execution_accounting_event(
+        req_id,
+        "execution.accounting.usage.finalized",
+        total_attempts=total_attempts or None,
+        total_prompt_tokens=total_prompt_tokens or None,
+        total_completion_tokens=total_completion_tokens or None,
+        total_cost=total_cost or None,
+        dispatcher=dispatcher,
+    )

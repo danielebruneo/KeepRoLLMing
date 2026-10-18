@@ -9,9 +9,10 @@ Tests cover:
 """
 
 import json
+
 import pytest
+
 from keeprollming.tool_rewrite import (
-    PseudoToolCall,
     PseudoToolCallParser,
     ToolCallRewriter,
 )
@@ -179,15 +180,9 @@ class TestToolCallRewriter:
                 }
             ],
         }
-        chunk = (
-            b"data: "
-            + json.dumps(chunk_data, separators=(",", ":")).encode()
-            + b"\n\n"
-        )
+        chunk = b"data: " + json.dumps(chunk_data, separators=(",", ":")).encode() + b"\n\n"
 
-        result = self.rewriter.rewrite_streaming_chunk(
-            chunk, self.route_config_enabled
-        )
+        result = self.rewriter.rewrite_streaming_chunk(chunk, self.route_config_enabled)
 
         assert result is not None
         result_str = result.decode("utf-8")
@@ -221,15 +216,9 @@ class TestToolCallRewriter:
                 }
             ],
         }
-        chunk = (
-            b"data: "
-            + json.dumps(chunk_data, separators=(",", ":")).encode()
-            + b"\n\n"
-        )
+        chunk = b"data: " + json.dumps(chunk_data, separators=(",", ":")).encode() + b"\n\n"
 
-        result = self.rewriter.rewrite_streaming_chunk(
-            chunk, self.route_config_enabled
-        )
+        result = self.rewriter.rewrite_streaming_chunk(chunk, self.route_config_enabled)
 
         assert result is not None
         result_str = result.decode("utf-8")
@@ -258,15 +247,9 @@ class TestToolCallRewriter:
                 }
             ],
         }
-        chunk = (
-            b"data: "
-            + json.dumps(chunk_data, separators=(",", ":")).encode()
-            + b"\n\n"
-        )
+        chunk = b"data: " + json.dumps(chunk_data, separators=(",", ":")).encode() + b"\n\n"
 
-        result = self.rewriter.rewrite_streaming_chunk(
-            chunk, self.route_config_enabled
-        )
+        result = self.rewriter.rewrite_streaming_chunk(chunk, self.route_config_enabled)
 
         # Should return original chunk unchanged
         assert result == chunk
@@ -289,15 +272,9 @@ class TestToolCallRewriter:
                 }
             ],
         }
-        chunk = (
-            b"data: "
-            + json.dumps(chunk_data, separators=(",", ":")).encode()
-            + b"\n\n"
-        )
+        chunk = b"data: " + json.dumps(chunk_data, separators=(",", ":")).encode() + b"\n\n"
 
-        result = self.rewriter.rewrite_streaming_chunk(
-            chunk, self.route_config_disabled
-        )
+        result = self.rewriter.rewrite_streaming_chunk(chunk, self.route_config_disabled)
 
         # Should return original chunk unchanged
         assert result == chunk
@@ -305,9 +282,7 @@ class TestToolCallRewriter:
     def test_rewrite_streaming_chunk_not_a_chunk(self):
         """Test that non-chunk bytes are returned unchanged."""
         chunk = b"not a valid SSE chunk"
-        result = self.rewriter.rewrite_streaming_chunk(
-            chunk, self.route_config_enabled
-        )
+        result = self.rewriter.rewrite_streaming_chunk(chunk, self.route_config_enabled)
 
         assert result == chunk
 
@@ -414,15 +389,9 @@ class TestToolCallRewriter:
                 }
             ],
         }
-        chunk = (
-            b"data: "
-            + json.dumps(chunk_data, separators=(",", ":")).encode()
-            + b"\n\n"
-        )
+        chunk = b"data: " + json.dumps(chunk_data, separators=(",", ":")).encode() + b"\n\n"
 
-        result = self.rewriter.rewrite_streaming_chunk(
-            chunk, self.route_config_enabled
-        )
+        result = self.rewriter.rewrite_streaming_chunk(chunk, self.route_config_enabled)
 
         # Should return unchanged (already a proper tool call)
         assert result == chunk
@@ -445,20 +414,15 @@ class TestToolCallRewriter:
                 }
             ],
         }
-        chunk = (
-            b"data: "
-            + json.dumps(chunk_data, separators=(",", ":")).encode()
-            + b"\n\n"
-        )
+        chunk = b"data: " + json.dumps(chunk_data, separators=(",", ":")).encode() + b"\n\n"
 
         # Create rewriter with unsupported pattern
         disabled_parser_rewriter = ToolCallRewriter(
-            enabled=True, supported_patterns=["separate"]  # Only separate, not nested
+            enabled=True,
+            supported_patterns=["separate"],  # Only separate, not nested
         )
 
-        result = disabled_parser_rewriter.rewrite_streaming_chunk(
-            chunk, self.route_config_enabled
-        )
+        result = disabled_parser_rewriter.rewrite_streaming_chunk(chunk, self.route_config_enabled)
 
         # Should return original chunk (not drop it)
         assert result == chunk

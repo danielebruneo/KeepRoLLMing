@@ -4,16 +4,14 @@ Verifies that ``events_streaming_parser`` creates correct RuntimeEvent envelopes
 and emits them through the EventDispatcher when available.
 """
 
-import pytest
-
 from keeprollming.observability import EventDispatcher, EventSource, RuntimeEvent
 from keeprollming.observability.events_streaming_parser import (
-    emit_streaming_parser_event,
-    emit_frame_received,
     emit_events_generated,
-    emit_usage_buffered,
     emit_flushed,
+    emit_frame_received,
     emit_invalid_frame,
+    emit_streaming_parser_event,
+    emit_usage_buffered,
 )
 
 
@@ -32,9 +30,7 @@ class TestEmitStreamingParserEvent:
         dispatcher = EventDispatcher()
         emitted_events: list[RuntimeEvent] = []
         dispatcher.subscribe("streaming.parser", emitted_events.append)
-        event = emit_streaming_parser_event(
-            "req-2", "streaming.parser.frame.received", dispatcher=dispatcher
-        )
+        event = emit_streaming_parser_event("req-2", "streaming.parser.frame.received", dispatcher=dispatcher)
         assert isinstance(event, RuntimeEvent)
         assert len(emitted_events) == 1
 

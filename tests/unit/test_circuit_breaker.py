@@ -8,50 +8,136 @@ def test_breaker_opens_then_recovers_through_one_half_open_probe() -> None:
     breaker = CircuitBreakerRegistry(clock=lambda: now[0])
 
     first = breaker.allow(
-        route_name="chat/main", enabled=True, recovery_timeout=10,
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
         req_id="one",
     )
     assert first is not None
     breaker.record_failure(first, req_id="one", failure_threshold=2)
     assert breaker.snapshot("chat/main") == {
-        "state": "closed", "consecutive_failures": 1,
+        "state": "closed",
+        "consecutive_failures": 1,
     }
 
     second = breaker.allow(
-        route_name="chat/main", enabled=True, recovery_timeout=10,
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
         req_id="two",
     )
     assert second is not None
     breaker.record_failure(second, req_id="two", failure_threshold=2)
     assert breaker.snapshot("chat/main")["state"] == "open"
-    assert breaker.allow(
-        route_name="chat/main", enabled=True, recovery_timeout=10,
-        req_id="blocked",
-    ) is None
+    assert (
+        breaker.allow(
+            route_name="chat/main",
+            enabled=True,
+            recovery_timeout=10,
+            req_id="blocked",
+        )
+        is None
+    )
 
     now[0] = 10.0
     probe = breaker.allow(
-        route_name="chat/main", enabled=True, recovery_timeout=10,
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
         req_id="probe",
     )
     assert probe is not None
-    assert breaker.allow(
-        route_name="chat/main", enabled=True, recovery_timeout=10,
-        req_id="second-probe",
-    ) is None
+    assert (
+        breaker.allow(
+            route_name="chat/main",
+            enabled=True,
+            recovery_timeout=10,
+            req_id="second-probe",
+        )
+        is None
+    )
     breaker.record_success(probe, req_id="probe")
     assert breaker.snapshot("chat/main") == {
-        "state": "closed", "consecutive_failures": 0,
+        "state": "closed",
+        "consecutive_failures": 0,
     }
 
 
 def test_disabled_breaker_never_retains_failure_state() -> None:
     breaker = CircuitBreakerRegistry()
     attempt = breaker.allow(
-        route_name="chat/main", enabled=False, recovery_timeout=1, req_id="r",
+        route_name="chat/main",
+        enabled=False,
+        recovery_timeout=1,
+        req_id="r",
     )
     assert attempt is not None
     breaker.record_failure(attempt, req_id="r", failure_threshold=1)
     assert breaker.snapshot("chat/main") == {
-        "state": "closed", "consecutive_failures": 0,
+        "state": "closed",
+        "consecutive_failures": 0,
+    }
+
+
+def test_availability_inspection_does_not_consume_half_open_probe() -> None:
+    now = [0.0]
+    breaker = CircuitBreakerRegistry(clock=lambda: now[0])
+    attempt = breaker.allow(
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
+        req_id="open",
+    )
+    assert attempt is not None
+    breaker.record_failure(attempt, req_id="open", failure_threshold=1)
+
+    assert not breaker.is_available(
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
+    )
+    now[0] = 10.0
+    assert breaker.is_available(
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
+    )
+    # The selection hint is read-only; the actual request can still claim the
+    # single half-open probe.
+    probe = breaker.allow(
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
+        req_id="probe",
+    )
+    assert probe is not None
+    assert not breaker.is_available(
+        route_name="chat/main",
+        enabled=True,
+        recovery_timeout=10,
+    )
+
+
+def test_routes_sharing_resource_key_share_circuit_state() -> None:
+    breaker = CircuitBreakerRegistry()
+    resource = "http://backend:8000 :: qwen"
+    attempt = breaker.allow(
+        route_name="chat/a",
+        enabled=True,
+        recovery_timeout=10,
+        req_id="a",
+        resource_key=resource,
+    )
+    assert attempt is not None
+    breaker.record_failure(attempt, req_id="a", failure_threshold=1)
+
+    assert not breaker.is_available(
+        route_name="chat/b",
+        enabled=True,
+        recovery_timeout=10,
+        resource_key=resource,
+    )
+    assert breaker.snapshot("chat/b", resource_key=resource) == {
+        "state": "open",
+        "consecutive_failures": 1,
     }

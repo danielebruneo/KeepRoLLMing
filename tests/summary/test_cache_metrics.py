@@ -1,8 +1,5 @@
 """Tests for cached_tokens extraction from upstream usage fields."""
 
-import json
-import pytest
-
 
 class TestNonStreamingCacheMetrics:
     """Test cached_tokens extraction in non-streaming chat_completions handler."""
@@ -12,15 +9,19 @@ class TestNonStreamingCacheMetrics:
         response_json = {
             "id": "test-1",
             "model": "qwen3.5-35b",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello world"}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "Hello world"},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {
                 "prompt_tokens": 32000,
                 "completion_tokens": 1200,
                 "total_tokens": 33200,
-                "prompt_tokens_details": {
-                    "cached_tokens": 31000
-                }
-            }
+                "prompt_tokens_details": {"cached_tokens": 31000},
+            },
         }
         usage = response_json.get("usage") or {}
         prompt_details = usage.get("prompt_tokens_details") or {}
@@ -34,12 +35,18 @@ class TestNonStreamingCacheMetrics:
         response_json = {
             "id": "test-2",
             "model": "qwen3.5-35b",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello world"}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "Hello world"},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {
                 "prompt_tokens": 1000,
                 "completion_tokens": 100,
                 "total_tokens": 1100,
-            }
+            },
         }
         usage = response_json.get("usage") or {}
         prompt_details = usage.get("prompt_tokens_details") or {}
@@ -52,13 +59,19 @@ class TestNonStreamingCacheMetrics:
         response_json = {
             "id": "test-3",
             "model": "qwen3.5-35b",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello world"}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "Hello world"},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {
                 "prompt_tokens": 1000,
                 "completion_tokens": 100,
                 "total_tokens": 1100,
-                "prompt_tokens_details": {}
-            }
+                "prompt_tokens_details": {},
+            },
         }
         usage = response_json.get("usage") or {}
         prompt_details = usage.get("prompt_tokens_details") or {}
@@ -95,10 +108,8 @@ class TestStreamingCacheMetrics:
                 "prompt_tokens": 28000,
                 "completion_tokens": 500,
                 "total_tokens": 28500,
-                "prompt_tokens_details": {
-                    "cached_tokens": 27500
-                }
-            }
+                "prompt_tokens_details": {"cached_tokens": 27500},
+            },
         }
         final_usage = reconstructed_response.get("usage")
         prompt_details = final_usage.get("prompt_tokens_details") or {}
@@ -143,15 +154,19 @@ class TestResponsePassthrough:
         upstream_response = {
             "id": "test-4",
             "model": "qwen3.5-35b",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello"}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "Hello"},
+                    "finish_reason": "stop",
+                }
+            ],
             "usage": {
                 "prompt_tokens": 32000,
                 "completion_tokens": 100,
                 "total_tokens": 32100,
-                "prompt_tokens_details": {
-                    "cached_tokens": 31000
-                }
-            }
+                "prompt_tokens_details": {"cached_tokens": 31000},
+            },
         }
         # The response JSON is passed through as-is
         assert upstream_response["usage"]["prompt_tokens_details"]["cached_tokens"] == 31000
@@ -164,9 +179,7 @@ class TestResponsePassthrough:
             "prompt_tokens": 32000,
             "completion_tokens": 100,
             "total_tokens": 32100,
-            "prompt_tokens_details": {
-                "cached_tokens": 31000
-            }
+            "prompt_tokens_details": {"cached_tokens": 31000},
         }
         final_chunk_obj = {
             "id": "stream-5",
