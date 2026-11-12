@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong><em>Keep your LLM rolling.</em></strong><br>
-  Smart routing and reliable AI agents across local GPUs and remote LLM backends.
+  Intelligent routing for local, remote, and hybrid LLM infrastructure.
 </p>
 
 <p align="center">
@@ -12,112 +12,123 @@
   <img src="https://img.shields.io/badge/Status-Alpha-orange" alt="Alpha status">
 </p>
 
-# KeepRoLLMing
+# KeepRoLLMing — Intelligent Routing for LLM Infrastructure
 
-KeepRoLLMing is an OpenAI-compatible LLM gateway for routing, sharing, and
-protecting access to local and remote backends. Give clients stable model
-names, distribute work across your GPU servers with configurable priorities,
-and keep conversations on warm backends with sticky sessions.
+KeepRoLLMing (KRM) is an open-source, OpenAI-compatible inference gateway for
+smart routing, load balancing, observability, and resilient access to local
+and remote LLM backends.
 
-It also keeps long-running chats and agents moving with context management,
-continuation recovery, tool/reasoning loop protection, request filters, and
-observable streaming—all configured in YAML, without changing your clients.
+**One endpoint for your clients. Multiple backends behind it.** Keep stable
+client-facing routes while changing backend topology, routing policies, and
+workload priorities in YAML—without reconfiguring every application.
+
+Inspired by the role Nginx plays in web infrastructure, KRM brings intelligent
+routing, workload-aware balancing, and observability to LLM inference.
+
+```text
+      LibreChat      Coding agents      API clients
+            \             |             /
+             v            v            v
+           +-----------------------------+
+           |        KeepRoLLMing         |
+           | Routing + load balancing    |
+           | Admission + cache affinity  |
+           | Observability               |
+           +-----------------------------+
+                  /       |       \
+                 v        v        v
+            Local GPU A  GPU B   Remote API
+             llama.cpp   vLLM   OpenAI-compatible
+```
+
+KRM is a gateway, not an inference server: it coordinates requests across
+the model servers you already run.
 
 > **Alpha software.** Configuration and extension APIs may evolve before 1.0.
 > Requests and responses can be logged locally. Review `observability` settings
 > before using sensitive traffic or exposing the service to untrusted networks.
-> Features marked **unreleased** in `CHANGELOG.md` are not part of the latest
-> published tag yet.
 
-## The problem
+## Running LLMs? Let your agent evaluate KRM.
 
-Running several LLM backends is more than choosing a model. Your coding agent,
-background bots, and shared users may compete for the same GPUs. Moving a
-conversation between workers can lose a useful prefix cache, while exposing
-the same service outside your LAN needs a different access policy.
-
-Models also fail in recurring, recognizable ways during long chats and agent
-loops. KeepRoLLMing handles both resource coordination and model reliability
-between OpenAI-compatible clients and their backends.
-
-| Failure mode | Typical symptom | KeepRoLLMing capability |
-|---|---|---|
-| Shared GPU contention | Background or shared traffic competes with interactive work | Prioritized routing, per-backend capacity, and bounded queues |
-| Conversation hopping | Agent turns repeatedly move to cold workers | Sticky sessions and configurable idle reservations |
-| Mixed private/public serving | LAN clients need convenient access; external users need credentials | Per-route network policies, API keys, and trusted-proxy handling |
-| Incomplete response | The model ends after “Let me check:” | `model_nudge` can request continuation |
-| Repeated tool call | The same call is made again with the same arguments | `model_tool_loop_stopper` can interrupt the loop |
-| Repeated reasoning | The model reproduces the same reasoning block | `reasoning_loop_stopper` can interrupt the loop |
-| Context pressure | A long conversation approaches the model window | `summarization` can repack prior context |
-| Non-standard tool output | An upstream model emits supported XML pseudo-calls | `tool_rewrite` converts them to OpenAI tool calls |
-| Slow streaming | A client needs an OpenAI-compatible, observable stream | The canonical streaming pipeline preserves SSE ordering and terminal framing |
-
-## The solution
-
-KeepRoLLMing sits between your client and any OpenAI-compatible backend. Your
-client continues to call `/v1/chat/completions`; routes select the backend and
-enable only the modules appropriate for that route.
+**Already running LLMs? Ask your coding agent whether KRM could improve your infrastructure.**
+Copy this prompt into Codex, Claude Code, Qwen Code, or your preferred agent:
 
 ```text
-OpenAI-compatible clients → routes + access policies → backend selection
-                                                     → filters → LLM backends
+Review https://github.com/danielebruneo/KeepRoLLMing
+and evaluate whether it could improve my existing LLM inference infrastructure.
+
+Focus on routing, load balancing, concurrency, cache affinity,
+observability, integration complexity, and operational overhead.
+
+Compare KRM with what I already have. Identify concrete benefits,
+limitations, and risks. Distinguish published features from unreleased work.
+
+Tell me if KRM is worth testing—and why. If my stack doesn't need it, say so.
+Do not install or modify anything without my approval.
 ```
 
-The practical result is longer-running conversations and agents with less
-manual recovery: a client can keep a stable model name while you change an
-upstream, tune inference parameters, add a system prompt, or enable protection
-against a specific failure mode in configuration.
+## Why put KRM in front of your backends?
 
-## Built for local and multi-GPU setups
+A generic reverse proxy can forward traffic. LLM workloads also have long
+generations, expensive prefills, conversation locality, and competing service
+priorities. KRM makes these request-level policies explicit across local GPUs,
+remote APIs, or a hybrid deployment, independently of your agent framework.
 
-Run your model servers on different GPUs or machines, then put KRM in front of
-them. KRM routes requests to those existing servers; it does not load models
-or allocate GPU memory itself.
+### Routing, balancing, and workload scheduling
 
-For example, prioritize your coding routes over shared public traffic and
-background bots. Prefer faster workers for interactive work, let other traffic
-use spare capacity, and configure different backend preferences for each pool.
+Give each workload a stable route over a pool of backends. Prioritize
+interactive coding over background bots, favor preferred workers, or spread
+requests across less busy servers. Capacity-aware queues help different
+workloads share infrastructure without interrupting active generations.
 
-**Sticky sessions** use conversation-prefix affinity to prefer a backend that
-may still have the context cached, without requiring clients to send a session
-ID. Optional idle reservations protect that warm backend between agent turns
-and tool calls. At a new request boundary, a session can move to a better
-available worker when the estimated benefit justifies rebuilding its cache.
+Change backend preferences and inference settings centrally while clients
+continue using the same endpoint and route names.
 
-**Configurable balancing and admission policies** combine target preferences,
-cross-route request priorities, capacity limits, queue waiting, reservation
-timeouts, and aging. Tune them per workload rather than treating every request
-as an interchangeable round-robin job. Decisions respect backend health and
-context limits, with optional enforcement of declared capabilities. Active
-generations are never interrupted just to give another request priority.
+### Cache-conscious sessions and predictive promotion
 
-See [Routing, balancing & concurrency](docs/ROUTING_AND_CONCURRENCY.md) for
-the deterministic selection rules, affinity heuristics, and policy settings.
+Keep conversations on warm backends instead of rebuilding long prompts on a
+different worker at every turn. Session affinity and reservations help preserve
+continuity for interactive agents, while shared workers can serve multiple
+workloads together.
 
-## What you get
+When a better worker becomes available, KRM can weigh the cost of rebuilding
+context against the expected benefit over upcoming turns. Observed performance
+and workload estimates inform whether to keep the session in place or promote
+it at the next request.
 
-- **Backend abstraction:** stable client-facing routes for llama.cpp, vLLM, LM
-  Studio, remote OpenAI-compatible APIs, and similar servers.
-- **Prioritized multi-GPU routing:** balance requests across backend pools,
-  coordinate shared capacity across routes, and give interactive work precedence
-  over background or shared workloads.
-- **Cache-friendly sticky sessions:** prefix affinity, configurable reservations,
-  compaction handoff, and request-boundary promotion reduce avoidable worker hops.
-- **Mixed LAN/public access:** source-IP/CIDR policies and per-route client API
-  keys let local tools stay keyless while external routes require credentials;
-  forwarded client IPs are honored only through configured trusted proxies.
-- **Composable reliability modules:** request, response, and streaming modules
-  for context handling, recovery, tool calls, and reasoning.
-- **OpenAI-compatible streaming:** canonical events preserve the ordering of
-  reasoning, tool calls, terminal `finish_reason`, and `[DONE]`; eligible
-  structured tool calls stream as they arrive without weakening loop safety.
-- **Route resilience controls:** opt-in admission limits and circuit breakers
-  make capacity and upstream failure behavior explicit per route.
-- **Local observability:** configurable PLAIN/JSON projections, performance
-  metrics, and opt-in raw SSE capture for focused debugging; privacy mode can
-  retain operational facts without persisting request or model content.
-- **Per-route configuration:** inheritance keeps shared backend settings in
-  one place while each client-facing route stays explicit.
+### Observability for routing and operations
+
+Understand where requests go, why they wait, and how your backends perform.
+
+- **Performance monitoring:** compare throughput, response latency, time to
+  first token, and request activity across routes and backends.
+- **Readable logs:** follow a request from routing through completion, including
+  queue waits, priorities, backend promotions and upstream errors.
+- **Operational APIs:** inspect running and waiting requests, backend capacity,
+  recent errors and usage, or connect that information to your own dashboards.
+
+**Performance dashboard:** compare route activity, throughput and latency
+across multiple backends.
+
+<img src="assets/performance-dashboard.png" alt="Performance dashboard showing route activity, throughput and latency" width="900">
+
+**BASIC PLAIN logging:** follow a request through color-coded operational events.
+
+<img src="assets/basic-plain-log.png" alt="Color-coded BASIC PLAIN log showing a request lifecycle" width="900">
+
+<sub>Illustrative mockups with synthetic data, not benchmarks; output details may differ.</sub>
+
+Keep operational views on trusted networks. See the
+[HTTP API reference](docs/API_REFERENCE.md) for access controls and endpoint details.
+
+### Resilience and access policies
+
+Keep serving through backend failures with fallback routes and circuit
+breakers. Share infrastructure securely: let trusted LAN clients connect
+without keys while requiring credentials for selected public routes.
+
+See the [routing guide](docs/ROUTING_AND_CONCURRENCY.md) for policies and tuning,
+and [Upgrading](docs/UPGRADING.md) and the [changelog](CHANGELOG.md) for release changes.
 
 ## Quick start
 
@@ -260,7 +271,7 @@ for a conversation, while respecting each target route's capacity. See
 configuration contract and [Routing, Balancing & Concurrency](docs/ROUTING_AND_CONCURRENCY.md)
 for the selection, reservation, queueing, and fallback rules.
 
-## How it works
+## Optional request and response modules
 
 ```text
 OpenAI client → route resolution + access checks → selection + admission
@@ -273,7 +284,7 @@ base route and enables filter modules under a direct `filters:` mapping. YAML
 mapping order is not significant: each module declares its own priority, which
 can be explicitly overridden per route when required.
 
-Built-in modules include:
+These optional modules complement the gateway. Enable the behaviors each route needs:
 
 - `system_prompt` — inject or replace a system prompt.
 - `summarization` — repack a conversation when context pressure requires it.
@@ -282,6 +293,11 @@ Built-in modules include:
 - `model_nudge` — continue a response that ends in a configured lazy pattern.
 - `model_tool_loop_stopper` and `reasoning_loop_stopper` — interrupt repeated behaviour.
 - `timestamp` — inject request time and append a response timestamp.
+
+The canonical streaming pipeline handles reasoning, tool calls, terminal
+`finish_reason` and `[DONE]`; eligible structured tool calls stream as they
+arrive without bypassing loop-safety controls. See the
+[filter pipeline](docs/FILTER_PIPELINE.md) for module and streaming contracts.
 
 ## Configuration examples
 
@@ -334,6 +350,10 @@ rolling activity/errors/performance, and requests currently in flight. See
 [the route-status endpoint](docs/CONFIGURATION.md#private-route-status-endpoint)
 for its security boundary and response contract.
 
+`/routes` and `/metrics` enforce the global `client_access` network policy,
+whose default is `any`; inference-route API keys do not protect them. Restrict
+operational access explicitly.
+
 ## Documentation
 
 | Guide | Purpose |
@@ -342,10 +362,11 @@ for its security boundary and response contract.
 | [Client integration](docs/CLIENT_INTEGRATION.md) | Connect the OpenAI Python SDK or LibreChat |
 | [HTTP API reference](docs/API_REFERENCE.md) | Endpoints, authentication, responses, and streaming |
 | [Configuration](docs/CONFIGURATION.md) | Root settings, routes, inheritance, observability |
+| [Upgrading](docs/UPGRADING.md) | 0.9.6 behavior changes, defaults, and deployment checks |
 | [Routing, balancing & concurrency](docs/ROUTING_AND_CONCURRENCY.md) | Target selection, affinity, reservations, and admission |
 | [Concepts](docs/CONCEPTS.md) | Short glossary of routes, filters, and runtime controls |
 | [Filter pipeline](docs/FILTER_PIPELINE.md) | Module lifecycle and streaming behaviour |
-| [Deployment](docs/DEPLOYMENT.md) | Daemon, container, reverse proxy |
+| [Deployment](docs/DEPLOYMENT.md) | Launcher, graceful shutdown, reverse proxy |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Startup, routing, logging, streaming diagnosis |
 | [Contributing](CONTRIBUTING.md) | Development setup and verification loop |
 

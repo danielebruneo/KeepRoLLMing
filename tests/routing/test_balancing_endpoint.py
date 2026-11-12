@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
 from fastapi.responses import JSONResponse
 
 from keeprollming.types import Route
@@ -401,13 +402,14 @@ def test_balance_retries_a_busy_pool_within_the_route_queue_budget(monkeypatch):
     )
     routes = [selector, fast]
     decision = {}
+    operational = []
 
     class TransientlyBusyAdmission:
         checks = 0
 
         def has_available_capacity(self, **_kwargs):
             self.checks += 1
-            return self.checks >= 2
+            return self.checks >= 4
 
         async def acquire(self, **_kwargs):
             class Lease:
@@ -417,6 +419,11 @@ def test_balance_retries_a_busy_pool_within_the_route_queue_budget(monkeypatch):
             return Lease()
 
     admission_controller = TransientlyBusyAdmission()
+    monkeypatch.setattr(
+        chat_completions._exec,
+        "emit_execution_event",
+        lambda _id, event_type, **data: operational.append((event_type, data)),
+    )
 
     async def fake_non_streaming(**kwargs):
         return JSONResponse({"usage": {"prompt_tokens": 10}})
@@ -453,6 +460,10 @@ def test_balance_retries_a_busy_pool_within_the_route_queue_budget(monkeypatch):
     assert decision["selection_reason"] == "waited_for_capacity"
     assert decision["selection_waited"] is True
     assert decision["selection_retry_count"] >= 1
+    waiting = [data for event_type, data in operational if event_type == "execution.routing.balance_waiting"]
+    assert len(waiting) == 1  # Poll retries do not spam BASIC.
+    assert waiting[0]["candidate_states"] == {"pool/fast": "capacity_unavailable"}
+    assert decision["selection_wait_ms"] >= 0
 
 
 def test_balance_skips_resource_reserved_by_another_session(monkeypatch):
@@ -583,7 +594,12 @@ def test_balance_promotes_expired_session_affinity_to_preferred_target(monkeypat
     assert seen["url"] == "http://fast:8000/v1/chat/completions"
 
 
-def test_balance_promotes_live_session_reservation_only_when_beneficial(monkeypatch):
+@pytest.mark.parametrize("selection_policy", ["priority", "least_loaded"])
+@pytest.mark.parametrize("lookahead_turns", [0, 5])
+@pytest.mark.parametrize("shared_backend", [False, True])
+def test_balance_promotes_live_session_reservation_only_when_beneficial(
+    monkeypatch, selection_policy, lookahead_turns, shared_backend
+):
     import keeprollming.app as app
     import keeprollming.routing as routing
     from keeprollming import config
@@ -593,12 +609,12 @@ def test_balance_promotes_live_session_reservation_only_when_beneficial(monkeypa
 
     class MeasuredRoutes:
         @staticmethod
-        def promotion_metrics(route_name, *, min_samples=3):
-            del min_samples
+        def promotion_estimate(route, policy):
+            del policy
             return {
                 "pool/slow": {"prompt_tps": 500, "completion_tps": 20},
                 "pool/fast": {"prompt_tps": 1000, "completion_tps": 100},
-            }.get(route_name)
+            }.get(route.name)
 
     async def fake_non_streaming(**kwargs):
         return JSONResponse({"selected": kwargs["route"].name})
@@ -614,6 +630,12 @@ def test_balance_promotes_live_session_reservation_only_when_beneficial(monkeypa
                     {"route": "pool/slow", "priority": 50},
                 ],
                 "promote_when_beneficial": promote_when_beneficial,
+                "selection_policy": selection_policy,
+                "promotion": {
+                    "lookahead_turns": lookahead_turns,
+                    "expected_new_prompt_tokens": 64,
+                    "expected_completion_tokens": 128,
+                },
             },
         )
         fast = Route(
@@ -654,6 +676,8 @@ def test_balance_promotes_live_session_reservation_only_when_beneficial(monkeypa
             cached_prompt_tokens=0,
             ctx_len=10000,
         )
+        if shared_backend:
+            registry.configure_reservation_policies({str(backend_resource_key(slow)): False})
         monkeypatch.setattr(config, "USER_ROUTES", routes)
         monkeypatch.setattr(chat_completions, "USER_ROUTES", routes)
         monkeypatch.setattr(routing, "get_session_affinity_registry", lambda: registry)
@@ -684,14 +708,14 @@ def test_balance_promotes_live_session_reservation_only_when_beneficial(monkeypa
     assert b"pool/fast" in promoted.body
     assert decision["selection_reason"] == "promotion_beneficial"
     assert decision["promotion_estimate"]["decision"] == "promote"
-    assert (
-        promoted_registry.reservation_status(
-            resource_key=str(backend_resource_key(old_slow)),
-            owner_key=promoted_owner,
-            routing_priority=0,
-        ).state
-        == "none"
-    )
+    assert decision["promotion_estimate"]["lookahead_turns"] == lookahead_turns
+    assert decision["promotion_estimate"]["expected_new_prompt_tokens"] == 64
+    assert decision["promotion_estimate"]["expected_completion_tokens"] == 128
+    assert promoted_registry.reservation_status(
+        resource_key=str(backend_resource_key(old_slow)),
+        owner_key=promoted_owner,
+        routing_priority=0,
+    ).state == ("disabled_by_backend" if shared_backend else "none")
 
     pinned, _registry, _owner, _slow, disabled_decision = run_case(False)
     assert pinned.status_code == 200

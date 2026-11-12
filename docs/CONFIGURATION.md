@@ -9,8 +9,9 @@ use another file. The canonical examples are
 
 `ctx_len`, `max_tokens`, `summary_enabled`, `passthrough_enabled`, and
 `default_request_timeout` provide defaults for routes. Route values override
-them. `default_max_completion_tokens` controls the fallback completion limit
-when a client does not supply one. `performance_logs_dir` chooses where
+them. `default_max_completion_tokens` is a fallback used only when root
+`max_tokens` is omitted; the built-in default is 4096. It is not required to
+enable upstream output limits or context clamping. `performance_logs_dir` chooses where
 per-request JSONL records and the dashboard snapshot are stored.
 
 ```yaml
@@ -19,6 +20,33 @@ max_tokens: 4096
 default_request_timeout: 120
 performance_logs_dir: "__performance_logs"
 ```
+
+### Output-token budget (0.9.6)
+
+The effective `max_tokens` is selected in this order:
+
+1. Explicit `overrides.max_tokens` (including a source override preserved by
+   balance policy, which wins over the selected target's override).
+2. The client's `max_tokens`, when present.
+3. The selected route's inherited `max_tokens`, then the root default above.
+
+A route-level `max_tokens` is a **default**, not a hard cap on the client's
+request. Use `overrides.max_tokens` to impose a fixed output budget.
+
+Summary planning reserves this same effective output budget rather than 64
+tokens when the client omits a limit. After repacking, outgoing `max_tokens`
+is reduced as needed to fit `ctx_len - estimated_prompt_tokens - safety_margin_tok`.
+This guard is always active and never restores the original client value over
+an override. When all completion settings are omitted, the built-in 4096-token
+default is sent; omission no longer delegates the output budget to the backend.
+This is a change from 0.9.5's inconsistent omission/global-clamp behaviour.
+
+The prompt estimate is taken before request filters; it is not an exact
+backend-tokenizer/chat-template guarantee. Backend validation remains
+authoritative. A non-positive/non-integer budget or an estimated prompt with
+no output room returns HTTP 400 before starting the final chat generation
+(a summary attempt may already have run). When
+only a small positive amount remains, KRM does not inflate it to 64 tokens.
 
 ## Request-body safety limit
 
@@ -106,6 +134,13 @@ observability and raw capture for diagnosis, but is not exposed to the client.
 
 ### Smart routing with `balance`
 
+Optional `balance.selection_policy: least_loaded` prefers a free backend,
+otherwise the one with the fewest active requests. Ties use target priority
+and declaration order. Omit it for the default `priority` selection. Counts
+are shared by URL/model resource inside this KRM process; existing session
+reservations and measured promotion remain intact. See
+[target ordering](ROUTING_AND_CONCURRENCY.md#target-ordering) for details.
+
 A route can select one of several independently configured, non-private routes
 at request time. `balance` is available on any route name; `public/code` here
 is only an example. This is a runtime **reroute**, not inheritance: after a
@@ -145,6 +180,11 @@ routes:
       # At request boundaries, permit early promotion when observed PP/decode
       # rates justify the cold-prefill cost. Default: true.
       promote_when_beneficial: true
+      promotion:
+        lookahead_turns: 5
+        expected_new_prompt_tokens: 8192
+        expected_completion_tokens: 1024
+        expected_current_completion_tokens: 1024
       # Long-lived affinity remembers a session's likely warm backend. A
       # session reservation keeps the selected idle resource for this session
       # while an agent may issue its next tool-call turn.
@@ -212,6 +252,34 @@ request. It has two explicit modes:
   for interactive agent routes where keeping a warm prefix between tool-call
   turns matters more than filling every idle slot.
 
+An idle lease protects the **entire upstream URL/model resource**, not one
+concurrency lane. Set `allow_idle_reservation: false` on a concrete shared
+backend route to veto all such leases, even from sources using `mode: session`.
+The flag is inherited and defaults to `true`; every alias of the same resource
+must agree. Affinity, cache observations and costed promotion still apply.
+Reload immediately removes existing leases; in-flight completion callbacks
+cannot recreate them while the flag is false.
+
+For example, a coding selector can rank two dedicated GPUs above this shared
+overflow target; architect and bot selectors can reference the same target:
+
+```yaml
+routes:
+  pool/shared:
+    model: your-model
+    upstream_url: http://shared-gpu.example:8000
+    max_concurrent: 4
+    allow_idle_reservation: false
+```
+
+Keep the coding source's `idle_reservation.mode: session` for its dedicated
+GPUs. Once those are occupied or reserved, it can use `pool/shared` alongside
+other routes. When all four slots are occupied and the source has a positive
+`queue_timeout`, requests enter this shared resource's admission queue with
+their source `routing_priority` (and configured aging/deadline policy).
+No running request is preempted. The selected queue waits for that resource,
+rather than polling the entire pool for later availability elsewhere.
+
 KRM never interrupts an active stream. Set `timeout_seconds` for a fixed lease
 (for example `900` for 15 minutes). Without it, duration is interpolated from
 `min_seconds` to `max_seconds` using `upstream_prompt_tokens / ctx_len`, bounded
@@ -219,15 +287,56 @@ by `min_context_ratio` and `max_context_ratio`; defaults are 60 seconds at 10%
 context and 15 minutes at 75% context. By default,
 `balance.promote_when_beneficial: true` also lets KRM consider a higher-ranked
 eligible target before the lease expires, but only at the next request boundary.
-It compares measured prefill/decode rates (at least three complete samples per
-route) and estimates total time using the current prompt estimate and requested
-completion-token budget. The candidate pays a cold-prefill cost; the current
+It compares prefill/decode rate estimates for each upstream URL/model and
+estimates total time using the current prompt estimate and a separate current-
+turn output forecast. `expected_current_completion_tokens` defaults to 1024;
+the estimate uses the smaller of this forecast and the available output budget.
+It never changes the `max_tokens` sent upstream. A large API cap is a safety
+limit, not a prediction that the model will generate that much text.
+The candidate pays a cold-prefill cost; the current
 route receives credit only for upstream-reported cached tokens. No backend
-tokenizer or shared-cache assumption is required. If metrics or the completion
-budget are missing, or the estimated gain does not exceed the migration cost,
+tokenizer or shared-cache assumption is required. The comparison also projects
+five additional equivalent turns by default: each adds 8192 new prompt tokens
+and 1024 output tokens on both alternatives, using their measured PP/decode
+rates. The existing prefix is transferred only once. Configure these assumptions
+under `balance.promotion` as above; `lookahead_turns` accepts finite non-negative
+numbers (including fractions), and token volumes accept non-negative integers.
+Zero future turns restores current-turn-only evaluation. Zero token volumes
+disable that future component. These are fixed operator assumptions, **not**
+session-history predictions or guaranteed future traffic. The added calculation
+is constant-cost arithmetic; it does not parse recent requests or read logs.
+Rates use recent valid samples first (at least 3 within one hour), then stable
+historical samples (at least 6 retained observations, latest no older than 24h,
+maximum coefficient of variation 0.5 for either rate). Finally, a backend route
+may declare optional `performance_hint: {prompt_tps: 2000, completion_tps: 80}`.
+Both rates must be finite and positive; hints inherit via `extends` and
+`performance_hint: {enabled: false}` disables an inherited hint. Hints are
+planning assumptions, never upstream request parameters or benchmarks.
+
+`balance.promotion.metrics` overrides `recent_min_samples`, `history_min_samples`,
+`history_max_age_seconds`, `max_history_cv`, `historical_margin_ratio` and
+`configured_margin_ratio`. Sample counts are integers 1–1024; history freshness
+is 0–604800 seconds, CV is non-negative, margins are in `[0,1)`.
+Recent evidence requires positive net gain. Historical evidence requires a gain
+greater than 20% of the estimated stay time; configured hints require 35%.
+If the two targets use different sources, the larger margin applies.
+
+If rates or the completion budget are missing, or the estimated gain does not
+exceed the migration cost and applicable confidence margin,
 the session stays pinned. Set the flag to `false` for the previous
 lease-expiry-only behavior. After KRM acquires capacity on the new target, it
 updates affinity and releases the old idle reservation.
+
+Resource history is bounded in memory, updated only from successful,
+single-attempt completions with valid PP/decode rates. Aliases of the same
+URL/model share evidence; a changed URL or model starts fresh. Failed,
+cancelled and multi-attempt totals are not training samples. Legacy records
+without explicit resource identity are deliberately not attributed using the
+current route config. A small `routing_estimates.json` snapshot under the
+performance log directory is atomically saved at graceful shutdown and loaded
+at startup. Abrupt termination can lose observations since the previous save;
+corrupt snapshots are warned about and ignored. There is no request-time disk
+I/O or log scan, nor any automatic GPU benchmark.
 
 Set `min_prompt_tokens` to avoid reserving a resource after short auxiliary
 turns such as title generation or an approval review. Set
@@ -471,6 +580,9 @@ limits. A balancing selector instead has `model_mode: "balanced"` and no
 misleading single upstream; its `balance_policy.resolved_targets` lists the
 independently resolved target routes with their endpoint/model, declared
 capabilities, limits, current admission snapshot, and circuit-breaker state.
+`balance_policy.selection_policy` exposes the effective configured policy;
+the projection's target list is declarative, not a prediction of the next
+runtime selection.
 It also reports a rolling 60-minute window of request activity, errors, and
 average request metrics. `execution.routing.balance_rejected` outcomes appear
 as selector errors when every target is ineligible. The endpoint also lists

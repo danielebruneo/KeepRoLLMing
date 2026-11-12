@@ -154,11 +154,13 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     recovery_timeout=get_or_unset("recovery_timeout", None),  # type: ignore
                     request_timeout=get_or_unset("request_timeout", None),  # type: ignore
                     max_concurrent=get_or_unset("max_concurrent", None),  # type: ignore
+                    allow_idle_reservation=get_or_unset("allow_idle_reservation", None),  # type: ignore
                     queue_timeout=get_or_unset("queue_timeout", None),  # type: ignore
                     routing_priority=get_or_unset("routing_priority", None),  # type: ignore
                     queue_aging=get_or_unset("queue_aging", None),  # type: ignore
                     deadline_policy=get_or_unset("deadline_policy", None),  # type: ignore
                     cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
+                    performance_hint=get_or_unset("performance_hint", None),  # type: ignore
                     performance_logs_dir=get_or_unset("performance_logs_dir", None),  # type: ignore
                     capabilities=get_or_unset("capabilities", None),  # type: ignore
                     balance=get_or_unset("balance", None),  # type: ignore
@@ -239,11 +241,13 @@ def load_user_routes(config: Dict[str, Any]) -> List[Route]:
                     recovery_timeout=get_or_unset("recovery_timeout", None),  # type: ignore
                     request_timeout=get_or_unset("request_timeout", None),  # type: ignore
                     max_concurrent=get_or_unset("max_concurrent", None),  # type: ignore
+                    allow_idle_reservation=get_or_unset("allow_idle_reservation", None),  # type: ignore
                     queue_timeout=get_or_unset("queue_timeout", None),  # type: ignore
                     routing_priority=get_or_unset("routing_priority", None),  # type: ignore
                     queue_aging=get_or_unset("queue_aging", None),  # type: ignore
                     deadline_policy=get_or_unset("deadline_policy", None),  # type: ignore
                     cost_priority=get_or_unset("cost_priority", 999),  # type: ignore
+                    performance_hint=get_or_unset("performance_hint", None),  # type: ignore
                     performance_logs_dir=get_or_unset("performance_logs_dir", None),  # type: ignore
                     capabilities=get_or_unset("capabilities", None),  # type: ignore
                     balance=get_or_unset("balance", None),  # type: ignore
@@ -351,6 +355,15 @@ def validate_shared_backend_resource_settings(routes: List[Route]) -> None:
     validate_shared_backend_resources(routes)
 
 
+def _configure_resource_reservations(routes: List[Route], defaults: DefaultSettings) -> None:
+    from .routing.affinity import get_session_affinity_registry
+    from .routing.resources import resource_reservation_policies
+
+    get_session_affinity_registry().configure_reservation_policies(
+        resource_reservation_policies(routes, defaults=defaults)
+    )
+
+
 def resolve_route_settings(
     route: Route,
     models_config: Dict[str, ModelConfig],
@@ -433,10 +446,14 @@ def load_config() -> Dict[str, Any]:
     if "UPSTREAM_BASE_URL" in os.environ:
         config["upstream_base_url"] = os.environ["UPSTREAM_BASE_URL"]
 
-    # Parse flat default settings at root level
+    # The older completion setting is only a fallback when root max_tokens
+    # is omitted, never a switch that enables context clamping.
+    completion_default = config.get("default_max_completion_tokens")
+    if completion_default is None:
+        completion_default = 4096
     config["defaults"] = {
         "ctx_len": int(config.get("ctx_len", 8192)),
-        "max_tokens": int(config.get("max_tokens", 4096)),
+        "max_tokens": int(config.get("max_tokens", completion_default)),
         "summary_enabled": config.get("summary_enabled", True),
         "passthrough_enabled": config.get("passthrough_enabled", False),
         "request_timeout": float(config.get("default_request_timeout", DEFAULT_REQUEST_TIMEOUT)),
@@ -659,6 +676,11 @@ def check_config_reload() -> bool:
             validate_resolved_route_balance(new_routes)
             validate_shared_backend_resource_settings(new_routes)
 
+            from .routing.affinity import get_session_affinity_registry
+            from .routing.resources import resource_reservation_policies
+
+            reservation_policies = resource_reservation_policies(new_routes, defaults=new_defaults)
+
             # Update global state atomically
             CONFIG.clear()
             CONFIG.update(new_config)
@@ -667,6 +689,7 @@ def check_config_reload() -> bool:
 
             # Update DEFAULTS
             DEFAULTS = new_defaults
+            get_session_affinity_registry().configure_reservation_policies(reservation_policies)
 
             # Update cached mtime
             _CONFIG_LAST_MTIME = current_mtime
@@ -699,6 +722,8 @@ DEFAULTS = DefaultSettings(
     client_access=CONFIG.get("client_access", {}).get("default", "any"),
 )
 validate_resolved_client_access(USER_ROUTES, DEFAULTS, CONFIG.get("client_access", {}))
+
+_configure_resource_reservations(USER_ROUTES, DEFAULTS)
 
 # Models config removed - now defined inline in routes
 
@@ -755,6 +780,7 @@ def resolve_execution_route(
     *,
     preferred_route_name: str | None = None,
     is_eligible: Any = None,
+    active_requests: Any = None,
 ):
     """Resolve a direct or balanced route into its concrete execution target.
 
@@ -768,6 +794,7 @@ def resolve_execution_route(
         defaults=DEFAULTS,
         preferred_route_name=preferred_route_name,
         is_eligible=is_eligible,
+        active_requests=active_requests,
     )
 
 

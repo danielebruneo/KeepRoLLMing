@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Tests for the /v1/models OpenAPI-compatible endpoint."""
+"""Tests for model discovery through /v1/models and its /models alias."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +16,14 @@ def client():
 
 class TestModelsEndpoint:
     """Test the /v1/models endpoint."""
+
+    def test_unversioned_models_is_direct_alias(self, client):
+        canonical = client.get("/v1/models", follow_redirects=False)
+        alias = client.get("/models", follow_redirects=False)
+
+        assert alias.status_code == canonical.status_code == 200
+        assert "location" not in alias.headers
+        assert alias.json() == canonical.json()
 
     def test_models_endpoint_exists(self, client):
         """Verify the endpoint returns a valid response."""

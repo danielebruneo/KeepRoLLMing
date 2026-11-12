@@ -148,6 +148,9 @@ class Route:
     # Route-level work admission. ``None`` inherits the resolver default
     # (currently one concurrent request); a positive value overrides it.
     max_concurrent: int | None = None
+    # Resource-owned veto; None inherits and resolves to True. A shared backend
+    # can forbid exclusive idle leases without disabling session affinity.
+    allow_idle_reservation: bool | None = None
     queue_timeout: float | None = None
     # Client/service-class priority for shared backend admission. Higher wins
     # only between queued requests; it never interrupts a live stream.
@@ -165,6 +168,7 @@ class Route:
 
     # Cost priority for fallbacks (lower = higher priority) - use sentinel
     cost_priority: int = 999
+    performance_hint: Optional[Dict[str, Any]] = None
 
     # Static route capabilities for clients and operational status. None means
     # inherit; an explicit empty list intentionally clears a parent's value.

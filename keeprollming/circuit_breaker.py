@@ -21,6 +21,7 @@ class _CircuitState:
     state: str = "closed"
     opened_at: float | None = None
     half_open_probe: bool = False
+    probe_req_id: str | None = None
 
 
 class CircuitBreakerRegistry:
@@ -58,6 +59,7 @@ class CircuitBreakerRegistry:
                 self._emit("rejected", req_id, route_name, dispatcher, state=state.state)
                 return None
             state.half_open_probe = True
+            state.probe_req_id = req_id
         self._emit("allowed", req_id, route_name, dispatcher, state=state.state)
         return CircuitAttempt(state_key, True)
 
@@ -94,6 +96,7 @@ class CircuitBreakerRegistry:
         state.state = "closed"
         state.opened_at = None
         state.half_open_probe = False
+        state.probe_req_id = None
         if was_open:
             self._emit("closed", req_id, attempt.key, dispatcher, state=state.state)
 
@@ -109,6 +112,7 @@ class CircuitBreakerRegistry:
             return
         state = self._states.setdefault(attempt.key, _CircuitState())
         state.half_open_probe = False
+        state.probe_req_id = None
         state.failures += 1
         if state.state == "half_open" or state.failures >= failure_threshold:
             state.state = "open"
@@ -130,6 +134,20 @@ class CircuitBreakerRegistry:
                 state=state.state,
                 failures=state.failures,
             )
+
+    def abandon_attempt(self, attempt: CircuitAttempt | None, *, req_id: str) -> None:
+        """Release our unused health probe after local validation rejects work.
+
+        No upstream was contacted: do not declare health success or failure.
+        Request ownership prevents a late local rejection from releasing a
+        different request's probe.
+        """
+        if attempt is None or not attempt.enabled:
+            return
+        state = self._states.get(attempt.key)
+        if state is not None and state.state == "half_open" and state.probe_req_id == req_id:
+            state.half_open_probe = False
+            state.probe_req_id = None
 
     def snapshot(
         self,

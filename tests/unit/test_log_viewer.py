@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from keeprollming.observability.events_execution import emit_balance_decision, emit_http_in, emit_route_resolved
-from keeprollming.observability.formatters import JsonFormatter
+from keeprollming.observability.formatters import JsonFormatter, PlainTextFormatter
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "log-viewer.py"
 spec = importlib.util.spec_from_file_location("krm_log_viewer", SCRIPT)
@@ -193,9 +193,16 @@ def test_real_balance_event_fields_are_supported():
         affinity_state="miss",
         selected_model="qwen",
         selected_upstream_url="http://backend:7901",
+        selection_policy="least_loaded",
+        selection_reason="least_loaded_eligible",
+        candidate_loads={"pool/fast": {"active": 1, "capacity": 3, "queued": 0}},
         dispatcher=capture,
     )
     record = json.loads(JsonFormatter().format(capture.event))
+    assert record["data"]["candidate_loads"]["pool/fast"]["active"] == 1
+    plain = PlainTextFormatter().format(capture.event)
+    assert 'policy="least_loaded"' in plain
+    assert "load=[pool/fast:1/3]" in plain
     assert viewer.RequestFilter(routes=["public/test"], backends=["pool/fast"]).feed(record) == [record]
 
 

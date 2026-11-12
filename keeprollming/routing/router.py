@@ -379,11 +379,13 @@ def resolve_inherited_route(
             "recovery_timeout": route.recovery_timeout,
             "request_timeout": route.request_timeout,
             "max_concurrent": route.max_concurrent,
+            "allow_idle_reservation": route.allow_idle_reservation,
             "queue_timeout": route.queue_timeout,
             "routing_priority": route.routing_priority,
             "queue_aging": route.queue_aging,
             "deadline_policy": route.deadline_policy,
             "cost_priority": route.cost_priority,
+            "performance_hint": route.performance_hint,
             "performance_logs_dir": route.performance_logs_dir,
             "capabilities": route.capabilities,
             "balance": route.balance,
@@ -438,10 +440,12 @@ def resolve_inherited_route(
                 DEFAULT_MAX_CONCURRENT,
             )
             merged_settings["queue_timeout"] = apply_default(merged_settings["queue_timeout"], None)
+            merged_settings["allow_idle_reservation"] = apply_default(merged_settings["allow_idle_reservation"], True)
             merged_settings["routing_priority"] = apply_default(merged_settings["routing_priority"], 0)
             merged_settings["queue_aging"] = apply_default(merged_settings["queue_aging"], None)
             merged_settings["deadline_policy"] = apply_default(merged_settings["deadline_policy"], None)
             merged_settings["cost_priority"] = apply_default(merged_settings["cost_priority"], 999)
+            merged_settings["performance_hint"] = apply_default(merged_settings["performance_hint"], None)
 
         route_with_hierarchy = Route(**{**route.__dict__, **merged_settings, "_route_hierarchy": [route.name]})
 
@@ -474,11 +478,13 @@ def resolve_inherited_route(
         "recovery_timeout": route.recovery_timeout,
         "request_timeout": route.request_timeout,
         "max_concurrent": route.max_concurrent,
+        "allow_idle_reservation": route.allow_idle_reservation,
         "queue_timeout": route.queue_timeout,
         "routing_priority": route.routing_priority,
         "queue_aging": route.queue_aging,
         "deadline_policy": route.deadline_policy,
         "cost_priority": route.cost_priority,
+        "performance_hint": route.performance_hint,
         "performance_logs_dir": route.performance_logs_dir,
         "capabilities": route.capabilities,
         "balance": route.balance,
@@ -528,11 +534,13 @@ def resolve_inherited_route(
             "recovery_timeout",
             "request_timeout",
             "max_concurrent",
+            "allow_idle_reservation",
             "queue_timeout",
             "routing_priority",
             "queue_aging",
             "deadline_policy",
             "cost_priority",
+            "performance_hint",
             "performance_logs_dir",
             "capabilities",
             "balance",
@@ -614,10 +622,12 @@ def resolve_inherited_route(
             DEFAULT_MAX_CONCURRENT,
         )
         merged_settings["queue_timeout"] = apply_default(merged_settings["queue_timeout"], None)
+        merged_settings["allow_idle_reservation"] = apply_default(merged_settings["allow_idle_reservation"], True)
         merged_settings["routing_priority"] = apply_default(merged_settings["routing_priority"], 0)
         merged_settings["queue_aging"] = apply_default(merged_settings["queue_aging"], None)
         merged_settings["deadline_policy"] = apply_default(merged_settings["deadline_policy"], None)
         merged_settings["cost_priority"] = apply_default(merged_settings["cost_priority"], 999)
+        merged_settings["performance_hint"] = apply_default(merged_settings["performance_hint"], None)
         merged_settings["performance_logs_dir"] = apply_default(
             merged_settings["performance_logs_dir"],
             defaults.performance_logs_dir if defaults else "__performance_logs",

@@ -17,6 +17,7 @@ client_access:
   trusted_proxies: []
 ctx_len: 32768
 max_tokens: 4096
+# Fallback only when root max_tokens is omitted; NOT a switch for clamping.
 default_max_completion_tokens: 4096
 summary_enabled: true
 passthrough_enabled: false
@@ -109,6 +110,9 @@ routes:
     # Route work governor. Every resolved route defaults to one concurrent
     # request; this base intentionally permits two and queues for five seconds.
     max_concurrent: 2
+    # Resource-owned veto, inherited by aliases; default true. Set false on a
+    # shared worker so no balance source can reserve the whole idle backend.
+    allow_idle_reservation: true
     queue_timeout: 5
     # Cross-route service-class priority when several routes resolve to the
     # same upstream URL and model. Higher queued work runs first; active work
@@ -193,19 +197,38 @@ routes:
     cost_priority: 100
 
   # A balancing selector reroutes each request to one independently resolved
-  # concrete route. Targets must not be private. Higher priority wins when
-  # capacity and a valid session affinity are otherwise equivalent.
+  # concrete route. Targets must not be private. Target priority is the default
+  # ordering and breaks equal-load ties under least_loaded; session pins win.
   code/runner-a:
     extends: base/local
     pattern: "code/runner-a"
     upstream_url: "http://127.0.0.1:8081"
     max_concurrent: 1
+    # Optional estimate for a new backend without measured evidence.
+    # Demonstration values only: replace with your own measurements.
+    performance_hint:
+      prompt_tps: 2000
+      completion_tps: 80
 
   code/runner-b:
     extends: base/local
     pattern: "code/runner-b"
     upstream_url: "http://127.0.0.1:8082"
     max_concurrent: 1
+    # Omit hints to stay pinned when measured rates are unavailable.
+    performance_hint:
+      prompt_tps: 800
+      completion_tps: 40
+    # Disable an inherited hint instead: performance_hint: {enabled: false}
+
+  # Shared overflow capacity: four mixed coding/bot requests can use this
+  # resource. Affinity/promotion remain enabled, but no exclusive idle lease
+  # is created, even when the source uses idle_reservation.mode: session.
+  code/shared-worker:
+    extends: base/local
+    upstream_url: "http://127.0.0.1:8083"
+    max_concurrent: 4
+    allow_idle_reservation: false
 
   public/code:
     extends: base/local
@@ -224,6 +247,10 @@ routes:
     overrides:
       reasoning_effort: high
     balance:
+      # priority (default): prefer target priority until capacity is exhausted.
+      # least_loaded: prefer fewer active requests, priority breaks ties.
+      # Applies to new assignments; preserves session reservation/affinity.
+      selection_policy: least_loaded
       # Capability declarations are advisory by default. Turn this on only
       # once every target's capabilities are complete and maintained.
       enforce_capabilities: false
@@ -241,6 +268,23 @@ routes:
       # available target only when observed PP/decode rates justify the cold
       # prefill cost. Defaults to true; false keeps it pinned until lease expiry.
       promote_when_beneficial: true
+      # Defaults below project additional turns using fixed assumptions.
+      # Cold-prefix migration is charged once; future turns process only new
+      # prompt tokens and expected completion. No history/log parsing required.
+      promotion:
+        lookahead_turns: 5  # Fractions allowed; 0 restores current-turn-only
+        expected_new_prompt_tokens: 8192
+        expected_completion_tokens: 1024
+        expected_current_completion_tokens: 1024  # Does not change API max_tokens
+        # Recent measured rates first; otherwise stable URL+model history;
+        # optional per-backend performance_hint is the last fallback.
+        metrics:
+          recent_min_samples: 3
+          history_min_samples: 6
+          history_max_age_seconds: 86400  # Age of the latest observation; <= 7 days
+          max_history_cv: 0.5  # Max coefficient of variation of either rate
+          historical_margin_ratio: 0.20  # Require >20% projected gain
+          configured_margin_ratio: 0.35  # Require >35% with configured hints
       # Preserve a warm agent backend when a long decode is followed shortly
       # by a much smaller prompt, the common Qwen Code context-compaction shape.
       # A one-shot continuation also covers the next prompt rewrite when the

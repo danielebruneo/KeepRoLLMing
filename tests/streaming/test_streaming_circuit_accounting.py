@@ -20,6 +20,7 @@ from keeprollming.types import Route
     [
         (400, "invalid temperature", False),
         (400, "maximum context length exceeded", False),
+        (400, "prepared prompt exceeds Engine max_context 218112", False),
         (400, "cudaMemGetInfo: unspecified launch failure", True),
         (400, "CUDA error: device is lost", True),
         (404, "model unavailable", True),
@@ -33,6 +34,8 @@ def test_streaming_error_health_accounting(status, message, backend_failure):
 
     async def run():
         envelope = {"error": {"message": message, "type": "invalid_request_error"}}
+        if "Engine max_context" in message:
+            envelope["error"].update(code="context_length_exceeded", param="messages")
         calls = []
 
         def respond(request):

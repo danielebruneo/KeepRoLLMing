@@ -175,10 +175,13 @@ async def lifespan(app: FastAPI):
     # The private status endpoint is event-fed and has no I/O on its hot path.
     # Seed only the same rolling window from completed records after restart.
     _route_status_registry = RouteStatusRegistry()
+    promotion_snapshot = Path(perf_logs_dir) / "routing_estimates.json"
+    await asyncio.to_thread(_route_status_registry.load_promotion_estimates, promotion_snapshot)
     await asyncio.to_thread(_route_status_registry.seed_from_performance_logs, perf_logs_dir)
     _event_dispatcher.subscribe("execution.chat", _route_status_registry)
     _event_dispatcher.subscribe("execution.routing", _route_status_registry)
     _event_dispatcher.subscribe("execution.streaming", _route_status_registry)
+    _event_dispatcher.subscribe("execution.upstream", _route_status_registry)
     _event_dispatcher.subscribe("execution.performance", _route_status_registry)
     _event_dispatcher.subscribe("request.lifecycle", _route_status_registry)
 
@@ -315,6 +318,7 @@ async def lifespan(app: FastAPI):
         await close_http_client()
         await stop_queued_default_projectors(queued_projectors)
         await stop_async_writer()
+        await asyncio.to_thread(_route_status_registry.save_promotion_estimates, promotion_snapshot)
 
 
 # ----------------------------
@@ -553,7 +557,10 @@ class RequestLifecycleMiddleware:
         try:
             await self.app(scope, receive, send_with_lifecycle)
         except asyncio.CancelledError:
-            _req_events.emit_cancelled(req_id=req_id)
+            if status_code is None:
+                _req_events.emit_cancelled(
+                    req_id=req_id, reason="cancelled_before_response", level="BASIC", dispatcher=get_event_dispatcher()
+                )
             raise
 
 
@@ -642,6 +649,8 @@ async def get_metrics(req: Request):
 @app.get("/routes", include_in_schema=False)
 async def get_routes_status(req: Request):
     """Return private, dashboard-oriented state for all public configured routes."""
+    from dataclasses import asdict
+
     from .auth import client_access_error_response, is_request_client_allowed
 
     headers = dict(req.headers.items())
@@ -651,7 +660,7 @@ async def get_routes_status(req: Request):
     from .admission import get_route_admission_controller
     from .circuit_breaker import get_circuit_breaker_registry
     from .config import resolve_route_settings
-    from .routing.balancing import parse_balance_targets
+    from .routing.balancing import parse_balance_targets, parse_promotion_policy, parse_selection_policy
     from .routing.resources import backend_resource_key
     from .routing.router import resolve_inherited_route
 
@@ -664,7 +673,11 @@ async def get_routes_status(req: Request):
         """Project a policy, including nested selectors, without runtime state."""
         if not isinstance(route.balance, dict) or "targets" not in route.balance:
             return None
-        policy: dict[str, Any] = {"targets": route.balance.get("targets")}
+        policy: dict[str, Any] = {
+            "targets": route.balance.get("targets"),
+            "selection_policy": parse_selection_policy(route.balance, route_name=route.name),
+            "promotion": asdict(parse_promotion_policy(route.balance, route_name=route.name)),
+        }
         preserved_overrides = route.balance.get("preserve_overrides")
         if preserved_overrides is not None:
             policy["preserve_overrides"] = preserved_overrides
@@ -700,6 +713,7 @@ async def get_routes_status(req: Request):
             "ctx_len": target_ctx_len,
             "max_tokens": target_max_tokens,
             "resource": target_resource_name,
+            "allow_idle_reservation": None if target_is_balanced else target_resolved.allow_idle_reservation,
             "admission": {
                 "max_concurrent": target_resolved.max_concurrent,
                 "routing_priority": target_resolved.routing_priority,
@@ -794,6 +808,7 @@ async def get_routes_status(req: Request):
                     ),
                 },
                 "balance_policy": balance_policy,
+                "allow_idle_reservation": None if is_balanced else resolved.allow_idle_reservation,
                 **status,
             }
         )
@@ -805,6 +820,7 @@ async def get_routes_status(req: Request):
     }
 
 
+@app.get("/models")
 @app.get("/v1/models")
 async def list_models(req: Request):
     """List available models (routes)."""

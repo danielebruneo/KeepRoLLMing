@@ -3,8 +3,8 @@
 # Usage:
 #   ./krm serve   [--port 8000] [--config config.yaml]
 #   ./krm start   [--port 8000] [--config config.yaml] [--log-path ./logs]
-#   ./krm stop    [--port 8000] [--log-path ./logs] [--force]
-#   ./krm restart [--port 8000] [--config config.yaml] [--log-path ./logs]
+#   ./krm stop    [--port 8000] [--log-path ./logs] [--stop-timeout 60] [--force]
+#   ./krm restart [--port 8000] [--config config.yaml] [--log-path ./logs] [--stop-timeout 60]
 #   ./krm status  [--port 8000] [--log-path ./logs]
 #   ./krm logs    [--port 8000] [--log-path ./logs]
 
@@ -19,6 +19,7 @@ CONFIG="${CONFIG_FILE:-config.yaml}"
 LOG_PATH="$PROJECT_DIR/logs"
 ACTION=""
 FORCE=false
+STOP_TIMEOUT="${KRM_STOP_TIMEOUT:-60}"
 
 # ── Parse action ──
 if [[ $# -lt 1 ]]; then
@@ -35,9 +36,16 @@ while [[ $# -gt 0 ]]; do
         --config) CONFIG="$2"; shift 2 ;;
         --log-path) LOG_PATH="$2"; shift 2 ;;
         --force)  FORCE=true; shift ;;
+        --stop-timeout) STOP_TIMEOUT="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+if [[ ! "$STOP_TIMEOUT" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: --stop-timeout / KRM_STOP_TIMEOUT must be a non-negative integer (0 waits indefinitely)" >&2
+    exit 2
+fi
+STOP_TIMEOUT=$((10#$STOP_TIMEOUT))
 
 # ── Derived paths ──
 PID_FILE="${LOG_PATH}/keeprollming_${PORT}.pid"
@@ -140,23 +148,6 @@ do_start() {
 
 # ── stop ──
 do_stop() {
-    if $FORCE; then
-        local pids
-        pids=$(pgrep -f "keeprollming.py.*--port ${PORT}" 2>/dev/null || true)
-        if [[ -z "$pids" ]]; then
-            echo "No keeprollming process on port ${PORT}" >&2
-            rm -f "$PID_FILE"
-            exit 0
-        fi
-        echo "Force-killing keeprollming process(es) on port ${PORT}: $pids" >&2
-        echo "$pids" | xargs kill 2>/dev/null || true
-        sleep 2
-        echo "$pids" | xargs kill -9 2>/dev/null || true
-        rm -f "$PID_FILE"
-        echo "✓ Killed" >&2
-        return 0
-    fi
-
     if ! is_running; then
         echo "keeprollming on port ${PORT} is not running" >&2
         rm -f "$PID_FILE"
@@ -165,23 +156,47 @@ do_stop() {
 
     local pid
     pid=$(get_pid)
+    local command port_pattern
+    command=$(ps -ww -p "$pid" -o args= 2>/dev/null || true)
+    port_pattern="(^|[[:space:]])--port[[:space:]]+${PORT}([[:space:]]|$)"
+    if [[ ! "$pid" =~ ^[0-9]+$ || "$pid" -le 1 || "$command" != *keeprollming.py* || ! "$command" =~ $port_pattern ]]; then
+        echo "ERROR: refusing to signal unverified PID ${pid}; inspect ${PID_FILE}" >&2
+        return 1
+    fi
     echo "Stopping keeprollming (PID: ${pid})..." >&2
     kill "$pid" 2>/dev/null || true
 
+    if $FORCE; then
+        sleep 2
+        if kill -0 "$pid" 2>/dev/null && [[ "$(ps -p "$pid" -o stat= 2>/dev/null)" != Z* ]]; then
+            echo "Explicit --force: killing verified PID ${pid}" >&2
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PID_FILE"
+        return 0
+    fi
+
     # Wait for graceful shutdown
-    for i in $(seq 1 10); do
-        if ! kill -0 "$pid" 2>/dev/null; then
+    local waited=0
+    while (( STOP_TIMEOUT == 0 || waited < STOP_TIMEOUT )); do
+        if ! kill -0 "$pid" 2>/dev/null || [[ "$(ps -p "$pid" -o stat= 2>/dev/null)" == Z* ]]; then
             echo "✓ Stopped" >&2
             rm -f "$PID_FILE"
             return 0
         fi
         sleep 1
+        waited=$((waited + 1))
     done
 
-    echo "Force-killing PID ${pid}" >&2
-    kill -9 "$pid" 2>/dev/null || true
-    rm -f "$PID_FILE"
-    echo "✓ Killed" >&2
+    # A process can finish during the last sleep at the deadline boundary.
+    if ! kill -0 "$pid" 2>/dev/null || [[ "$(ps -p "$pid" -o stat= 2>/dev/null)" == Z* ]]; then
+        rm -f "$PID_FILE"
+        echo "✓ Stopped" >&2
+        return 0
+    fi
+    echo "Graceful shutdown still pending for PID ${pid} after ${STOP_TIMEOUT}s; not force-killing." >&2
+    echo "PID file retained. Wait or explicitly use --force; restart has not started a second server." >&2
+    return 1
 }
 
 # ── restart ──

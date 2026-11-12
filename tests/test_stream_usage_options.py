@@ -21,7 +21,6 @@ def _payload(payload: dict) -> dict:
         upstream_model="upstream-model",
         repacked_messages=payload["messages"],
         route_plan=plan,
-        max_tokens_req=None,
         ctx_eff=4096,
         req_id="test-request",
     )

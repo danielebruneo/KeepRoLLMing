@@ -1,10 +1,10 @@
 # Routing, Balancing & Concurrency
 
-**Status:** current implementation reference for the 0.9.5 routing layer.
+**Status:** current implementation reference for the 0.9.6 routing layer.
 For configuration snippets, begin with [Configuration](CONFIGURATION.md); this
 document defines the operational semantics behind those settings.
-The 0.9.5 work is still unreleased; check `CHANGELOG.md` and the GitHub release
-tag before assuming these capabilities are present in an installed version.
+See `CHANGELOG.md` and the installed version's release tag for version-specific
+changes.
 
 This document describes how KeepRoLLMing (KRM) resolves a client request to a
 concrete upstream backend and how it governs access when multiple requests and
@@ -51,6 +51,7 @@ client_model
       - eligibility predicate per target (compatibility, reservation,
         circuit, capacity)
       - deterministic ordering: priority desc, then declaration order
+        (least_loaded optionally ranks active counts before those tie-breaks)
       - bounded wait/re-evaluation within the queue budget
       - reservation bypass at the deadline
    |
@@ -198,6 +199,34 @@ balance:
 
 ### Target ordering
 
+`balance.selection_policy` defaults to `priority`. Set it to `least_loaded`
+to assign a new session to the eligible leaf with the fewest **active requests**:
+zero beats one, one beats two, and ties use the existing priority/declaration
+order. The counts aggregate all KRM routes sharing `upstream_url + model`;
+they are not GPU utilization or `active / max_concurrent` ratios. Capacity,
+queued work, circuit health, capabilities/context and reservations still gate
+eligibility. Counts are local to this KRM process, not external backend traffic.
+
+An eligible session-owned reservation still keeps its target, even if another
+target is idle. The existing measured promotion policy remains priority-based;
+least-loaded selection does not trigger migrations on its own. If the pinned
+target is unavailable, reassignment uses the selected policy. Each selection
+retry refreshes counts; admission remains authoritative. Static resolution
+(including `/routes`) retains declarative priority order without runtime load.
+The outer selector's policy ranks the expanded leaves of nested balance pools.
+
+```yaml
+balance:
+  selection_policy: least_loaded  # or priority (default)
+  targets:
+    - {route: pool/fast, priority: 100}
+    - {route: pool/slow, priority: 80}
+```
+
+`execution.routing.balance_decision` includes `selection_policy` and
+`candidate_loads` (`active`, `capacity`, `queued`), sampled before admission.
+BASIC plain logs show `policy`, `reason` and compact `load=[route:active/capacity]`.
+
 `parse_balance_targets()` normalizes the list and orders targets
 **deterministically: higher `priority` first, then declaration order**. Targets
 must be non-empty route names and must not be duplicates or private routes.
@@ -215,7 +244,8 @@ terminal concrete route.
 `resolve_balance_selection()`:
 
 1. If the route has **no targets**, return the route itself unchanged (direct).
-2. Otherwise, order the unique leaves (priority, then declaration). If a
+2. Otherwise, order the unique leaves (priority, then declaration; prepend
+   active request count for runtime `least_loaded` selection). If a
    *preferred* route is supplied (session affinity, §5), it is sorted to the
    front.
 3. Return the **first leaf for which `is_eligible` is true**.
@@ -231,6 +261,8 @@ selector's fallback, de-duplicated.
 
 | Policy | Parser | Default | Effect |
 |---|---|---|---|
+| `selection_policy` | `parse_selection_policy` | `priority` | `least_loaded` ranks active shared-resource counts before target priority/declaration; pins and measured promotion remain intact. |
+| `promotion` | `parse_promotion_policy` | 5 additional turns; 8192 new prompt / 1024 output tokens | Fixed future prefill/decode assumptions; `lookahead_turns: 0` restores current-only estimates. |
 | `enforce_capabilities` | `parse_capability_enforcement` | `false` | Capability declarations are **advisory** by default; `true` makes them a hard admission contract. Context-fit is always hard. |
 | `preserve_overrides` | `parse_preserved_override_keys` | none | Named source-route overrides are re-applied to the selected target's upstream payload (vocabulary limited to `ALLOWED_OVERRIDE_KEYS`). |
 | `preserve_filters` | `parse_preserved_filter_names` | none | Accepts a list of source filter names or `all`/`true`; source config wins on collisions and target-only filters remain. |
@@ -277,6 +309,23 @@ than holding a resource.
 
 ### Affinity keys
 
+For a multi-request shared backend, declare `allow_idle_reservation: false`
+on its concrete route (default `true`). This resource-owned veto overrides
+every source's idle-reservation policy: it removes existing leases on reload
+and blocks new ones, including from requests already in flight. Aliases of the
+same normalized URL/model must agree. It does not disable affinity, cache
+observations, compaction continuity or measured promotion back to a better GPU.
+There are no per-lane reservation guarantees: backend-internal cache/slot
+assignment remains the backend's responsibility.
+
+Normal selection first tries free eligible targets. If none are free, a full
+shared target can accept the request into its actual admission queue, within
+the source's remaining positive `queue_timeout`. Source service priority,
+aging and deadline ordering apply there; running requests are never preempted.
+That queue is bound to the chosen resource; it does not reselect the entire
+pool while waiting. A zero wait budget still rejects immediately. Dedicated
+targets retain the existing reservation/selector-wait behavior.
+
 `candidate_keys()` produces, strongest first:
 
 1. A **client-conversation** key from `x-librechat-conversation-id`, scoped by
@@ -296,16 +345,145 @@ than holding a resource.
   1h). A stale assignment is harmless — it is used only if the target remains
   eligible.
 - `balance.promote_when_beneficial` defaults to `true`. At a request boundary,
-  a session with a live reservation may move to a higher-ranked eligible target
+  a session with a live reservation or affinity on a non-reservable shared
+  backend may move to a higher-ranked eligible target
   before expiry if recent measured prefill/decode rates predict a net gain.
   The estimate charges the destination for a cold prefill and credits the
   current target only for upstream-reported cached tokens. It uses KRM's
-  estimated prompt size, not backend tokenizer details. Metrics or a completion
+  estimated prompt size, not backend tokenizer details. It also includes
+  future prefill/decode gains using `balance.promotion` (details below).
+  Metrics or a completion
   token budget missing means KRM keeps the current assignment. Setting the flag
   to `false` restores lease-expiry-only promotion. After capacity is acquired
   at the new target, KRM transfers the assignment and releases the old idle
   reservation. In-flight requests and streams are never moved.
-- `balance.compaction_handoff` defaults to enabled. It recognizes the observed
+
+### Promotion horizon and cost
+
+```yaml
+balance:
+  targets: [pool/fast, pool/slow]
+  promote_when_beneficial: true
+  promotion:
+    lookahead_turns: 5
+    expected_new_prompt_tokens: 8192
+    expected_completion_tokens: 1024
+    expected_current_completion_tokens: 1024
+```
+
+These are the defaults. `lookahead_turns` counts **additional equivalent
+turns**, accepts finite non-negative numbers/fractions, and may be zero to
+restore current-turn-only behavior. Expected token volumes are non-negative
+integers; zero disables that future prefill/decode contribution.
+
+For prompt `P`, upstream-reported cached prefix `C`, current output forecast
+`B = min(output budget, expected_current_completion_tokens)`,
+future new prompt tokens `N`, future output `O` and equivalent turns `L`:
+
+```text
+stay = (P - C) / PP_current + B / decode_current
+       + L * (N / PP_current + O / decode_current)
+move = P / PP_destination + B / decode_destination
+       + L * (N / PP_destination + O / decode_destination)
+```
+
+`expected_current_completion_tokens` defaults to 1024 and is independent of
+future-turn `expected_completion_tokens`. It is a non-negative integer operator
+assumption (zero prices no current decode). It does not alter upstream output
+limits. Events retain both `completion_tokens_budget` and
+`completion_tokens_forecast`, so the safety cap cannot be mistaken for the
+prediction. This remains a configurable heuristic, not an adaptive predictor.
+
+With recent evidence, promote only if `move < stay`; ties stay pinned.
+With historical or configured evidence, require respectively more than 20%
+or 35% savings relative to `stay` (configurable). Use the larger margin when
+sources differ. The migration's cold prefix
+cost is paid once, not multiplied by future turns. Both future alternatives
+assume a retained warm prefix and process only newly appended tokens. A faster
+decoder with slower prefill can therefore lose on prompt-heavy future work.
+These are fixed configurable estimates, not a prediction of actual session
+length, future cache eviction, context compaction or context-dependent rates.
+
+The new projection has O(1) arithmetic/memory, no per-turn loop and no new
+tokenization, disk I/O, recent-request parsing or session-history storage.
+PP/decode evidence is keyed by normalized upstream URL + model, not route name:
+
+| Source | Default eligibility | Confidence / extra gain threshold |
+|---|---|---|
+| Recent | 3 valid observations within 1 hour | high / positive gain |
+| Historical | 6 retained observations; latest <=24h old; PP and decode CV <=0.5 | medium / >20% of stay time |
+| Configured | backend route `performance_hint` with both positive rates | low / >35% of stay time |
+| Unavailable | none of the above | stay pinned |
+
+Example backend hint (optional, inherited by `extends`, never sent upstream):
+
+```yaml
+pool/fast:
+  upstream_url: http://worker:8080
+  model: local-model
+  performance_hint:
+    prompt_tps: 2000
+    completion_tps: 80
+```
+
+Disable an inherited hint with `performance_hint: {enabled: false}`. Tune the
+hierarchy via `balance.promotion.metrics`; all defaults appear in
+`config.example.full.yaml`. Confidence labels describe the evidence tier, not
+a statistical guarantee or a context-length-specific performance model.
+Rates still use KRM's canonical performance calculations, not backend-native
+GPU timing. No adaptive future-volume estimator is introduced.
+
+Aggregates update at successful single-attempt completions; aliases share them.
+Legacy unidentified records, failures/cancellations and mixed-attempt totals
+are excluded. Two rolling moment sets per resource allow constant lookup and
+amortized expiry, capped at 128 resources / 1024 observations per window.
+History retains at most 7 days; configurable freshness is the age of its latest
+observation, not the age of every observation. Atomic `routing_estimates.json`
+under the performance log directory is saved at graceful shutdown, restored at
+startup and supplemented by identified recent root performance records without
+duplicating snapshot observations. Forced exits may lose newer history. Snapshot
+corruption is diagnosed and ignored; no log scan or disk I/O occurs in requests.
+
+`promotion_estimate` logs `assumptions_source: configured`, horizon/volumes,
+current-turn and full-horizon times, weighted future prefill/decode savings,
+net savings and decision. Negative savings are retained, not discarded.
+It also includes `current_evidence` / `candidate_evidence` (source, sample
+count, age, variability and confidence or an unavailable reason), plus
+`required_gain_ratio` / `required_gain_seconds`. These nested facts are in the
+detailed routing event; BASIC keeps its compact selection summary.
+`/routes` exposes the effective promotion assumptions in `balance_policy`.
+
+### Following routing in default BASIC PLAIN logs
+
+- `execution.routing.balance_waiting` appears once when a selector starts
+  waiting for capacity/reservations, with wait budget and blocked candidates;
+  polling retries are not printed.
+- `execution.routing.balance_decision` records the selected route/backend,
+  reason, affinity/reservation state and, after waiting, `queued_ms`.
+  Evaluated promotion decisions are named explicitly; successful promotions
+  also show `from`, estimated `gain_s` and evidence tiers. The full cost/evidence
+  dictionaries remain in detailed structured events.
+- `request.lifecycle.admission.queued` and the matching waited `acquired`
+  show entry/exit for the backend admission queue, service route, wait duration
+  and original/effective priority (including aging/deadline effects). Immediate
+  acquisitions and routine releases stay below BASIC to avoid noise.
+- Rejections, cancellations and existing fallback events close the flow.
+  A selector queue and a concrete backend queue are different stages; the
+  shared request ID links them. Promotion happens only at request boundaries,
+  never by interrupting the current upstream turn.
+
+Illustrative BASIC lines (timestamps and unchanged fields abbreviated):
+
+```text
+[req] execution.routing.balance_waiting route=code/main budget_ms=60000 blocked=[pool/a:capacity_unavailable]
+[req] execution.routing.balance_decision requested_route="code/main" selected_route="pool/b" ... queued_ms=350 promotion=promote from=pool/a gain_s=12.5 evidence=recent/historical
+```
+
+`gain_s` is estimated savings, not a measurement of realized performance.
+
+### Compaction handoff
+
+`balance.compaction_handoff` defaults to enabled. It recognizes the observed
   agent-compaction shape: a completed turn near the context limit with a long
   decode, followed shortly by a much smaller prompt on the same requested
   route and client-origin/credential scope. Since clients do not expose a
@@ -578,11 +756,16 @@ queueing and the wait loop), and add `routing_priority` / `queue_aging` /
 | YAML key (per route) | Governs | Default |
 |---|---|---|
 | `balance.targets[].route` / `.priority` | enable the smart selector; ordering (priority desc, then declaration) | none (direct route) |
+| `balance.selection_policy` | `priority`, or `least_loaded` to rank active request counts first | `priority` |
 | `balance.enforce_capabilities` | make capability declarations a hard constraint | `false` |
 | `balance.preserve_overrides` | re-apply named source overrides on the target | none |
 | `balance.preserve_filters` | carry named source filter modules into the target pipeline | none |
 | `balance.affinity_ttl_seconds` | session-assignment lifetime | `3600` |
 | `balance.promote_when_beneficial` | allow measured, request-boundary promotion before reservation expiry | `true` |
+| `balance.promotion.lookahead_turns` | equivalent additional turns in promotion estimate; 0 = current only | `5` |
+| `balance.promotion.expected_new_prompt_tokens` | assumed new prompt tokens per future turn | `8192` |
+| `balance.promotion.expected_completion_tokens` | assumed output tokens per future turn | `1024` |
+| `balance.promotion.expected_current_completion_tokens` | current-turn forecast, bounded by the available cap; never changes upstream max_tokens | `1024` |
 | `balance.compaction_handoff.enabled` | infer a one-time affinity handoff after likely context compaction | `true` |
 | `balance.compaction_handoff.max_age_seconds` | maximum time from long decode completion to the smaller prompt | `60` |
 | `balance.compaction_handoff.min_context_ratio` | minimum old-prompt occupancy at the effective context limit | `0.80` |

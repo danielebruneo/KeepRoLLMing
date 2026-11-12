@@ -231,6 +231,8 @@ class PerformanceConsumer:
 
         if route_hierarchy is not None:
             record["route_hierarchy"] = route_hierarchy
+        if event.data.get("backend_identity") is not None:
+            record["backend_identity"] = event.data["backend_identity"]
 
         # ExecutionUsage fields (Phase 12) — same as record_request_performance()
         record["upstream_attempts"] = upstream_attempts

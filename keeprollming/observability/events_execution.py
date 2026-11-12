@@ -262,6 +262,10 @@ def emit_balance_decision(
     selection_waited: bool = False,
     selection_retry_count: int = 0,
     promotion_estimate: dict[str, Any] | None = None,
+    selection_wait_ms: int = 0,
+    previous_route: str | None = None,
+    selection_policy: str = "priority",
+    candidate_loads: dict[str, dict[str, int | None]] | None = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
     """Record a deterministic route-selection result without session content."""
@@ -287,6 +291,10 @@ def emit_balance_decision(
         selection_waited=selection_waited,
         selection_retry_count=selection_retry_count,
         promotion_estimate=promotion_estimate,
+        selection_wait_ms=selection_wait_ms,
+        previous_route=previous_route,
+        selection_policy=selection_policy,
+        candidate_loads=candidate_loads or {},
         dispatcher=dispatcher,
     )
 
@@ -839,6 +847,7 @@ def emit_performance_request_complete(
     upstream_completion_tokens: Optional[int] = None,
     upstream_total_tokens: Optional[int] = None,
     cached_prompt_tokens: Optional[int] = None,
+    backend_identity: Optional[str] = None,
     dispatcher: Optional[Any] = None,
 ) -> None:
     """Emit execution.performance.request_complete event (O10).
@@ -875,6 +884,7 @@ def emit_performance_request_complete(
             "upstream_completion_tokens": upstream_completion_tokens,
             "upstream_total_tokens": upstream_total_tokens,
             "cached_prompt_tokens": cached_prompt_tokens,
+            **({"backend_identity": backend_identity} if backend_identity is not None else {}),
         },
         req_id=req_id,
         # This is the terminal operational summary, so BASIC PLAIN must

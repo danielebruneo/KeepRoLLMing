@@ -3,6 +3,29 @@
 from keeprollming.circuit_breaker import CircuitBreakerRegistry
 
 
+def test_local_rejection_releases_only_its_own_half_open_probe():
+    clock = [0.0]
+    registry = CircuitBreakerRegistry(clock=lambda: clock[0])
+    attempt = registry.allow(route_name="backend", enabled=True, recovery_timeout=1, req_id="failed")
+    registry.record_failure(attempt, req_id="failed", failure_threshold=1)
+    clock[0] = 2.0
+    probe = registry.allow(route_name="backend", enabled=True, recovery_timeout=1, req_id="probe")
+    registry.abandon_attempt(probe, req_id="other-request")
+    assert not registry.is_available(route_name="backend", enabled=True, recovery_timeout=1)
+    registry.abandon_attempt(probe, req_id="probe")
+    assert registry.is_available(route_name="backend", enabled=True, recovery_timeout=1)
+    assert registry.snapshot("backend") == {"state": "half_open", "consecutive_failures": 1}
+    assert registry.allow(route_name="backend", enabled=True, recovery_timeout=1, req_id="next") is not None
+
+
+def test_abandonment_does_not_change_closed_or_disabled_circuit_health():
+    registry = CircuitBreakerRegistry()
+    attempt = registry.allow(route_name="backend", enabled=True, recovery_timeout=1, req_id="request")
+    registry.abandon_attempt(attempt, req_id="request")
+    registry.abandon_attempt(None, req_id="request")
+    assert registry.snapshot("backend") == {"state": "closed", "consecutive_failures": 0}
+
+
 def test_breaker_opens_then_recovers_through_one_half_open_probe() -> None:
     now = [0.0]
     breaker = CircuitBreakerRegistry(clock=lambda: now[0])

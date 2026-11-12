@@ -171,6 +171,22 @@ class PlainTextFormatter(Formatter):
         d = event.data or {}
         subtype = event.type.split(".")[-1]
 
+        if ".admission." in event.type:
+            keys = (
+                ("service_route", "route", "queue_timeout_ms")
+                if subtype == "queued"
+                else (
+                    "service_route",
+                    "route",
+                    "queue_wait_ms",
+                    "routing_priority",
+                    "effective_routing_priority",
+                    "deadline_boost",
+                )
+            )
+            values = {key: d[key] for key in keys if d.get(key) is not None}
+            return self._render_generic_kv(ts, req_id_tag, event.type, values)
+
         if subtype == "received":
             model = d.get("client_model", "")
             stream = d.get("stream")
@@ -403,6 +419,7 @@ class PlainTextFormatter(Formatter):
                 ("selected_route", "selected_route"),
                 ("model", "selected_model"),
                 ("affinity", "affinity_state"),
+                ("policy", "selection_policy"),
             ):
                 value = d.get(key)
                 if value:
@@ -426,7 +443,32 @@ class PlainTextFormatter(Formatter):
             if isinstance(candidates, dict) and candidates:
                 rendered = ", ".join(f"{route}:{state}" for route, state in candidates.items())
                 parts.append(f"candidates=[{rendered}]")
+            loads = d.get("candidate_loads")
+            if isinstance(loads, dict) and loads:
+                rendered = ", ".join(
+                    f"{route}:{load.get('active')}/{load.get('capacity')}" for route, load in loads.items()
+                )
+                parts.append(f"load=[{rendered}]")
+            if d.get("selection_waited"):
+                parts.append(f"queued_ms={d.get('selection_wait_ms', 0)}")
+            promotion = d.get("promotion_estimate")
+            if isinstance(promotion, dict) and promotion.get("decision"):
+                parts.append(f"promotion={promotion['decision']}")
+                if promotion["decision"] == "promote":
+                    parts.append(f"from={d.get('previous_route') or '?'}")
+                    parts.append(f"gain_s={promotion.get('estimated_net_savings_seconds', '?')}")
+                    sources = [
+                        str(promotion.get(f"{side}_evidence", {}).get("source", "?"))
+                        for side in ("current", "candidate")
+                    ]
+                    parts.append("evidence=" + "/".join(sources))
             return " ".join(parts)
+        if subtype == "balance_waiting":
+            states = d.get("candidate_states") or {}
+            blocked = ", ".join(f"{route}:{state}" for route, state in list(states.items())[:6])
+            if len(states) > 6:
+                blocked += f", +{len(states) - 6} more"
+            return f"{ts} {req_id_tag} execution.routing.balance_waiting route={d.get('route')} budget_ms={d.get('wait_budget_ms')} blocked=[{blocked}]"
         return self._render_generic_kv(ts, req_id_tag, event.type, d)
 
     def _render_conversation(self, ts: str, req_id_tag: str, data: dict) -> str:

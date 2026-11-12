@@ -264,7 +264,7 @@ def fallback_admission_servers(tmp_path: Path, fake_backend_server: RunningServe
 
 
 @pytest.fixture
-def balanced_routing_servers(tmp_path: Path, fake_backend_server: RunningServer):
+def balanced_routing_servers(tmp_path: Path, fake_backend_server: RunningServer, request):
     """Run KRM against two independently observable upstream resources."""
     secondary_port = _free_port()
     backend_env = os.environ.copy()
@@ -290,7 +290,7 @@ def balanced_routing_servers(tmp_path: Path, fake_backend_server: RunningServer)
                         "upstream_url": fake_backend_server.base_url,
                         "ctx_len": 4096,
                         "max_tokens": 1024,
-                        "max_concurrent": 1,
+                        "max_concurrent": 3 if hasattr(request, "param") else 1,
                         "summary_enabled": False,
                         "capabilities": ["chat", "tools"],
                     },
@@ -300,7 +300,7 @@ def balanced_routing_servers(tmp_path: Path, fake_backend_server: RunningServer)
                         "upstream_url": slow.base_url,
                         "ctx_len": 4096,
                         "max_tokens": 1024,
-                        "max_concurrent": 1,
+                        "max_concurrent": 3 if hasattr(request, "param") else 1,
                         "summary_enabled": False,
                         "capabilities": ["chat", "tools"],
                     },
@@ -332,7 +332,11 @@ def balanced_routing_servers(tmp_path: Path, fake_backend_server: RunningServer)
                         "model": "selector",
                         "routing_priority": 0,
                         "summary_enabled": False,
-                        "balance": {"targets": ["pool/fast", "pool/slow"]},
+                        "balance": {
+                            "targets": ["pool/fast", "pool/slow"],
+                            "selection_policy": getattr(request, "param", "priority"),
+                            "idle_reservation": {"enabled": not hasattr(request, "param")},
+                        },
                     },
                     "warm/main": {
                         "pattern": "warm/main",

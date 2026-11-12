@@ -51,3 +51,28 @@ def test_multimodal_settings_and_capture_examples_cover_current_contract():
     assert config["body_capture"]["policy"] in {"errors_only", "disabled"}
     docs = (ROOT / "docs/CONFIGURATION.md").read_text(encoding="utf-8")
     assert "before request" in docs and "exact final HTTP body" in docs
+
+
+def test_release_routing_options_have_complete_examples():
+    config = yaml.safe_load((ROOT / "config.example.full.yaml").read_text(encoding="utf-8"))
+    shared = config["routes"]["code/shared-worker"]
+    assert shared["max_concurrent"] == 4
+    assert shared["allow_idle_reservation"] is False
+    policy = config["routes"]["public/code"]["balance"]
+    assert policy["selection_policy"] == "least_loaded"
+    assert policy["promotion"]["expected_current_completion_tokens"] == 1024
+
+
+def test_upgrade_notes_are_linked_and_explain_behavior_changes():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "docs/UPGRADING.md" in readme
+    notes = (ROOT / "docs/UPGRADING.md").read_text(encoding="utf-8")
+    for setting in (
+        "max_tokens",
+        "4096",
+        "lookahead_turns",
+        "allow_idle_reservation",
+        "--stop-timeout",
+        "client_access",
+    ):
+        assert setting in notes

@@ -16,8 +16,10 @@ import httpx
 from ..logger import log
 from ..observability import events_execution as _exec
 from ..routing import Route
+from ..routing.performance_estimates import performance_identity
 from ..streaming.tool_call_handler import ToolCallAccumulator
 from ..upstream import make_request_timeout
+from ..upstream.lifecycle import UpstreamLifecycle
 from ..utils.token_utils import count_text_tokens_safe
 
 # Lazy import to avoid circular dependency
@@ -547,13 +549,17 @@ async def process_streaming_request(
                     model=attempt_model,
                 )
                 try:
+                    lifecycle = UpstreamLifecycle(req_id, dispatcher)
+                    lifecycle.mark("dispatching")
                     async with client.stream(
                         "POST",
                         attempt_url,
                         json=attempt_payload,
                         headers=attempt_headers,
                         timeout=make_request_timeout(attempt_timeout),
+                        **({"extensions": {"trace": lifecycle.trace}} if isinstance(client, httpx.AsyncClient) else {}),
                     ) as resp:
+                        lifecycle.mark("response_headers")
                         connected_at = time.perf_counter()
                         # Exact socket metadata is optional diagnostics. Lightweight
                         # response doubles and non-httpx transports need not expose
@@ -990,6 +996,7 @@ async def process_streaming_request(
             upstream_completion_tokens=_execution_usage.upstream_completion_tokens,
             upstream_total_tokens=_execution_usage.upstream_total_tokens,
             cached_prompt_tokens=performance_cached_prompt_tokens,
+            backend_identity=performance_identity(getattr(route, "upstream_url", None), upstream_model),
             dispatcher=event_dispatcher,
         )
     else:

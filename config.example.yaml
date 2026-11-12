@@ -54,6 +54,8 @@ routes:
   #   model: "your-upstream-model"
   #   upstream_url: "http://127.0.0.1:8081"
   #   max_concurrent: 1
+  #   # For a shared multi-request worker instead, use max_concurrent: 4 and
+  #   # allow_idle_reservation: false (default true). Affinity is retained.
   #
   # chat/balanced:
   #   extends: base/local
@@ -61,6 +63,15 @@ routes:
   #   max_concurrent: 1
   #   queue_timeout: 15
   #   balance:
+  #     selection_policy: least_loaded  # Optional; default: priority
+  #     promotion:
+  #       lookahead_turns: 5  # Additional equivalent turns; 0 = current only
+  #       expected_new_prompt_tokens: 8192
+  #       expected_completion_tokens: 1024
+  #       expected_current_completion_tokens: 1024  # Forecast, not max_tokens
+  #       # Optional fallback evidence tuning; see config.example.full.yaml.
+  #       metrics:
+  #         history_max_age_seconds: 86400
   #     targets:
   #       - {route: chat/local, priority: 100}
   #       - {route: chat/worker-b, priority: 80}

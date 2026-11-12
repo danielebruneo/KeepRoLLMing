@@ -129,8 +129,21 @@ class SessionAffinityRegistry:
         self._lock = threading.RLock()
         self._assignments: dict[str, _Assignment] = {}
         self._reservations: dict[str, _Reservation] = {}
+        self._resource_reservation_policies: dict[str, bool] = {}
         self._compaction_candidates: dict[tuple[str, str], list[_CompactionCandidate]] = {}
         self._compaction_continuations: dict[str, _CompactionContinuation] = {}
+
+    def configure_reservation_policies(self, policies: Mapping[str, bool]) -> None:
+        """Atomically veto old and future leases without clearing affinity.
+
+        Completion callbacks from requests begun before reload consult the
+        current table under the same lock used to create/transfer leases.
+        """
+        with self._lock:
+            self._resource_reservation_policies = dict(policies)
+            for key in list(self._reservations):
+                if not self._resource_reservation_policies.get(key, True):
+                    del self._reservations[key]
 
     def digest(self, *, route_name: str, kind: str, value: Any) -> str:
         """Return an opaque, versioned HMAC key scoped to a requested route."""
@@ -482,6 +495,8 @@ class SessionAffinityRegistry:
         now = self._clock()
         with self._lock:
             self._prune(now)
+            if not self._resource_reservation_policies.get(resource_key, True):
+                return ReservationLookup("disabled_by_backend")
             reservation = self._reservations.get(resource_key)
             if reservation is None:
                 return ReservationLookup("none")
@@ -593,6 +608,8 @@ class SessionAffinityRegistry:
         now = self._clock()
         with self._lock:
             self._prune(now)
+            if not self._resource_reservation_policies.get(resource_key, True):
+                return ReservationLookup("disabled_by_backend")
             self._reservations[resource_key] = _Reservation(
                 owner_key=owner_key,
                 route_name=route_name,
@@ -635,6 +652,8 @@ class SessionAffinityRegistry:
             return False
         with self._lock:
             self._prune(self._clock())
+            if not self._resource_reservation_policies.get(resource_key, True):
+                return False
             reservation = self._reservations.get(resource_key)
             if reservation is None or not hmac.compare_digest(
                 previous_owner_key,

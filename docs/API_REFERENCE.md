@@ -11,10 +11,13 @@ Client credentials are configured per route with `api_keys` and sent as
 credential. A client key is checked against the requested route and is never
 forwarded upstream. See [Client API keys](CONFIGURATION.md#client-api-keys).
 
-`/health`, `/metrics`, and `/routes` do not have built-in authentication. In
-particular, `/routes` can reveal backend addresses, model names, errors, and
-in-flight activity. Keep these operational endpoints on a trusted network or
-protect them at the firewall/reverse proxy; do not expose them publicly as-is.
+`/health` is an unauthenticated liveness endpoint. `/metrics` and `/routes`
+enforce the global `client_access` network policy, but do not require route
+API keys. The default network policy is `any`: a key on an inference route
+does not protect these operational endpoints. In particular, `/routes` can
+reveal backend addresses, model names, errors, and in-flight activity.
+Configure LAN-only access or restrict them at the firewall/reverse proxy;
+do not expose them publicly as-is.
 
 ## Inference endpoints
 
@@ -41,9 +44,11 @@ proxies must not buffer the stream; see [Deployment](DEPLOYMENT.md#reverse-proxy
 Known error statuses include `400` for invalid JSON or client request errors,
 `401` for a missing/invalid route API key, `413` when the configured request
 body safety limit is exceeded, and upstream/routing errors such as `429`,
-`502`, `503`, or `504`. An upstream HTTP `400` is returned to the client and
-does not trigger route fallback. Streaming errors are represented as terminal
-SSE error events where the connection is still writable.
+`502`, `503`, or `504`. Ordinary upstream HTTP `400` client errors are returned
+without route fallback. Recognized CUDA/device failures mislabeled as HTTP
+`400` are backend failures and can trigger configured fallback. Streaming
+errors are represented as terminal SSE error events where the connection is
+still writable.
 
 ### `POST /v1/embeddings`
 
@@ -68,6 +73,10 @@ timeouts return `504`, and other processing errors return `500`.
 ## Discovery and operations
 
 ### `GET /v1/models`
+
+Also available as `GET /models`, with the same response and access filtering
+(direct response, not a redirect). Other OpenAI endpoints retain their `/v1`
+paths; this alias does not change the recommended client base URL.
 
 Returns `{"data": [...]}` using the OpenAI list-models shape. Each item
 advertises a public KRM route, not necessarily a backend model:
@@ -114,12 +123,28 @@ includes its resolved upstream/model information (or a balance target
 description), capabilities, context/output limits, circuit-breaker and
 admission state, plus:
 
+- `allow_idle_reservation`: resolved backend boolean; `null` for a dynamic
+  balanced selector, whose `balance_policy.resolved_targets` each expose their
+  own effective value (also `null` for nested selectors);
+
 - `activity`: 60 one-minute request-count buckets in UTC;
 - `errors`: recent route errors retained in the in-memory 60-minute window;
 - `performance`: sample count and average prompt TPS, completion TPS, TTFT, and
   elapsed request time;
 - `queued_requests`, `pending_requests`, and `active_requests`;
 - `balance`: recent selection summary when the route is a balance selector.
+
+In-flight `phase` distinguishes `queued`, `preparing`, `dispatching`, `connecting`, `sending`,
+`waiting_response_headers`, `requesting` and `streaming`. Transport milestones
+are emitted at DEBUG for both streaming and non-streaming attempts. `sending`
+and `waiting_response_headers` come from actual HTTP transport callbacks when
+available; handed to the local socket does **not** mean consumed by the peer.
+`dispatching` includes acquiring/reusing a pooled connection; `connecting`
+is emitted when the transport actually starts a TCP connection. Reused
+connections may skip `connecting` entirely.
+They do not claim backend-internal prefill progress. An unresponsive peer can
+leave a connected socket with unsent data while KRM awaits response headers.
+Mocks/custom transports without tracing expose only available boundaries.
 
 Only public routes are returned. State is process-local and in-flight requests
 cannot be reconstructed after a process restart; recent completed performance

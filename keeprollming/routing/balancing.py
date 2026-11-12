@@ -8,12 +8,14 @@ mixing selector settings into a backend target.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Sequence
 
 from ..overrides import ALLOWED_OVERRIDE_KEYS
 from ..types import DefaultSettings, Route
+from .performance_estimates import PromotionMetricsPolicy, parse_metrics_policy, parse_performance_hint
 from .router import (
     RerouteResolution,
     RouteRerouteError,
@@ -21,6 +23,17 @@ from .router import (
     resolve_inherited_route,
     resolve_reroute_destination,
 )
+
+
+@dataclass(frozen=True)
+class BalancePromotionPolicy:
+    """Constant-cost assumptions for future turns, not reconstructed history."""
+
+    lookahead_turns: float = 5.0
+    expected_new_prompt_tokens: int = 8192
+    expected_completion_tokens: int = 1024
+    expected_current_completion_tokens: int = 1024
+    metrics: PromotionMetricsPolicy = field(default_factory=PromotionMetricsPolicy)
 
 
 @dataclass(frozen=True)
@@ -38,6 +51,7 @@ class BalanceReservationPolicy:
     min_context_ratio: float = 0.10
     max_context_ratio: float = 0.75
     promote_when_beneficial: bool = True
+    promotion: BalancePromotionPolicy = field(default_factory=BalancePromotionPolicy)
 
 
 @dataclass(frozen=True)
@@ -150,6 +164,16 @@ class BalanceSelection:
         return tuple(attempts)
 
 
+def parse_selection_policy(value: Any, *, route_name: str) -> str:
+    """Select request-count balancing or the historical target-priority order."""
+    policy = value.get("selection_policy", "priority") if isinstance(value, Mapping) else "priority"
+    if not isinstance(policy, str) or policy not in {"priority", "least_loaded"}:
+        raise BalanceConfigurationError(
+            f"invalid balance for route '{route_name}': 'selection_policy' must be 'priority' or 'least_loaded'"
+        )
+    return policy
+
+
 def parse_balance_targets(value: Any, *, route_name: str) -> tuple[BalanceTarget, ...]:
     """Normalize the public ``balance: {targets: [...]}`` configuration."""
     if value is None:
@@ -158,6 +182,7 @@ def parse_balance_targets(value: Any, *, route_name: str) -> tuple[BalanceTarget
         raise BalanceConfigurationError(f"invalid balance for route '{route_name}': expected a mapping")
     unknown = set(value) - {
         "targets",
+        "selection_policy",
         "preserve_overrides",
         "preserve_filters",
         "affinity_ttl_seconds",
@@ -166,11 +191,13 @@ def parse_balance_targets(value: Any, *, route_name: str) -> tuple[BalanceTarget
         "selection_retry_interval_ms",
         "allow_reservation_bypass",
         "promote_when_beneficial",
+        "promotion",
         "compaction_handoff",
     }
     if unknown:
         rendered = ", ".join(sorted(map(str, unknown)))
         raise BalanceConfigurationError(f"invalid balance for route '{route_name}': unsupported key(s) {rendered}")
+    parse_selection_policy(value, route_name=route_name)
     raw_targets = value.get("targets")
     if not isinstance(raw_targets, list):
         raise BalanceConfigurationError(f"invalid balance for route '{route_name}': 'targets' must be a list")
@@ -395,6 +422,47 @@ def parse_preserved_filter_names(value: Any, *, route_name: str) -> tuple[str, .
     return tuple(result)
 
 
+def parse_promotion_policy(value: Any, *, route_name: str) -> BalancePromotionPolicy:
+    """Validate a small fixed-size lookahead policy; never inspect requests."""
+    raw = value.get("promotion", {}) if isinstance(value, Mapping) else {}
+    if not isinstance(raw, Mapping):
+        raise BalanceConfigurationError(f"invalid promotion for route '{route_name}': expected a mapping")
+    fields = {
+        "lookahead_turns",
+        "expected_new_prompt_tokens",
+        "expected_completion_tokens",
+        "expected_current_completion_tokens",
+        "metrics",
+    }
+    unknown = set(raw) - fields
+    if unknown:
+        raise BalanceConfigurationError(
+            f"invalid promotion for route '{route_name}': unsupported key(s) {', '.join(sorted(map(str, unknown)))}"
+        )
+    turns = raw.get("lookahead_turns", 5.0)
+    if isinstance(turns, bool) or not isinstance(turns, (int, float)) or not math.isfinite(turns) or turns < 0:
+        raise BalanceConfigurationError(
+            f"invalid promotion for route '{route_name}': lookahead_turns must be finite and non-negative"
+        )
+    values = {}
+    for key, default in (
+        ("expected_new_prompt_tokens", 8192),
+        ("expected_completion_tokens", 1024),
+        ("expected_current_completion_tokens", 1024),
+    ):
+        token_count = raw.get(key, default)
+        if isinstance(token_count, bool) or not isinstance(token_count, int) or token_count < 0:
+            raise BalanceConfigurationError(
+                f"invalid promotion for route '{route_name}': {key} must be a non-negative integer"
+            )
+        values[key] = token_count
+    try:
+        metrics = parse_metrics_policy(raw.get("metrics", {}))
+    except ValueError as exc:
+        raise BalanceConfigurationError(f"invalid promotion for route '{route_name}': {exc}") from exc
+    return BalancePromotionPolicy(lookahead_turns=float(turns), metrics=metrics, **values)
+
+
 def parse_reservation_policy(value: Any, *, route_name: str) -> BalanceReservationPolicy:
     """Validate the optional affinity/idle-reservation selector policy."""
     if value is None:
@@ -492,6 +560,7 @@ def parse_reservation_policy(value: Any, *, route_name: str) -> BalanceReservati
         min_context_ratio=low,
         max_context_ratio=high,
         promote_when_beneficial=promote_when_beneficial,
+        promotion=parse_promotion_policy(value, route_name=route_name),
     )
 
 
@@ -502,6 +571,7 @@ def estimate_promotion_benefit(
     completion_tokens: int | None,
     current_metrics: Mapping[str, Any] | None,
     candidate_metrics: Mapping[str, Any] | None,
+    promotion: BalancePromotionPolicy | None = None,
 ) -> dict[str, Any]:
     """Compare measured route performance with cold-prefill migration cost.
 
@@ -509,8 +579,25 @@ def estimate_promotion_benefit(
     not a backend tokenizer or an assumed shared prefix cache. The candidate
     is charged for a cold prefill; the current target receives credit only for
     upstream-reported cached tokens. Missing/insufficient inputs fail closed.
+    Future turns reuse warm prefixes and add configured new prompt/decode work.
+    Projection is constant-size arithmetic, without reading request history.
     """
-    facts: dict[str, Any] = {"decision": "insufficient_metrics"}
+    policy = promotion if promotion is not None else BalancePromotionPolicy()
+    facts: dict[str, Any] = {
+        "decision": "insufficient_metrics",
+        "assumptions_source": "configured",
+        "lookahead_turns": policy.lookahead_turns,
+        "expected_new_prompt_tokens": policy.expected_new_prompt_tokens,
+        "expected_completion_tokens": policy.expected_completion_tokens,
+        "expected_current_completion_tokens": policy.expected_current_completion_tokens,
+    }
+    for label, evidence in (("current", current_metrics), ("candidate", candidate_metrics)):
+        if isinstance(evidence, Mapping):
+            facts[f"{label}_evidence"] = {
+                key: evidence[key]
+                for key in ("source", "samples", "age_seconds", "cv", "confidence", "reason", "fallback_reason")
+                if key in evidence
+            }
     if not isinstance(prompt_tokens, int) or prompt_tokens <= 0:
         return facts
     if not isinstance(completion_tokens, int) or completion_tokens <= 0:
@@ -522,7 +609,7 @@ def estimate_promotion_benefit(
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             return None
         value = float(value)
-        return value if value > 0 else None
+        return value if math.isfinite(value) and value > 0 else None
 
     current_pp = rate(current_metrics, "prompt_tps")
     current_decode = rate(current_metrics, "completion_tps")
@@ -532,17 +619,55 @@ def estimate_promotion_benefit(
         return facts
 
     cached = max(0, min(prompt_tokens, int(cached_prompt_tokens or 0)))
+    completion_forecast = min(completion_tokens, policy.expected_current_completion_tokens)
     current_prefill_seconds = (prompt_tokens - cached) / current_pp
     candidate_prefill_seconds = prompt_tokens / candidate_pp
-    current_decode_seconds = completion_tokens / current_decode
-    candidate_decode_seconds = completion_tokens / candidate_decode
-    current_total = current_prefill_seconds + current_decode_seconds
-    candidate_total = candidate_prefill_seconds + candidate_decode_seconds
+    current_decode_seconds = completion_forecast / current_decode
+    candidate_decode_seconds = completion_forecast / candidate_decode
+    current_turn = current_prefill_seconds + current_decode_seconds
+    candidate_turn = candidate_prefill_seconds + candidate_decode_seconds
+    # Only newly appended prompt tokens require prefill on subsequent turns.
+    # The existing prefix migration is charged once in candidate_turn above.
+    future_prefill_savings = (
+        policy.lookahead_turns * policy.expected_new_prompt_tokens * (1 / current_pp - 1 / candidate_pp)
+    )
+    future_decode_savings = (
+        policy.lookahead_turns * policy.expected_completion_tokens * (1 / current_decode - 1 / candidate_decode)
+    )
+    current_future = policy.lookahead_turns * (
+        policy.expected_new_prompt_tokens / current_pp + policy.expected_completion_tokens / current_decode
+    )
+    candidate_future = policy.lookahead_turns * (
+        policy.expected_new_prompt_tokens / candidate_pp + policy.expected_completion_tokens / candidate_decode
+    )
+    current_total = current_turn + current_future
+    candidate_total = candidate_turn + candidate_future
+    margin_ratio = max(
+        float(metrics.get("margin_ratio", 0)) if isinstance(metrics, Mapping) else 0.0
+        for metrics in (current_metrics, candidate_metrics)
+    )
+    if not math.isfinite(margin_ratio) or not 0 <= margin_ratio < 1:
+        facts["decision"] = "invalid_estimate"
+        return facts
+    required_gain = current_total * margin_ratio
+    if not all(
+        math.isfinite(value)
+        for value in (current_total, candidate_total, future_prefill_savings, future_decode_savings)
+    ):
+        facts["decision"] = "invalid_estimate"
+        return facts
     facts.update(
         {
-            "decision": "promote" if candidate_total < current_total else "stay_pinned",
+            "decision": "promote" if current_total - candidate_total > required_gain else "stay_pinned",
+            "required_gain_ratio": margin_ratio,
+            "required_gain_seconds": round(required_gain, 3),
             "estimated_current_seconds": round(current_total, 3),
             "estimated_candidate_seconds": round(candidate_total, 3),
+            "estimated_current_turn_seconds": round(current_turn, 3),
+            "estimated_candidate_turn_seconds": round(candidate_turn, 3),
+            "estimated_future_prefill_savings_seconds": round(future_prefill_savings, 3),
+            "estimated_future_decode_savings_seconds": round(future_decode_savings, 3),
+            "estimated_net_savings_seconds": round(current_total - candidate_total, 3),
             "estimated_prefill_cost_seconds": round(
                 candidate_prefill_seconds - current_prefill_seconds,
                 3,
@@ -554,6 +679,7 @@ def estimate_promotion_benefit(
             "prompt_tokens_est": prompt_tokens,
             "cached_prompt_tokens": cached,
             "completion_tokens_budget": completion_tokens,
+            "completion_tokens_forecast": completion_forecast,
         }
     )
     return facts
@@ -650,14 +776,15 @@ def resolve_balance_selection(
     defaults: DefaultSettings | None = None,
     is_eligible: Callable[[Route], bool] | None = None,
     preferred_route_name: str | None = None,
+    active_requests: Callable[[Route], int] | None = None,
     max_depth: int = 8,
 ) -> BalanceSelection:
     """Select the first eligible leaf route from a validated balance graph.
 
-    The ordering is deterministic (higher configured priority, then YAML
-    declaration order). Session affinity, health, admission and cache evidence
-    are injected later through ``is_eligible``/scoring rather than hidden in
-    route inheritance. A direct route returns itself unchanged.
+    Priority/declaration order is the default and breaks ties for least_loaded
+    when an active-count provider is supplied. Explicit session preference
+    wins over load. Health/admission remain injected through ``is_eligible``;
+    a direct route returns itself unchanged.
     """
     resolved_source = resolve_inherited_route(route, dict(routes_by_name), defaults=defaults)
     targets = parse_balance_targets(resolved_source.balance, route_name=resolved_source.name)
@@ -723,6 +850,12 @@ def resolve_balance_selection(
             identities.add(identity)
             unique.append(leaf)
 
+    # Stable sort retains target-priority/declaration ordering for equal loads.
+    # Static resolution (e.g. /routes) has no load provider and stays declarative.
+    if parse_selection_policy(resolved_source.balance, route_name=resolved_source.name) == "least_loaded":
+        if active_requests is not None:
+            unique.sort(key=lambda leaf: active_requests(leaf.route))
+
     if preferred_route_name:
         unique.sort(key=lambda leaf: leaf.route.name != preferred_route_name)
 
@@ -776,6 +909,10 @@ def validate_balance_policies(routes: Sequence[Route]) -> None:
     routes_by_name = {route.name: route for route in routes}
     for route in routes:
         resolved = resolve_inherited_route(route, routes_by_name)
+        try:
+            parse_performance_hint(resolved.performance_hint)
+        except ValueError as exc:
+            raise BalanceConfigurationError(f"invalid performance_hint for route '{route.name}': {exc}") from exc
         targets = parse_balance_targets(resolved.balance, route_name=route.name)
         preserved_override_keys = parse_preserved_override_keys(resolved.balance, route_name=route.name)
         preserved_filter_names = parse_preserved_filter_names(resolved.balance, route_name=route.name)
@@ -805,6 +942,7 @@ def validate_balance_policies(routes: Sequence[Route]) -> None:
 
 
 __all__ = [
+    "BalancePromotionPolicy",
     "BalanceConfigurationError",
     "NoEligibleBalanceTarget",
     "BalanceTarget",
@@ -815,6 +953,7 @@ __all__ = [
     "parse_compaction_handoff_policy",
     "parse_preserved_override_keys",
     "parse_reservation_policy",
+    "parse_promotion_policy",
     "resolve_balance_selection",
     "validate_balance_policies",
 ]

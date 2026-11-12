@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ..performance import compute_request_performance
+from ..routing.performance_estimates import PromotionEstimates, PromotionMetricsPolicy, route_estimate
 from .events import RuntimeEvent
 
 WINDOW_SECONDS = 60 * 60
@@ -67,6 +68,31 @@ class RouteStatusRegistry:
         )
         self._request_routes: dict[str, tuple[str, float]] = {}
         self._in_flight: dict[str, dict[str, Any]] = {}
+        self._promotion_estimates = PromotionEstimates()
+
+    def promotion_estimate(self, route: Any, policy: PromotionMetricsPolicy) -> dict[str, Any]:
+        with self._lock:
+            return route_estimate(self._promotion_estimates, route, policy, self._clock())
+
+    def load_promotion_estimates(self, path: Path) -> None:
+        """Startup only; malformed snapshots are diagnosed, not fatal."""
+        import logging
+
+        try:
+            with self._lock:
+                self._promotion_estimates.load(path, self._clock())
+        except (OSError, ValueError, TypeError) as exc:
+            logging.getLogger(__name__).warning("Cannot load promotion estimates %s: %s", path, exc)
+
+    def save_promotion_estimates(self, path: Path) -> None:
+        """Shutdown only; atomic replacement preserves the previous snapshot on failure."""
+        import logging
+
+        try:
+            with self._lock:
+                self._promotion_estimates.save(path, self._clock())
+        except (OSError, ValueError, TypeError) as exc:
+            logging.getLogger(__name__).warning("Cannot save promotion estimates %s: %s", path, exc)
 
     def __call__(self, event: RuntimeEvent) -> None:
         """Consume a runtime event; unmatched event types are intentionally ignored."""
@@ -125,6 +151,8 @@ class RouteStatusRegistry:
                 self._in_flight.pop(event.req_id or "", None)
             elif event.type == "request.lifecycle.admission.queued":
                 self._set_admission_state(event, now, phase="queued")
+            elif event.type == "execution.routing.balance_waiting":
+                self._set_admission_state(event, now, phase="queued")
             elif event.type == "request.lifecycle.admission.acquired":
                 self._set_admission_state(event, now, phase="preparing")
             elif event.type == "request.lifecycle.admission.rejected":
@@ -143,6 +171,15 @@ class RouteStatusRegistry:
                 self._mark_request_started(event, now)
             elif event.type == "execution.streaming.upstream_connect":
                 self._mark_in_flight(event.req_id, phase="connecting")
+            elif event.type == "execution.upstream.phase":
+                phase = event.data.get("phase")
+                if phase in {"dispatching", "connecting", "sending", "waiting_response_headers"}:
+                    self._mark_in_flight(event.req_id, phase=phase)
+                elif phase == "response_headers":
+                    self._mark_in_flight(
+                        event.req_id,
+                        phase="streaming" if self._in_flight.get(event.req_id, {}).get("stream") else "requesting",
+                    )
             elif event.type == "execution.streaming.upstream_connected":
                 self._mark_in_flight(event.req_id, phase="streaming")
             elif event.type == "execution.performance.request_complete":
@@ -243,7 +280,11 @@ class RouteStatusRegistry:
                 "activity": activity,
                 "errors": list(reversed(errors)),
                 "queued_requests": self._requests_for_route(route_name, current, phases={"queued"}),
-                "pending_requests": self._requests_for_route(route_name, current, phases={"preparing", "connecting"}),
+                "pending_requests": self._requests_for_route(
+                    route_name,
+                    current,
+                    phases={"preparing", "dispatching", "connecting", "sending", "waiting_response_headers"},
+                ),
                 "active_requests": self._requests_for_route(route_name, current, phases={"requesting", "streaming"}),
                 "performance": {
                     "samples": len(samples),
@@ -280,30 +321,6 @@ class RouteStatusRegistry:
             # should influence a safety-oriented scheduling estimate.
             values.sort()
             return float(values[(len(values) * 3) // 4])
-
-    def promotion_metrics(
-        self,
-        route_name: str,
-        *,
-        min_samples: int = 3,
-    ) -> dict[str, float] | None:
-        """Return measured PP/decode rates only when both have enough samples."""
-        with self._lock:
-            self._prune(self._clock())
-            samples = [
-                sample
-                for sample in self._samples.get(route_name, ())
-                if isinstance(sample.get("prompt_tps"), (int, float))
-                and isinstance(sample.get("completion_tps"), (int, float))
-                and sample["prompt_tps"] > 0
-                and sample["completion_tps"] > 0
-            ]
-            if len(samples) < min_samples:
-                return None
-            return {
-                "prompt_tps": sum(s["prompt_tps"] for s in samples) / len(samples),
-                "completion_tps": sum(s["completion_tps"] for s in samples) / len(samples),
-            }
 
     @staticmethod
     def _text(value: Any) -> str | None:
@@ -400,6 +417,21 @@ class RouteStatusRegistry:
                 "elapsed_ms": _finite_number(metrics.get("elapsed_ms")),
             }
         )
+        # Retries/fallbacks mix different resources or elapsed spans. Do not
+        # teach the resource estimator from those ambiguous request totals.
+        if data.get("upstream_attempts") == 1 and data.get("finish_reason") in (
+            "stop",
+            "length",
+            "tool_calls",
+            "function_call",
+        ):
+            self._promotion_estimates.observe(
+                data.get("backend_identity"),
+                at,
+                _finite_number(metrics.get("prompt_tps")),
+                _finite_number(metrics.get("completion_tps")),
+                seed=precomputed,
+            )
 
     def _record_error(
         self,

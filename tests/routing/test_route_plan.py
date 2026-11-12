@@ -21,6 +21,7 @@ from keeprollming.routing import (
     resolve_reroute_destination,
 )
 from keeprollming.routing.balancing import (
+    BalancePromotionPolicy,
     estimate_promotion_benefit,
     parse_balance_wait_policy,
     parse_capability_enforcement,
@@ -576,6 +577,7 @@ def test_balance_promotion_estimate_accounts_for_cold_prefill_and_cache_hits():
         completion_tokens=500,
         current_metrics=rates,
         candidate_metrics=faster,
+        promotion=BalancePromotionPolicy(lookahead_turns=0),
     )
     assert large_cached_context["decision"] == "stay_pinned"
     assert large_cached_context["estimated_prefill_cost_seconds"] > 0

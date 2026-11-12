@@ -31,10 +31,13 @@ from ..observability import events_execution as _exec
 # O10: emit performance events instead of direct record_metrics() call
 from ..observability import events_execution as _exec_perf
 from ..processing import _count_tokens_safe
+from ..processing.output_budget import OutputTokenBudgetError, resolve_output_token_budget
 from ..routing import (
     NoEligibleBalanceTarget,
     RoutePlan,
 )
+from ..routing.balancing import parse_selection_policy
+from ..routing.performance_estimates import performance_identity, route_estimate
 
 # Import from summary package (used by this endpoint)
 from ..summary import (
@@ -74,15 +77,23 @@ async def _release_admission_after_stream(stream: AsyncIterator[bytes], lease: A
         await lease.release()
 
 
-async def _post_upstream(client, url, *, json, headers, request_timeout: float):
+async def _post_upstream(client, url, *, json, headers, request_timeout: float, req_id: str | None = None):
     """Post with the route deadline; tolerate minimal legacy test doubles."""
     try:
-        return await client.post(
+        from ..app import get_event_dispatcher
+        from ..upstream.lifecycle import UpstreamLifecycle
+
+        lifecycle = UpstreamLifecycle(req_id or "-", get_event_dispatcher())
+        lifecycle.mark("dispatching")
+        response = await client.post(
             url,
             json=json,
             headers=headers,
             timeout=make_request_timeout(request_timeout),
+            **({"extensions": {"trace": lifecycle.trace}} if isinstance(client, httpx.AsyncClient) else {}),
         )
+        lifecycle.mark("response_headers")
+        return response
     except TypeError as exc:
         if "timeout" not in str(exc):
             raise
@@ -144,6 +155,7 @@ async def _retry_strip_last_image_non_streaming(
                 json=effective_payload,
                 headers=route_headers,
                 request_timeout=request_timeout,
+                req_id=req_id,
             )
         except Exception as e:
             _exec.emit_strip_image_error(req_id, attempt + 1, str(e))
@@ -292,6 +304,7 @@ def _resolve_route_context(
     reroute_chain=None,
     attempt_routes=None,
     preserved_filters=None,
+    preserved_overrides=None,
 ):
     """Resolve route and return a typed context dict (transitioning to RouteSettings)."""
     if route is None:
@@ -308,9 +321,19 @@ def _resolve_route_context(
     elif isinstance(route_upstream_url, str) and not route_upstream_url.startswith(("http://", "https://")):
         _exec.emit_invalid_upstream(req_id, route.name, route_upstream_url)
         route_upstream_url = f"http://{route_upstream_url}"
-    resolved_ctx_len, resolved_max_tokens = resolve_route_settings(route, {}, _get_default_settings())  # type: ignore[arg-type]
+    defaults = _get_default_settings()
+    resolved_ctx_len, resolved_max_tokens = resolve_route_settings(route, {}, defaults)  # type: ignore[arg-type]
     ctx_eff = resolved_ctx_len
-    max_out = _clamp_max_out_for_ctx(max_tokens_req, ctx_eff)
+    effective_overrides = dict(getattr(route, "overrides", {}) or {})
+    effective_overrides.update(preserved_overrides or {})
+    budget = resolve_output_token_budget(
+        client_max_tokens=max_tokens_req,
+        default_max_tokens=resolved_max_tokens,
+        context_window=ctx_eff,
+        safety_margin=SAFETY_MARGIN_TOK,
+        overrides=effective_overrides,
+    )
+    max_out = budget.maximum
     plan = should_summarise(tok=TOK, messages=messages, ctx_eff=ctx_eff, max_out=max_out)
     _, non_system = split_messages(messages)
     pinned_head_n = _pinned_head_count(non_system)
@@ -327,7 +350,7 @@ def _resolve_route_context(
         default_max_tokens=resolved_max_tokens,
         upstream_url=route_upstream_url,
         routes_by_name={candidate.name: candidate for candidate in USER_ROUTES},
-        defaults=DEFAULTS,
+        defaults=defaults,
         requested_route_name=requested_route_name,
         reroute_chain=reroute_chain,
         attempt_routes=attempt_routes,
@@ -433,7 +456,6 @@ def _build_upstream_payload(
     upstream_model,
     repacked_messages,
     route_plan: RoutePlan,
-    max_tokens_req,
     ctx_eff,
     req_id,
     preserved_overrides=None,
@@ -469,9 +491,10 @@ def _build_upstream_payload(
     prompt_tokens_for_log = _count_tokens_safe(repacked_messages)
     _clamp_max_tokens_upstream(
         payload=upstream_payload,
-        max_tokens_req=max_tokens_req,
+        default_max_tokens=route_plan.default_max_tokens,
         ctx_eff=ctx_eff,
         prompt_tokens_for_log=prompt_tokens_for_log,
+        req_id=req_id,
     )
     return upstream_payload
 
@@ -771,6 +794,19 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                     owner_key=compaction_handoff.owner_key,
                 )
         service_priority = int(requested_route.routing_priority or 0)
+        selection_policy = parse_selection_policy(requested_route.balance, route_name=requested_route.name)
+        candidate_loads: dict[str, dict[str, int | None]] = {}
+
+        def active_requests(candidate):
+            resource = backend_resource_key(candidate)
+            snapshot = admission_controller.snapshot(
+                route_name=candidate.name,
+                max_concurrent=candidate.max_concurrent,
+                resource_key=str(resource) if resource is not None else None,
+            )
+            candidate_loads[candidate.name] = snapshot
+            return snapshot["active"]
+
         reservation_states: dict[str, str] = {}
         reservation_details: dict[str, Any] = {}
         queue_budget = max(0.0, float(requested_route.queue_timeout or 0.0))
@@ -837,26 +873,38 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
             routing_priority=service_priority,
         )
         promotion_estimate: dict[str, Any] | None = None
+        selection_started = time.monotonic()
 
         while True:
             candidate_states.clear()
+            candidate_loads.clear()
             reservation_states.clear()
             reservation_details.clear()
             try:
                 unpinned_selection = resolve_execution_route(
                     requested_route,
                     is_eligible=eligible,
+                    active_requests=active_requests,
                 )
                 # A live lease retains continuity. Once it expires, re-evaluate
                 # normal target order. If configured, measured performance may
                 # justify doing so before expiry, but only at this request boundary.
-                if affinity.route_name and (affinity_reservation.state == "owner" or compaction_handoff is not None):
+                shared_affinity = affinity_reservation.state == "disabled_by_backend"
+                if affinity.route_name and (
+                    affinity_reservation.state == "owner" or shared_affinity or compaction_handoff is not None
+                ):
+                    # Load balancing applies to new assignments, not cache-cost
+                    # promotion. Keep the historical priority-ranked candidate
+                    # for the existing measured promotion decision.
                     pinned_selection = resolve_execution_route(
                         requested_route,
                         preferred_route_name=affinity.route_name,
                         is_eligible=eligible,
+                        active_requests=active_requests,
                     )
                     current_is_eligible = pinned_selection.selected_route.name == affinity.route_name
+                    if selection_policy == "least_loaded" and current_is_eligible:
+                        unpinned_selection = resolve_execution_route(requested_route, is_eligible=eligible)
                     may_promote = reservation_policy.promote_when_beneficial and compaction_handoff is None
                     if compaction_handoff is not None:
                         promotion_estimate = {"decision": "deferred_for_compaction_handoff"}
@@ -880,17 +928,22 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                             or getattr(requested_route, "max_tokens", None)
                             or getattr(unpinned_selection.selected_route, "max_tokens", None)
                         )
-                        if current_route is not None and status_registry is not None:
+                        if current_route is not None:
+
+                            def evidence(target):
+                                if status_registry is not None:
+                                    return status_registry.promotion_estimate(
+                                        target, reservation_policy.promotion.metrics
+                                    )
+                                return route_estimate(None, target, reservation_policy.promotion.metrics, time.time())
+
                             promotion_estimate = estimate_promotion_benefit(
+                                promotion=reservation_policy.promotion,
                                 prompt_tokens=request_requirements.prompt_tokens_est,
                                 cached_prompt_tokens=affinity.cached_prompt_tokens,
                                 completion_tokens=completion_budget,
-                                current_metrics=status_registry.promotion_metrics(
-                                    current_route.name,
-                                ),
-                                candidate_metrics=status_registry.promotion_metrics(
-                                    unpinned_selection.selected_route.name,
-                                ),
+                                current_metrics=evidence(current_route),
+                                candidate_metrics=evidence(unpinned_selection.selected_route),
                             )
                         else:
                             promotion_estimate = {"decision": "insufficient_metrics"}
@@ -905,6 +958,10 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                             and selection.selected_route.name == compaction_handoff.route_name
                             else "compaction_handoff_target_unavailable"
                             if compaction_handoff is not None
+                            else "shared_affinity"
+                            if shared_affinity and selection.selected_route.name == affinity.route_name
+                            else "shared_affinity_unavailable"
+                            if shared_affinity
                             else "reservation_affinity"
                             if selection.selected_route.name == affinity.route_name
                             else "reservation_affinity_unavailable"
@@ -916,6 +973,8 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                         if (affinity.route_name and selection.selected_route.name != affinity.route_name)
                         else "waited_for_capacity"
                         if selection_waited
+                        else "least_loaded_eligible"
+                        if selection_policy == "least_loaded"
                         else "ranked_eligible"
                     )
                 break
@@ -927,7 +986,33 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                 }
                 waitable = any(state in waitable_states for state in candidate_states.values())
                 remaining = selection_deadline - time.monotonic()
+                # A shared overflow backend may be full, but its real
+                # admission queue must own ordering between coding and bots.
+                # Only consider it after normal free-target selection fails.
+                shared_busy = {
+                    name
+                    for name, state in candidate_states.items()
+                    if state == "capacity_unavailable" and reservation_states.get(name) == "disabled_by_backend"
+                }
+                if declared_selection.balanced and remaining > 0 and shared_busy:
+                    selection = resolve_execution_route(
+                        requested_route,
+                        active_requests=active_requests,
+                        is_eligible=lambda candidate: candidate.name in shared_busy,
+                    )
+                    selection_reason = "shared_backend_admission"
+                    break
                 if declared_selection.balanced and waitable and remaining > 0:
+                    if not selection_waited:
+                        _exec.emit_execution_event(
+                            req_id,
+                            "execution.routing.balance_waiting",
+                            dispatcher=dispatcher,
+                            route=requested_route.name,
+                            requested_route=requested_route.name,
+                            wait_budget_ms=round(remaining * 1000),
+                            candidate_states=dict(candidate_states),
+                        )
                     selection_waited = True
                     selection_retry_count += 1
                     await asyncio.sleep(min(wait_policy.retry_interval_seconds, remaining))
@@ -962,6 +1047,7 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                     candidate_states.clear()
                     selection = resolve_execution_route(
                         requested_route,
+                        active_requests=active_requests,
                         is_eligible=lambda candidate: eligible(
                             candidate,
                             bypass_reservation_for=bypass.route.name,
@@ -1094,7 +1180,11 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
             requested_completion_tokens=request_requirements.requested_completion_tokens,
             selection_waited=selection_waited,
             selection_retry_count=selection_retry_count,
+            selection_wait_ms=round((time.monotonic() - selection_started) * 1000) if selection_waited else 0,
+            previous_route=affinity.route_name,
             promotion_estimate=promotion_estimate,
+            selection_policy=selection_policy,
+            candidate_loads=candidate_loads,
             dispatcher=dispatcher,
         )
     resource = backend_resource_key(route)
@@ -1183,6 +1273,8 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
         affinity_assignment_keys = ()
         affinity_owner_key = None
 
+    reservation_target = route
+
     def complete_idle_reservation(
         prompt_tokens: Any,
         cached_prompt_tokens: Any = None,
@@ -1191,6 +1283,24 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
         """Update affinity, compaction signal and idle lease after success."""
         if not selection.balanced:
             return
+        served_resource = backend_resource_key(reservation_target)
+        served_resource_key = str(served_resource) if served_resource is not None else None
+        if reservation_target.name != selection.selected_route.name:
+            # Fallback success belongs to the resource which actually served
+            # it, not the original target (including its cache/idle policy).
+            affinity_registry.release_reservation(
+                resource_key=str(resource) if resource is not None else None,
+                owner_key=affinity_owner_key,
+            )
+            affinity_registry.assign(
+                affinity_assignment_keys,
+                route_name=reservation_target.name,
+                ttl_seconds=reservation_policy.affinity_ttl_seconds,
+                owner_key=affinity_owner_key,
+            )
+            affinity_registry.record_cache_observation(
+                affinity_assignment_keys, route_name=reservation_target.name, cached_prompt_tokens=cached_prompt_tokens
+            )
         effective_prompt_tokens = (
             prompt_tokens
             if isinstance(prompt_tokens, int) and prompt_tokens > 0
@@ -1200,8 +1310,8 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
             handoff_state = affinity_registry.record_compaction_candidate(
                 source_route_name=requested_route.name,
                 source_scope_key=compaction_scope_key,
-                target_route_name=selection.selected_route.name,
-                resource_key=str(resource) if resource is not None else None,
+                target_route_name=reservation_target.name,
+                resource_key=served_resource_key,
                 owner_key=affinity_owner_key,
                 prompt_tokens=effective_prompt_tokens,
                 completion_tokens=completion_tokens,
@@ -1215,8 +1325,8 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                     source_route_name=requested_route.name,
                     source_scope_key=compaction_scope_key,
                     payload=payload,
-                    target_route_name=selection.selected_route.name,
-                    resource_key=str(resource) if resource is not None else None,
+                    target_route_name=reservation_target.name,
+                    resource_key=served_resource_key,
                     owner_key=affinity_owner_key,
                     max_age_seconds=compaction_handoff_policy.max_age_seconds,
                 )
@@ -1225,17 +1335,17 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
         if not reservation_policy.enabled:
             _exec.emit_reservation(
                 req_id,
-                route=selection.selected_route.name,
-                resource=str(resource) if resource is not None else None,
+                route=reservation_target.name,
+                resource=served_resource_key,
                 state="disabled",
                 compaction_handoff=handoff_state,
                 dispatcher=dispatcher,
             )
             return
         reservation = affinity_registry.reserve(
-            resource_key=str(resource) if resource is not None else None,
+            resource_key=served_resource_key,
             owner_key=affinity_owner_key,
-            route_name=selection.selected_route.name,
+            route_name=reservation_target.name,
             routing_priority=service_priority,
             mode=reservation_policy.mode,
             timeout_seconds=reservation_policy.timeout_seconds,
@@ -1255,8 +1365,8 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
         )
         _exec.emit_reservation(
             req_id,
-            route=selection.selected_route.name,
-            resource=str(resource) if resource is not None else None,
+            route=reservation_target.name,
+            resource=served_resource_key,
             state=reservation.state,
             mode=reservation_policy.mode,
             duration_seconds=reservation.expires_in_seconds,
@@ -1286,19 +1396,24 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
     except ValueError as e:
         await fallback_admission.release()
         return JSONResponse({"error": {"message": str(e)}}, status_code=400)
-    ctx = _resolve_route_context(
-        client_model,
-        messages,
-        payload,
-        max_tokens_req,
-        req_id,
-        route=route,
-        model=model,
-        requested_route_name=selection.requested_route.name,
-        reroute_chain=selection.reroute_chain,
-        attempt_routes=attempt_routes,
-        preserved_filters=selection.preserved_filters,
-    )
+    try:
+        ctx = _resolve_route_context(
+            client_model,
+            messages,
+            payload,
+            max_tokens_req,
+            req_id,
+            route=route,
+            model=model,
+            requested_route_name=selection.requested_route.name,
+            reroute_chain=selection.reroute_chain,
+            attempt_routes=attempt_routes,
+            preserved_filters=selection.preserved_filters,
+            preserved_overrides=selection.preserved_overrides,
+        )
+    except OutputTokenBudgetError as error:
+        await fallback_admission.release()
+        return JSONResponse({"error": {"message": str(error), "type": "invalid_request_error"}}, status_code=400)
 
     circuit_attempt = circuit_registry.allow(
         route_name=ctx["route"].name,
@@ -1343,6 +1458,7 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
                     status_code=429,
                     headers={"Retry-After": "1"},
                 )
+            reservation_target = fallback.route
             circuit_attempt = None
         else:
             await fallback_admission.release()
@@ -1375,16 +1491,20 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
     repacked_messages, did_summarize, summary_tokens = await _handle_summarization(
         messages=messages, payload=payload, user_id=user_id, conv_id=conv_id, ctx=ctx, req_id=req_id
     )
-    upstream_payload = _build_upstream_payload(
-        payload,
-        ctx["upstream_model"],
-        repacked_messages,
-        ctx["route_plan"],
-        max_tokens_req,
-        ctx["ctx_eff"],
-        req_id,
-        selection.preserved_overrides,
-    )
+    try:
+        upstream_payload = _build_upstream_payload(
+            payload,
+            ctx["upstream_model"],
+            repacked_messages,
+            ctx["route_plan"],
+            ctx["ctx_eff"],
+            req_id,
+            selection.preserved_overrides,
+        )
+    except OutputTokenBudgetError as error:
+        circuit_registry.abandon_attempt(circuit_attempt, req_id=req_id)
+        await fallback_admission.release()
+        return JSONResponse({"error": {"message": str(error), "type": "invalid_request_error"}}, status_code=400)
 
     # O12: Emit raw request capture event (post-route-resolution, pre-filter-chain)
     _exec.emit_request_capture(
@@ -1407,12 +1527,14 @@ async def process_chat_request(payload, headers, req_id, client_ip=None) -> Resp
     primary_failed = False
 
     async def move_to_fallback(attempt: Any) -> bool:
-        nonlocal primary_failed
+        nonlocal primary_failed, reservation_target
         primary_failed = True
         fallback_route = getattr(attempt, "route", attempt)
         result = fallback_admission.move_to(fallback_route)
         if inspect.isawaitable(result):
             result = await result
+        if result:
+            reservation_target = fallback_route
         return bool(result)
 
     # Phase P5: wire dispatcher through streaming handler call chain
@@ -1638,6 +1760,7 @@ async def process_non_streaming_request(
             json=effective_payload,
             headers=route_headers,
             request_timeout=request_timeout,
+            req_id=req_id,
         )
 
         if r.status_code >= 400:
@@ -1725,6 +1848,7 @@ async def process_non_streaming_request(
                         json=retry_payload,
                         headers=route_headers,
                         request_timeout=request_timeout,
+                        req_id=req_id,
                     )
                     if r.status_code < 400:
                         break
@@ -1784,6 +1908,7 @@ async def process_non_streaming_request(
                         url,
                         json=p,
                         headers=route_headers,
+                        req_id=req_id,
                         request_timeout=request_timeout
                         if request_timeout_override is None
                         else request_timeout_override,
@@ -2059,18 +2184,10 @@ async def process_non_streaming_request(
 
 
 def _get_default_settings():
-    """Get default settings object."""
-    return DEFAULTS
+    """Read the current root defaults, including successful hot reloads."""
+    from ..config import DEFAULTS as current_defaults
 
-
-def _clamp_max_out_for_ctx(max_tokens_req: Optional[int], ctx_eff: int) -> int:
-    """Clamp max_tokens to fit within context window with safety margin."""
-    from ..config import SAFETY_MARGIN_TOK
-
-    max_out = 64
-    if max_tokens_req is not None and max_tokens_req > 0:
-        max_out = min(max_tokens_req, ctx_eff - SAFETY_MARGIN_TOK)
-    return max(max_out, 64)
+    return current_defaults
 
 
 def _is_tool_orchestration_payload(payload: Dict[str, Any], messages: List[Dict]) -> bool:
@@ -2129,30 +2246,26 @@ def _summarize_decision(
 
 
 def _clamp_max_tokens_upstream(
-    payload: Dict, max_tokens_req: Optional[int], ctx_eff: int, prompt_tokens_for_log: Optional[int]
+    payload: Dict, default_max_tokens: int, ctx_eff: int, prompt_tokens_for_log: Optional[int], req_id: str
 ) -> None:
     """Clamp and set max_tokens for upstream request."""
-    from ..config import DEFAULT_MAX_COMPLETION_TOKENS, SAFETY_MARGIN_TOK
-
-    if DEFAULT_MAX_COMPLETION_TOKENS is not None:
-        max_tokens_upstream = max(64, int(ctx_eff) - int(prompt_tokens_for_log or 0) - int(SAFETY_MARGIN_TOK))
-        requested_out = (
-            int(max_tokens_req)
-            if isinstance(max_tokens_req, int) and max_tokens_req > 0
-            else DEFAULT_MAX_COMPLETION_TOKENS
+    budget = resolve_output_token_budget(
+        client_max_tokens=payload.get("max_tokens"),
+        default_max_tokens=default_max_tokens,
+        context_window=ctx_eff,
+        safety_margin=SAFETY_MARGIN_TOK,
+        prompt_tokens=prompt_tokens_for_log or 0,
+    )
+    payload["max_tokens"] = budget.maximum
+    if budget.maximum < budget.requested:
+        _exec.emit_max_tokens_clamped(
+            req_id=req_id,
+            requested=budget.requested,
+            adjusted=budget.maximum,
+            ctx_len=ctx_eff,
+            prompt_tokens=prompt_tokens_for_log,
+            safety_margin=SAFETY_MARGIN_TOK,
         )
-        adjusted_out = min(requested_out, max_tokens_upstream)
-        payload["max_tokens"] = adjusted_out
-
-        if adjusted_out < (requested_out if isinstance(max_tokens_req, int) and max_tokens_req > 0 else 0):
-            _exec.emit_max_tokens_clamped(
-                req_id="",
-                requested=requested_out,
-                adjusted=adjusted_out,
-                ctx_len=ctx_eff,
-                prompt_tokens=prompt_tokens_for_log,
-                safety_margin=SAFETY_MARGIN_TOK,
-            )
 
 
 def summarize_request_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2230,6 +2343,7 @@ def _record_final_metrics(metrics: Dict, t_start: float, did_summarize: bool, ro
         upstream_completion_tokens=safe_metrics["upstream_completion_tokens"],
         upstream_total_tokens=safe_metrics["upstream_total_tokens"],
         cached_prompt_tokens=safe_metrics["cached_prompt_tokens"],
+        backend_identity=performance_identity(getattr(route, "upstream_url", None), safe_metrics["model"]),
         dispatcher=dispatcher,
     )
 

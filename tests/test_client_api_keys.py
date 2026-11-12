@@ -1,5 +1,6 @@
 """Client API-key route access-control contracts."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from keeprollming.app import app
@@ -238,7 +239,8 @@ def test_protected_embeddings_is_rejected_before_any_upstream_work(monkeypatch) 
     assert response.json()["error"]["code"] == "invalid_api_key"
 
 
-def test_models_hides_routes_not_authorized_for_caller(monkeypatch) -> None:
+@pytest.mark.parametrize("path", ["/v1/models", "/models"])
+def test_models_hides_routes_not_authorized_for_caller(monkeypatch, path) -> None:
     from keeprollming import config
 
     protected = Route(
@@ -252,14 +254,15 @@ def test_models_hides_routes_not_authorized_for_caller(monkeypatch) -> None:
     monkeypatch.setattr(config, "DEFAULTS", DefaultSettings())
 
     with TestClient(app) as client:
-        anonymous = client.get("/v1/models").json()["data"]
-        authorized = client.get("/v1/models", headers={"Authorization": "Bearer client-secret"}).json()["data"]
+        anonymous = client.get(path).json()["data"]
+        authorized = client.get(path, headers={"Authorization": "Bearer client-secret"}).json()["data"]
 
     assert [item["id"] for item in anonymous] == ["chat/public"]
     assert [item["id"] for item in authorized] == ["chat/protected", "chat/public"]
 
 
-def test_models_hides_lan_only_route_from_external_client(monkeypatch) -> None:
+@pytest.mark.parametrize("path", ["/v1/models", "/models"])
+def test_models_hides_lan_only_route_from_external_client(monkeypatch, path) -> None:
     from keeprollming import config
 
     lan_route = Route(name="chat/lan", pattern="chat/lan", model="lan", client_access="lan")
@@ -275,12 +278,13 @@ def test_models_hides_lan_only_route_from_external_client(monkeypatch) -> None:
     )
 
     with TestClient(app, client=("203.0.113.7", 1234)) as client:
-        response = client.get("/v1/models", headers={"Authorization": "Bearer secret"})
+        response = client.get(path, headers={"Authorization": "Bearer secret"})
 
     assert [item["id"] for item in response.json()["data"]] == ["public/chat"]
 
 
-def test_models_uses_reloaded_global_network_default(monkeypatch) -> None:
+@pytest.mark.parametrize("path", ["/v1/models", "/models"])
+def test_models_uses_reloaded_global_network_default(monkeypatch, path) -> None:
     from keeprollming import config
 
     route = Route(name="chat/default", pattern="chat/default", model="default", api_keys=[])
@@ -293,6 +297,6 @@ def test_models_uses_reloaded_global_network_default(monkeypatch) -> None:
     )
 
     with TestClient(app, client=("203.0.113.7", 1234)) as client:
-        response = client.get("/v1/models")
+        response = client.get(path)
 
     assert response.json()["data"] == []

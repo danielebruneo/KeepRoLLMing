@@ -314,7 +314,9 @@ def test_summary_cache_consolidates_when_needed(client, monkeypatch):
     monkeypatch.setattr(rs_mod, "should_summarise", mock_should_summarise)
 
     first_messages = [
-        {"role": "user", "content": "A" * 6000},
+        # Keep pinned head + latest tail within the 2048-token test window;
+        # the large middle still forces actual summarization/consolidation.
+        {"role": "user", "content": "A" * 1200},
         {"role": "assistant", "content": "B" * 6000},
         {"role": "user", "content": "C" * 500},
     ]
@@ -322,8 +324,8 @@ def test_summary_cache_consolidates_when_needed(client, monkeypatch):
     assert resp1.status_code == 200, resp1.text
 
     second_messages = first_messages + [
-        {"role": "assistant", "content": "D" * 7000},
-        {"role": "user", "content": "E" * 7000},
+        {"role": "assistant", "content": "D" * 1600},
+        {"role": "user", "content": "E" * 1600},
     ]
     resp2 = client.post("/v1/chat/completions", json={"model": "local/main", "messages": second_messages})
     assert resp2.status_code == 200, resp2.text
@@ -346,7 +348,8 @@ def test_repacked_keeps_latest_user_when_consolidated(monkeypatch, client):
     monkeypatch.setattr(rs_mod, "summarize_middle", _fake_summary)
     monkeypatch.setattr(rs_mod, "summarize_incremental", _fake_incremental)
 
-    long_text = "y" * 4000
+    # Three retained user segments must fit the real configured test context.
+    long_text = "y" * 2000
     messages = [
         {"role": "user", "content": long_text},
         {"role": "assistant", "content": "a1"},

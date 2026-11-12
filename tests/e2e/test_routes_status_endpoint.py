@@ -1,5 +1,6 @@
 """Contract coverage for the private dashboard route-status endpoint."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from keeprollming.app import app
@@ -100,7 +101,11 @@ def test_routes_status_resolves_public_route_configuration(monkeypatch) -> None:
     }
 
 
-def test_routes_status_marks_balancing_selector_as_dynamic(monkeypatch) -> None:
+@pytest.mark.parametrize("selection_policy", ["priority", "least_loaded"])
+@pytest.mark.parametrize(
+    "promotion", [None, {"lookahead_turns": 0.5, "expected_new_prompt_tokens": 2048, "expected_completion_tokens": 512}]
+)
+def test_routes_status_marks_balancing_selector_as_dynamic(monkeypatch, selection_policy, promotion) -> None:
     from keeprollming import config
 
     runner = Route(
@@ -111,6 +116,7 @@ def test_routes_status_marks_balancing_selector_as_dynamic(monkeypatch) -> None:
         ctx_len=32000,
         max_tokens=4096,
         max_concurrent=2,
+        allow_idle_reservation=False,
         capabilities=["chat", "tools"],
     )
     selector = Route(
@@ -120,6 +126,8 @@ def test_routes_status_marks_balancing_selector_as_dynamic(monkeypatch) -> None:
         upstream_url="http://selector.example",
         balance={
             "targets": ["code/runner"],
+            "selection_policy": selection_policy,
+            **({"promotion": promotion} if promotion is not None else {}),
             "preserve_overrides": ["reasoning_effort"],
         },
     )
@@ -132,10 +140,27 @@ def test_routes_status_marks_balancing_selector_as_dynamic(monkeypatch) -> None:
     assert response.status_code == 200
     route = next(item for item in response.json()["routes"] if item["name"] == "public/code")
     assert route["model_mode"] == "balanced"
+    assert route["allow_idle_reservation"] is None
     assert route["upstream_url"] is None
     assert route["upstream_model"] is None
     assert route["balance_policy"] == {
         "targets": ["code/runner"],
+        "selection_policy": selection_policy,
+        "promotion": {
+            "lookahead_turns": 5.0,
+            "expected_new_prompt_tokens": 8192,
+            "expected_completion_tokens": 1024,
+            "expected_current_completion_tokens": 1024,
+            "metrics": {
+                "recent_min_samples": 3,
+                "history_min_samples": 6,
+                "history_max_age_seconds": 86400.0,
+                "max_history_cv": 0.5,
+                "historical_margin_ratio": 0.2,
+                "configured_margin_ratio": 0.35,
+            },
+            **(promotion or {}),
+        },
         "preserve_overrides": ["reasoning_effort"],
         "resolved_targets": [
             {
@@ -148,6 +173,7 @@ def test_routes_status_marks_balancing_selector_as_dynamic(monkeypatch) -> None:
                 "ctx_len": 32000,
                 "max_tokens": 4096,
                 "resource": "http://runner.example :: runner-model",
+                "allow_idle_reservation": False,
                 "admission": {
                     "max_concurrent": 2,
                     "routing_priority": 0,

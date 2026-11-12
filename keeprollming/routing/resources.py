@@ -52,6 +52,8 @@ def validate_shared_backend_resources(
     groups: dict[BackendResourceKey, list[tuple[str, tuple[object, ...]]]] = defaultdict(list)
     for route in route_list:
         resolved = resolve_inherited_route(route, by_name, defaults=defaults)
+        if not isinstance(resolved.allow_idle_reservation, bool):
+            raise ValueError(f"invalid allow_idle_reservation for route '{route.name}': expected boolean")
         key = backend_resource_key(resolved)
         if key is None:
             continue
@@ -60,6 +62,7 @@ def validate_shared_backend_resources(
             bool(resolved.circuit_breaker_enabled),
             resolved.failure_threshold,
             resolved.recovery_timeout,
+            resolved.allow_idle_reservation,
         )
         groups[key].append((route.name, signature))
 
@@ -72,8 +75,28 @@ def validate_shared_backend_resources(
                 "conflicting shared-backend settings for resource "
                 f"'{key}': {rendered}. Routes sharing an upstream URL and "
                 "resolved model must agree on max_concurrent and circuit "
-                "breaker settings."
+                "breaker settings and allow_idle_reservation."
             )
 
 
-__all__ = ["BackendResourceKey", "backend_resource_key", "validate_shared_backend_resources"]
+def resource_reservation_policies(
+    routes: Iterable[Route], *, defaults: DefaultSettings | None = None
+) -> dict[str, bool]:
+    """Build a validated table at startup/reload, never on the request path."""
+    routes = list(routes)
+    by_name = {r.name: r for r in routes}
+    result = {}
+    for route in routes:
+        resolved = resolve_inherited_route(route, by_name, defaults=defaults)
+        key = backend_resource_key(resolved)
+        if key is not None:
+            result[str(key)] = resolved.allow_idle_reservation
+    return result
+
+
+__all__ = [
+    "BackendResourceKey",
+    "backend_resource_key",
+    "validate_shared_backend_resources",
+    "resource_reservation_policies",
+]

@@ -2,10 +2,67 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
 import pytest
+
+
+@pytest.mark.e2e_fake
+@pytest.mark.parametrize("balanced_routing_servers", ["priority", "least_loaded"], indirect=True)
+@pytest.mark.parametrize("stream", [False, True])
+def test_concurrent_assignment_with_spare_capacity(balanced_routing_servers, stream, request):
+    """Actual HTTP selection must spread work before capacity is exhausted."""
+    servers = balanced_routing_servers
+    base = servers.orchestrator.base_url
+    least_loaded = request.node.callspec.params["balanced_routing_servers"] == "least_loaded"
+
+    async def run():
+        async with httpx.AsyncClient(timeout=15) as client:
+            for backend, content in ((servers.fast, "FAST"), (servers.slow, "SLOW")):
+                response = await client.post(
+                    f"{backend.base_url}/__scenario",
+                    json={"scenario": {"chat": {"content": content, "stream_pieces": [content]}}},
+                )
+                response.raise_for_status()
+            (
+                await client.post(f"{servers.fast.base_url}/__control", json={"action": "delay", "ms": 4000})
+            ).raise_for_status()
+
+            async def send(session):
+                response = await client.post(
+                    f"{base}/v1/chat/completions",
+                    headers={"x-librechat-conversation-id": session},
+                    json={"model": "public/main", "stream": stream, "messages": [{"role": "user", "content": session}]},
+                )
+                response.raise_for_status()
+                return _stream_content(response) if stream else _content(response)
+
+            first = asyncio.create_task(send("first-concurrent"))
+            try:
+                for _ in range(100):
+                    status = await client.get(f"{base}/routes")
+                    status.raise_for_status()
+                    if any(route["admission"]["resource"]["active"] for route in status.json()["routes"]):
+                        break
+                    if first.done():
+                        pytest.fail(f"First request finished before selection: {await first}")
+                    await asyncio.sleep(0.02)
+                else:
+                    pytest.fail("First request did not acquire its backend slot")
+                assert not first.done(), "First request must still be active during selection"
+                second = await send("second-concurrent")
+                calls = (await client.get(f"{servers.slow.base_url}/__stats")).json()["calls_total"]
+                assert second == ("SLOW" if least_loaded else "FAST")
+                assert calls == (1 if least_loaded else 0)
+                assert await first == "FAST"
+            finally:
+                if not first.done():
+                    first.cancel()
+                await asyncio.gather(first, return_exceptions=True)
+
+    asyncio.run(run())
 
 
 def _content(response: httpx.Response) -> str:

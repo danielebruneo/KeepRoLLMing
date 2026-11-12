@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.9.6
+
+### Added
+- A public upgrade guide explains 0.9.6's output-budget behavior, routing
+  defaults, shared-worker reservations and graceful shutdown changes.
+- Backend-owned `allow_idle_reservation` (default `true`) can disable exclusive
+  idle leases on a shared multi-request resource without disabling affinity or
+  measured promotion. Hot reload clears old leases and blocks stale completion
+  callbacks from recreating them. Full shared targets use the real admission
+  queue, preserving cross-route service priority rather than racing selector
+  polls; `/routes` reports the effective resource policy.
+- BASIC PLAIN now exposes selector/admission queue entry and waited exit,
+  effective queue priority, and compact backend-promotion decisions without
+  per-poll noise. DEBUG transport milestones distinguish connecting, sending
+  and waiting for response headers in both serving modes and `/routes` status.
+- Promotion's current-turn output forecast is independently configurable via
+  `balance.promotion.expected_current_completion_tokens` (default 1024), bounded
+  by the available cap without modifying upstream `max_tokens`.
+- `GET /models` is a direct alias of `GET /v1/models`, with identical model
+  discovery and API-key/client-network filtering.
+- Promotion rate evidence now uses recent samples, then stable historical
+  samples for the same upstream URL/model, then optional route-level
+  `performance_hint` rates. `balance.promotion.metrics` controls sample,
+  freshness, variability and conservative gain thresholds. Bounded aggregates
+  are event-fed; an atomic shutdown snapshot restores history at startup.
+  Error/multi-attempt totals and legacy records without resource identity are
+  excluded. Detailed decisions include source, count, age and confidence.
+- Promotion estimates now include configurable future prefill and decode gains
+  via `balance.promotion`: defaults are 5 additional turns, 8192 new prompt
+  tokens and 1024 completion tokens per turn. Cold context migration is charged
+  once; `lookahead_turns: 0` restores current-turn-only evaluation. Fixed-size
+  arithmetic uses existing in-memory rates, without parsing logs/history.
+- Opt-in `balance.selection_policy: least_loaded` assigns new sessions to the
+  eligible backend with the fewest active requests (shared URL/model resource),
+  using target priority/declaration order for ties. The default remains
+  `priority`; session reservations and measured promotion retain continuity.
+  Routing events include policy and per-candidate active/capacity snapshots.
+
+### Fixes
+- After fallback succeeds, affinity, cache observations and idle reservations
+  are attributed to the backend that actually served the response rather than
+  the initially selected target.
+- `krm stop/restart` no longer implicitly escalates to SIGKILL. Shutdown wait
+  defaults to 60 seconds (`--stop-timeout` / `KRM_STOP_TIMEOUT`, 0 = unlimited).
+  An expired wait retains the PID and prevents restart from launching a second
+  process; only explicit `--force` may kill a verified KRM process.
+- Resolve output-token budgets consistently for summary planning and upstream
+  requests: explicit overrides win over client values, then inherited route/
+  root defaults. Context clamping no longer depends on a global completion
+  default or overwrites an already-applied override with the original client
+  value.
+- Requests omitting `max_tokens` now receive the resolved default (4096 when
+  all settings are omitted), rather than silently delegating to backend defaults.
+  Locally rejected budgets release admission and any owned half-open probe
+  without recording a backend failure. Root budget defaults follow hot reload.
+
 ## v0.9.5
 
 ### Added

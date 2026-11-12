@@ -192,6 +192,7 @@ def emit_admission_queued(
     return emit_request_event(
         req_id,
         "request.lifecycle.admission.queued",
+        level="BASIC",
         route=route,
         max_concurrent=max_concurrent,
         queue_timeout_ms=queue_timeout_ms,
@@ -226,6 +227,7 @@ def emit_admission_acquired(
     return emit_request_event(
         req_id,
         "request.lifecycle.admission.acquired",
+        level="BASIC" if waited else "DEBUG",
         route=route,
         max_concurrent=max_concurrent,
         waited=waited,

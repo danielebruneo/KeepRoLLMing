@@ -8,7 +8,7 @@ Tests the KRM canonical channel ordering contract (Option A — Grouped):
 - R4: Passive finalizer canonical-order stability
 - R5: Recovery preservation by strategy
 
-See _docs/streaming-v2-reasoning-order-contract.md for the full contract.
+These tests define the channel-ordering regression contract.
 """
 
 import json

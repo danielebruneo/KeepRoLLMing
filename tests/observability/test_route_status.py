@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from keeprollming.observability.events import EventSource, RuntimeEvent
 from keeprollming.observability.route_status import RouteStatusRegistry
+from keeprollming.routing.performance_estimates import PromotionMetricsPolicy, performance_identity
+from keeprollming.types import Route
 
 NOW = 1_700_000_000.0
 
@@ -94,18 +97,26 @@ def test_promotion_metrics_require_multiple_complete_rate_samples() -> None:
                     "completion_tokens": 100,
                     "prompt_tokens": 500,
                     "total_tokens": 600,
+                    "backend_identity": performance_identity("http://fast", "model-a"),
+                    "finish_reason": "stop",
+                    "upstream_attempts": 1,
                 },
                 req_id=f"metric-{index}",
                 at=NOW + index,
             )
         )
 
-    metrics = registry.promotion_metrics("pool/fast")
+    route = Route(name="pool/alias", pattern="pool/alias", upstream_url="http://fast", model="model-a")
+    metrics = registry.promotion_estimate(route, PromotionMetricsPolicy())
     assert metrics is not None
     assert metrics["prompt_tps"] == 5000.0
     assert 110 < metrics["completion_tps"] < 112
-    assert registry.promotion_metrics("pool/fast", min_samples=4) is None
-    assert registry.promotion_metrics("pool/missing") is None
+    assert metrics["source"] == "recent"
+    assert registry.promotion_estimate(route, PromotionMetricsPolicy(recent_min_samples=4))["source"] == "unavailable"
+    assert (
+        registry.promotion_estimate(replace(route, model="different"), PromotionMetricsPolicy())["source"]
+        == "unavailable"
+    )
 
 
 def test_snapshot_discards_entries_outside_rolling_hour() -> None:

@@ -301,13 +301,16 @@ def test_e2e_summary_overflow_chunking_recovers(
     configure_fake_backend,
     get_fake_stats,
 ):
-    if backend_target.client_model_basic == "fake":
+    if backend_target.mode == "fake":
         # For fake backend, use the existing scenario
         configure_fake_backend(
             {
                 "models": {
                     "main-model": {"context_length": 260},
                     "summary-model": {"context_length": 5000},
+                    # The route fixture uses this actual model name, not the
+                    # SUMMARY_MODEL env variable (route settings win).
+                    "test-summary-1.5b": {"context_length": 5000},
                 },
                 "summary": {
                     "content": "chunked summary ok",
@@ -331,8 +334,10 @@ def test_e2e_summary_overflow_chunking_recovers(
 
     long_messages = []
     for i in range(12):
-        long_messages.append({"role": "user", "content": f"messaggio utente {i} - " + ("A" * 340)})
-        long_messages.append({"role": "assistant", "content": f"risposta assistente {i} - " + ("B" * 320)})
+        # Incoming estimate exceeds the summary threshold; after repacking
+        # the retained messages must still fit the 2048-token route context.
+        long_messages.append({"role": "user", "content": f"messaggio utente {i} - " + ("A" * 290)})
+        long_messages.append({"role": "assistant", "content": f"risposta assistente {i} - " + ("B" * 270)})
     long_messages.append({"role": "user", "content": "domanda finale"})
 
     resp = backend_client.post(
@@ -347,7 +352,7 @@ def test_e2e_summary_overflow_chunking_recovers(
     )
     assert resp.status_code == 200, resp.text
     # For live mode, check that we get a valid response without expecting exact text match
-    if backend_target.client_model_basic != "fake":
+    if backend_target.mode != "fake":
         # Live mode - don't expect exact content match but validate it's a reasonable response with some length
         assert len(resp.json()["choices"][0]["message"]["content"]) > 10
     else:
@@ -355,10 +360,7 @@ def test_e2e_summary_overflow_chunking_recovers(
         assert resp.json()["choices"][0]["message"]["content"] == "main response after summary"
 
     stats = get_fake_stats()
-    if backend_target.client_model_basic != "fake":
-        # In live mode, we just want to make sure it works without error
-        pass  # No specific assertion for fake vs live here
-    else:
+    if backend_target.mode == "fake":
         assert stats["calls_by_kind"].get("summary", 0) >= 2
         assert stats["calls_by_kind"].get("chat", 0) >= 1
 
@@ -519,16 +521,16 @@ def test_e2e_summary_single_oversized_message_does_not_loop(
         },
         timeout=40.0,
     )
-    assert resp.status_code == 200, resp.text
-    # For live mode, check that we get a reasonable response (not just the exact test text)
-    if backend_target.client_model_basic != "fake":
-        # Live mode - don't expect exact content match but validate it's a valid response
+    # A failed summary cannot make an oversized retained prompt valid. The
+    # fake route must reject locally instead of relying on a permissive mock.
+    if backend_target.mode == "fake":
+        assert resp.status_code == 400, resp.text
+        assert "no room" in resp.json()["error"]["message"]
+    else:
+        assert resp.status_code == 200, resp.text
         assert len(resp.json()["choices"][0]["message"]["content"]) > 10
         # Also check that we're getting some kind of meaningful result
         assert resp.json()["choices"][0]["message"]["content"].strip() != ""
-    else:
-        # Fake mode - maintain original assertion for test consistency
-        assert resp.json()["choices"][0]["message"]["content"] == "response after guarded summary"
 
     stats = get_fake_stats()
     # Handle potential key error in live mode
@@ -539,20 +541,22 @@ def test_e2e_summary_single_oversized_message_does_not_loop(
         # In live mode, we might not have the exact stats structure, so just check that it's a valid response
         pass
     assert 0 <= summary_calls <= 8
+    if backend_target.mode == "fake":
+        assert stats["calls_by_kind"].get("chat", 0) == 0
 
     # This scenario is intentionally implementation-flexible: depending on the
     # exact guard path, the orchestrator may preflight-chunk, force-split,
     # exhaust summary retries and fall back to the main model, or bypass the
     # archived-context repack entirely after summary failure. The invariant we
-    # care about is: no loop, bounded summary attempts, and a successful final
-    # response from the main backend.
-    stdout_text = _wait_for_plain_server_output(
-        orchestrator_server.stdout_path,
-        "execution.chat.request_start",
-        "execution.chat.http_out",
-    )
+    # care about is: no loop, bounded summary attempts, and no impossible
+    # prompt forwarded to the main backend after summary failure.
+    expected_events = ["execution.chat.request_start"]
+    if backend_target.mode != "fake":
+        expected_events.append("execution.chat.http_out")
+    stdout_text = _wait_for_plain_server_output(orchestrator_server.stdout_path, *expected_events)
     assert "execution.chat.request_start" in stdout_text
-    assert "execution.chat.http_out" in stdout_text
+    if backend_target.mode != "fake":
+        assert "execution.chat.http_out" in stdout_text
 
 
 @pytest.mark.e2e_fake
